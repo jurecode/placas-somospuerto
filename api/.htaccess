@@ -1,0 +1,13 @@
+# config.php solo se incluye desde PHP, nunca se sirve directo
+<Files "config.php">
+  Require all denied
+</Files>
+<Files "config.ejemplo.php">
+  Require all denied
+</Files>
+# el cuerpo con las imágenes en base64 puede pasar los 8 MB por defecto
+<IfModule mod_php.c>
+  php_value post_max_size 32M
+  php_value upload_max_filesize 32M
+  php_value max_execution_time 120
+</IfModule>

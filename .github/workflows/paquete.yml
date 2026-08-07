@@ -1,0 +1,53 @@
+name: Paquete para subir al hosting
+
+# Cada push a main deja un .zip listo para subir por FTP, y además una
+# Release con la fecha, para poder volver a una versión anterior.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  empaquetar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Armar la carpeta a subir
+        run: |
+          mkdir -p sitio
+          # lo que va al hosting: el editor, el panel y los recursos
+          cp index.html editor.js placa.js robots.txt sitio/
+          cp panel-*.html sitio/
+          cp -r assets sitio/
+          cp -r api sitio/
+          # carpeta donde la API deja las imágenes mientras Instagram las lee
+          mkdir -p sitio/publicaciones && touch sitio/publicaciones/.gitkeep
+          # lo que NO va: el editor viejo en Python y el arte original
+          rm -f sitio/assets/subidas/* 2>/dev/null || true
+          echo "Versión $(date -u '+%Y-%m-%d %H:%M UTC') · commit ${GITHUB_SHA::7}" > sitio/VERSION.txt
+
+      - name: Comprimir
+        run: cd sitio && zip -r ../placas-somospuerto.zip . && cd ..
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sitio
+          path: placas-somospuerto.zip
+          retention-days: 90
+
+      - name: Publicar la versión
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Versión ${{ github.run_number }}
+          body: |
+            Paquete listo para subir al hosting.
+            Commit `${{ github.sha }}`.
+
+            Descargá `placas-somospuerto.zip`, descomprimilo y subí el
+            contenido a la carpeta pública del dominio.
+          files: placas-somospuerto.zip

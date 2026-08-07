@@ -552,7 +552,7 @@ $('#publicar').addEventListener('click', async (ev) => {
     })));
 
     estado('Subiendo a Instagram… puede tardar hasta un minuto');
-    const res = await fetch('/api/publicar', {
+    const res = await fetch('api/publicar.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

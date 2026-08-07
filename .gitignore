@@ -12,3 +12,7 @@ venv/
 __pycache__/
 .vercel
 node_modules/
+
+# credenciales del servidor
+api/config.php
+publicaciones/

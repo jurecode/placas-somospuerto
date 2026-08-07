@@ -69,7 +69,7 @@
   <section>
     <h2>Clave</h2>
     <div class="fila">
-      <input type="password" id="clave" placeholder="La que definiste como PUBLICAR_CLAVE" autocomplete="off">
+      <input type="password" id="clave" placeholder="La que pusiste en api/config.php" autocomplete="off">
       <button class="principal" id="revisar">Revisar</button>
     </div>
     <p class="nota">
@@ -95,18 +95,20 @@
           creá una app, agregá el producto <b>Instagram</b> y generá un token de larga
           duración con los permisos <code>instagram_business_basic</code> e
           <code>instagram_business_content_publish</code>. Ahí mismo aparece el id de la cuenta.</li>
-      <li>En Vercel → tu proyecto → <b>Storage</b>, creá un <b>Blob store</b>.
-          Eso agrega solo la variable <code>BLOB_READ_WRITE_TOKEN</code>.</li>
-      <li>En Vercel → <b>Settings → Environment Variables</b>, agregá:
-          <code>IG_USER_ID</code>, <code>IG_ACCESS_TOKEN</code> y <code>PUBLICAR_CLAVE</code>.</li>
-      <li>Volvé a desplegar para que las tome, y revisá acá que quede todo en verde.</li>
+      <li>En el hosting, copiá <code>api/config.ejemplo.php</code> como
+          <code>api/config.php</code> y completá <code>IG_USER_ID</code>,
+          <code>IG_ACCESS_TOKEN</code> y <code>PUBLICAR_CLAVE</code>.</li>
+      <li>Asegurate de que la carpeta <code>publicaciones/</code> exista y tenga
+          permiso de escritura (755). Ahí se dejan las imágenes el rato que
+          Instagram tarda en descargarlas, y se borran solas después.</li>
+      <li>Recargá esta página y revisá que quede todo en verde.</li>
     </ol>
 
     <p class="aviso" style="margin-top:18px">
-      El token va escrito directamente en Vercel, no en esta página. Si se guardara
-      desde acá tendría que quedar en algún lado del proyecto, y el único almacén
-      disponible hoy es de lectura pública: cualquiera podría leerlo y publicar en
-      tu cuenta.
+      El token va escrito en <code>api/config.php</code>, en el servidor, y ese
+      archivo no está en GitHub ni se sirve por web. No se guarda desde esta
+      página a propósito: cualquier cosa que una web pueda escribir, otra puede
+      terminar leyéndola.
     </p>
 
     <p class="nota">
@@ -125,7 +127,7 @@ function pintar(datos){
     IG_USER_ID: 'Id de la cuenta de Instagram',
     IG_ACCESS_TOKEN: 'Token de acceso',
     PUBLICAR_CLAVE: 'Clave para publicar',
-    BLOB_READ_WRITE_TOKEN: 'Almacén de imágenes (Blob)',
+    CARPETA_IMAGENES: 'Carpeta publicaciones/ con permiso de escritura',
   };
   const filas = Object.entries(datos.variables || {}).map(([k, ok]) => `
     <li><span class="marca ${ok ? 'si' : 'no'}">${ok ? '✓' : '✕'}</span>
@@ -146,7 +148,7 @@ async function revisar(){
   const res = $('#resultado');
   res.className = ''; res.textContent = 'Revisando…';
   try{
-    const r = await fetch('/api/estado', { headers: { 'x-clave': clave } });
+    const r = await fetch('api/estado.php', { headers: { 'x-clave': clave } });
     const datos = await r.json();
     if(r.status === 401){
       res.className = 'error'; res.textContent = 'Clave incorrecta.';
@@ -160,7 +162,7 @@ async function revisar(){
     }else{
       res.className = 'error';
       res.textContent = datos.mensaje ||
-        ('Falta configurar en Vercel: ' + (datos.faltan || []).join(', '));
+        ('Falta configurar: ' + (datos.faltan || []).join(', '));
     }
   }catch(e){
     res.className = 'error'; res.textContent = 'No se pudo consultar: ' + e.message;

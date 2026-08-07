@@ -1,8 +1,0 @@
-# El editor local en Python no se despliega: en Vercel corre el editor
-# que va entero en el navegador (index.html + editor.js + placa.js).
-app.py
-editor.html
-plantilla.html
-README.md
-cover.jpg
-.claude/
