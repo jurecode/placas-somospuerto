@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Panel — Somos Puerto</title>
+<style>
+  :root{
+    --bg:#15161a; --panel:#1e2026; --linea:#2e3138; --texto:#e7e9ee;
+    --suave:#9aa0ad; --acento:#ff0054; --ok:#0ae7ae; --mal:#ff8a7a;
+  }
+  *{ box-sizing:border-box; margin:0 }
+  body{
+    background:var(--bg); color:var(--texto); font:15px/1.55 system-ui, sans-serif;
+    padding:32px 20px; display:grid; justify-items:center;
+  }
+  main{ width:min(100%, 680px); display:grid; gap:22px }
+  h1{ font-size:20px }
+  h1 small{ display:block; font-size:13px; color:var(--suave); font-weight:400; margin-top:2px }
+  h2{ font-size:12px; text-transform:uppercase; letter-spacing:.09em; color:var(--suave); margin-bottom:12px }
+
+  section{ background:var(--panel); border:1px solid var(--linea); border-radius:12px; padding:20px }
+
+  .fila{ display:flex; gap:10px; align-items:center }
+  input{
+    flex:1; min-width:0; background:#14151a; color:var(--texto); font:inherit;
+    border:1px solid var(--linea); border-radius:8px; padding:9px 11px;
+  }
+  input:focus{ outline:2px solid var(--acento); outline-offset:-1px }
+  button{
+    font:inherit; color:var(--texto); background:#282b33; cursor:pointer; flex:none;
+    border:1px solid var(--linea); border-radius:8px; padding:9px 14px;
+  }
+  button:hover{ background:#33373f }
+  button.principal{ background:var(--acento); border-color:var(--acento); color:#fff; font-weight:600 }
+
+  ul{ list-style:none; display:grid; gap:9px }
+  li{ display:flex; gap:10px; align-items:baseline; font-size:14px }
+  li b{ font-weight:600; font-family:ui-monospace, monospace; font-size:13px }
+  .marca{ flex:none; width:18px; font-weight:700 }
+  .si{ color:var(--ok) } .no{ color:var(--mal) }
+  li span{ color:var(--suave); font-size:13px }
+
+  ol{ display:grid; gap:14px; padding-left:20px; font-size:14px }
+  ol code, p code{
+    background:#14151a; border:1px solid var(--linea); border-radius:5px;
+    padding:1px 6px; font-size:12.5px; font-family:ui-monospace, monospace;
+  }
+  a{ color:var(--ok) }
+  .nota{ font-size:13px; color:var(--suave); margin-top:14px; line-height:1.5 }
+  .aviso{
+    border-left:3px solid var(--acento); padding:10px 14px; background:#25181d;
+    border-radius:0 8px 8px 0; font-size:13.5px; line-height:1.5;
+  }
+  #resultado{ margin-top:14px; font-size:14px; min-height:20px }
+  #resultado.error{ color:var(--mal) }
+  #resultado.bien{ color:var(--ok) }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>Panel de configuración
+    <small>Somos Puerto · esta página no está enlazada desde el editor</small></h1>
+
+  <section>
+    <h2>Clave</h2>
+    <div class="fila">
+      <input type="password" id="clave" placeholder="La que definiste como PUBLICAR_CLAVE" autocomplete="off">
+      <button class="principal" id="revisar">Revisar</button>
+    </div>
+    <p class="nota">
+      Queda guardada solo en este navegador y es la misma que usa el editor
+      para publicar. No se guarda ninguna otra credencial acá.
+    </p>
+    <div id="resultado"></div>
+  </section>
+
+  <section>
+    <h2>Estado</h2>
+    <ul id="variables">
+      <li><span>Escribí la clave y tocá Revisar.</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Cómo se configura</h2>
+    <ol>
+      <li>En Instagram, la cuenta tiene que ser <b>Profesional</b> (Empresa o Creador)
+          y estar vinculada a una página de Facebook.</li>
+      <li>En <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com</a>
+          creá una app, agregá el producto <b>Instagram</b> y generá un token de larga
+          duración con los permisos <code>instagram_business_basic</code> e
+          <code>instagram_business_content_publish</code>. Ahí mismo aparece el id de la cuenta.</li>
+      <li>En Vercel → tu proyecto → <b>Storage</b>, creá un <b>Blob store</b>.
+          Eso agrega solo la variable <code>BLOB_READ_WRITE_TOKEN</code>.</li>
+      <li>En Vercel → <b>Settings → Environment Variables</b>, agregá:
+          <code>IG_USER_ID</code>, <code>IG_ACCESS_TOKEN</code> y <code>PUBLICAR_CLAVE</code>.</li>
+      <li>Volvé a desplegar para que las tome, y revisá acá que quede todo en verde.</li>
+    </ol>
+
+    <p class="aviso" style="margin-top:18px">
+      El token va escrito directamente en Vercel, no en esta página. Si se guardara
+      desde acá tendría que quedar en algún lado del proyecto, y el único almacén
+      disponible hoy es de lectura pública: cualquiera podría leerlo y publicar en
+      tu cuenta.
+    </p>
+
+    <p class="nota">
+      El token de larga duración vence a los <b>60 días</b>. Si un día deja de
+      publicar, es lo primero que hay que revisar acá.
+    </p>
+  </section>
+
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+
+function pintar(datos){
+  const nombres = {
+    IG_USER_ID: 'Id de la cuenta de Instagram',
+    IG_ACCESS_TOKEN: 'Token de acceso',
+    PUBLICAR_CLAVE: 'Clave para publicar',
+    BLOB_READ_WRITE_TOKEN: 'Almacén de imágenes (Blob)',
+  };
+  const filas = Object.entries(datos.variables || {}).map(([k, ok]) => `
+    <li><span class="marca ${ok ? 'si' : 'no'}">${ok ? '✓' : '✕'}</span>
+        <b>${k}</b><span>${nombres[k] || ''}</span></li>`);
+
+  if(datos.cuenta){
+    filas.push(`<li><span class="marca si">✓</span><b>@${datos.cuenta.username}</b>
+      <span>cuenta ${String(datos.cuenta.account_type || '').toLowerCase()} — el token funciona</span></li>`);
+  }else if(datos.tokenError){
+    filas.push(`<li><span class="marca no">✕</span><b>Token</b>
+      <span>${datos.tokenError}</span></li>`);
+  }
+  $('#variables').innerHTML = filas.join('');
+}
+
+async function revisar(){
+  const clave = $('#clave').value.trim();
+  const res = $('#resultado');
+  res.className = ''; res.textContent = 'Revisando…';
+  try{
+    const r = await fetch('/api/estado', { headers: { 'x-clave': clave } });
+    const datos = await r.json();
+    if(r.status === 401){
+      res.className = 'error'; res.textContent = 'Clave incorrecta.';
+      return;
+    }
+    if(clave) localStorage.setItem('clave_publicar', clave);
+    pintar(datos);
+    if(datos.listo){
+      res.className = 'bien';
+      res.textContent = 'Todo listo: ya podés publicar desde el editor.';
+    }else{
+      res.className = 'error';
+      res.textContent = datos.mensaje ||
+        ('Falta configurar en Vercel: ' + (datos.faltan || []).join(', '));
+    }
+  }catch(e){
+    res.className = 'error'; res.textContent = 'No se pudo consultar: ' + e.message;
+  }
+}
+
+$('#revisar').addEventListener('click', revisar);
+$('#clave').addEventListener('keydown', (e) => { if(e.key === 'Enter') revisar(); });
+
+const guardada = localStorage.getItem('clave_publicar');
+if(guardada){ $('#clave').value = guardada; revisar(); }
+else revisar();   // sin clave igual informa qué falta, para poder arrancar
+</script>
+</body>
+</html>
