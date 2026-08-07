@@ -1,0 +1,8 @@
+# Solo se publica la placa. El editor y su servidor se quedan fuera del
+# despliegue: la URL de Vercel es pública aunque el repo sea privado.
+app.py
+editor.html
+plantilla.html
+README.md
+cover.jpg
+.claude/
