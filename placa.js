@@ -46,10 +46,10 @@ export function aRgb(hex){
    recorriendo desde `inicio`% hasta el borde de abajo del collage. */
 export const DEG_INICIO = 68;   // fijo: dónde arranca el fundido, en % del collage
 
-export function degradado(ctx, datos, x, y, ancho, alto){
+export function degradado(ctx, datos, x, y, ancho, alto, desde = DEG_INICIO){
   const [r, g, b] = aRgb(datos.color_fondo);
   const grad = ctx.createLinearGradient(0, y, 0, y + alto);
-  const inicio = DEG_INICIO / 100;
+  const inicio = desde / 100;
   const pasos = 12;
   grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
   grad.addColorStop(inicio, `rgba(${r},${g},${b},0)`);
@@ -331,30 +331,24 @@ export function dibujar(ctx, datos, fotos, lado){
   }
 }
 
-/* Lámina suelta del carrusel: la misma moldura de la placa con una sola
-   foto y el logo, sin titular. Así las fotos extra se ven de la misma
-   familia que la primera en el feed. */
+/* Lámina suelta del carrusel: la foto a sangre, ocupando el cuadro entero,
+   con el logo encima y un fundido al color del medio solo en la franja de
+   abajo, para que el logo se lea sobre cualquier foto. */
+export const LAMINA_DEG_INICIO = 82;
+
 export function dibujarLamina(ctx, datos, lamina, foto, logo, lado){
   const u = lado / LIENZO;
-  const M = MEDIDAS.media;
-  const x = M.x * u, y = M.y * u, ancho = M.ancho * u, alto = M.alto * u;
 
   ctx.clearRect(0, 0, lado, lado);
-  ctx.fillStyle = datos.color_fondo;
+  ctx.fillStyle = '#0b0b0d';
   ctx.fillRect(0, 0, lado, lado);
   ctx.letterSpacing = '0px';
 
-  ctx.save();
-  ctx.beginPath();
-  ctx.roundRect(x, y, ancho, alto, M.radio * u);
-  ctx.clip();
-  ctx.fillStyle = '#0b0b0d';
-  ctx.fillRect(x, y, ancho, alto);
-  dibujarFoto(ctx, foto, x, y, ancho, alto,
+  dibujarFoto(ctx, foto, 0, 0, lado, lado,
     lamina.ajuste || 'completa', lamina.x ?? 50, lamina.y ?? 50, u);
-  ctx.fillStyle = degradado(ctx, datos, x, y, ancho, alto);
-  ctx.fillRect(x, y, ancho, alto);
-  ctx.restore();
+
+  ctx.fillStyle = degradado(ctx, datos, 0, 0, lado, lado, LAMINA_DEG_INICIO);
+  ctx.fillRect(0, 0, lado, lado);
 
   if(logo){
     const L = MEDIDAS.logo;
