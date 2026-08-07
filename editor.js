@@ -22,18 +22,8 @@ const DISENOS = [
 ];
 
 const PALETA = [
-  { nombre: 'Somos Puerto', fondo: '#ff6100', filete: '#ff9600', original: true },
-  { nombre: 'Rojo',     fondo: '#d81f26', filete: '#ff7a2f' },
-  { nombre: 'Magenta',  fondo: '#c2185b', filete: '#ff8fb1' },
-  { nombre: 'Morado',   fondo: '#5b2d8e', filete: '#b47bff' },
-  { nombre: 'Azul',     fondo: '#0b4f9e', filete: '#35a8ff' },
-  { nombre: 'Marino',   fondo: '#10243f', filete: '#3fbfd8' },
-  { nombre: 'Verde',    fondo: '#0e7a4f', filete: '#35d68a' },
-  { nombre: 'Petróleo', fondo: '#134e4a', filete: '#f0b429' },
-  { nombre: 'Pizarra',  fondo: '#2f353d', filete: '#ffb020' },
-  { nombre: 'Negro',    fondo: '#141414', filete: '#ff6100' },
-  { nombre: 'Vino',     fondo: '#6b1226', filete: '#ff9068' },
-  { nombre: 'Mostaza',  fondo: '#b26a00', filete: '#ffd166' },
+  { nombre: 'Menta',  fondo: '#0ae7ae', filete: '#ff0054' },
+  { nombre: 'Fucsia', fondo: '#ff0054', filete: '#0ae7ae', original: true },
 ];
 
 const ETIQUETAS = ['Farándula', 'Noticia', 'Contingencia', 'Policial',
@@ -58,8 +48,8 @@ const BASE = {
   foto_izq: 'assets/marcador.jpg', foto_izq_x: 50, foto_izq_y: 50, foto_izq_ajuste: 'completa',
   foto_der: 'assets/marcador.jpg', foto_der_x: 50, foto_der_y: 50, foto_der_ajuste: 'completa',
   foto_cen: 'assets/marcador.jpg', foto_cen_x: 50, foto_cen_y: 50, foto_cen_ajuste: 'completa',
-  color_fondo: '#ff6100',
-  color_filete: '#ff9600',
+  color_fondo: '#ff0054',
+  color_filete: '#0ae7ae',
   circulo_x: 50, circulo_y: 62.6,
   tam_titulo: 143,
   laminas: [],            // fotos extra del carrusel; la placa es la primera

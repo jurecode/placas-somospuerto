@@ -72,7 +72,7 @@
   .disenos svg{ width:44px; height:30px }
 
   /* paleta */
-  .paleta{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px }
+  .paleta{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px }
   .muestra{ display:grid; gap:6px; justify-items:center; padding:8px 4px; font-size:11px }
   .muestra .par{ display:flex; width:100%; height:22px; border-radius:6px; overflow:hidden }
   .muestra .par i{ flex:1 }
@@ -114,24 +114,28 @@
   /* ---------- portada: qué vas a publicar ---------- */
   .portada{
     position:fixed; inset:0; z-index:50; background:#0f1013;
-    display:grid; place-content:center; justify-items:center; gap:32px; padding:32px;
+    display:grid; align-content:center; justify-items:center; gap:28px;
+    padding:32px; overflow-y:auto;   /* si no entra, que se pueda scrollear */
   }
   .portada[hidden]{ display:none }
   .portada h2{ font-size:22px; font-weight:600; letter-spacing:.01em }
   .portada__opciones{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px }
   @media (max-width:720px){ .portada__opciones{ grid-template-columns:1fr } }
 
+  /* Las medidas del texto van en cqw, o sea en proporción al ancho de la
+     propia tarjeta: así nunca se sale, mida lo que mida la pantalla. */
   .tarjeta{
-    display:grid; gap:4px; align-content:center; justify-items:center;
-    width:min(38vw, 320px); aspect-ratio:1; padding:24px; border:0; border-radius:20px;
+    container-type:inline-size;
+    display:grid; gap:2px; align-content:center; justify-items:center;
+    width:min(38vw, 300px); aspect-ratio:1; padding:7%; border:0; border-radius:20px;
     color:#fff; text-align:center; cursor:pointer; transition:transform .12s, box-shadow .12s;
   }
   .tarjeta:hover{ transform:translateY(-4px); box-shadow:0 18px 40px #0009 }
-  .tarjeta b{ font-size:clamp(18px, 2.4vw, 30px); font-weight:900; letter-spacing:.06em; text-transform:uppercase }
-  .tarjeta span{ font-size:clamp(34px, 6vw, 76px); font-weight:900; line-height:.95; text-transform:uppercase }
-  .tarjeta em{ font-style:normal; font-size:12px; opacity:.8; margin-top:12px; max-width:24ch }
-  .tarjeta--urgente{ background:linear-gradient(180deg,#c4000a 0%,#ee0008 45%,#3a0003 100%) }
-  .tarjeta--noticia{ background:linear-gradient(180deg,#ff7a1f 0%,#ff6100 45%,#7a2e00 100%) }
+  .tarjeta b{ font-size:8cqw; font-weight:700; letter-spacing:.12em; text-transform:uppercase; opacity:.9 }
+  .tarjeta span{ font-size:19cqw; font-weight:900; line-height:1; letter-spacing:-.02em; text-transform:uppercase }
+  .tarjeta em{ font-style:normal; font-size:5.2cqw; line-height:1.3; opacity:.75; margin-top:6%; text-wrap:balance }
+  .tarjeta--urgente{ background:linear-gradient(180deg,#ff3d7f 0%,#ff0054 45%,#4a0019 100%) }
+  .tarjeta--noticia{ background:linear-gradient(180deg,#3df0c1 0%,#0ae7ae 45%,#04503b 100%) }
 
   .portada__seguir{ background:none; border:0; color:var(--suave); font-size:13px; text-decoration:underline }
   .portada__seguir:hover{ background:none; color:var(--texto) }
@@ -240,7 +244,7 @@
   <fieldset data-solo="noticia">
     <legend>Color</legend>
     <div class="campo">
-      <label>La estrella es la paleta oficial del medio</label>
+      <label>Las dos paletas del medio</label>
       <div class="paleta" id="paleta"></div>
     </div>
     <p class="nota">Cada paleta trae su fondo y su filete. El degradado sigue al fondo, así que se acomoda solo.</p>
