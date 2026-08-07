@@ -10,3 +10,4 @@ salida/
 .claude/settings.local.json
 venv/
 __pycache__/
+.vercel
