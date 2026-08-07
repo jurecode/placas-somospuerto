@@ -15,7 +15,7 @@
     background:var(--bg); color:var(--texto); font:15px/1.55 system-ui, sans-serif;
     padding:32px 20px; display:grid; justify-items:center;
   }
-  main{ width:min(100%, 680px); display:grid; gap:22px }
+  main{ width:min(100%, 680px); display:grid; gap:22px; overflow-wrap:anywhere }
   h1{ font-size:20px }
   h1 small{ display:block; font-size:13px; color:var(--suave); font-weight:400; margin-top:2px }
   h2{ font-size:12px; text-transform:uppercase; letter-spacing:.09em; color:var(--suave); margin-bottom:12px }
@@ -36,16 +36,18 @@
   button.principal{ background:var(--acento); border-color:var(--acento); color:#fff; font-weight:600 }
 
   ul{ list-style:none; display:grid; gap:9px }
-  li{ display:flex; gap:10px; align-items:baseline; font-size:14px }
-  li b{ font-weight:600; font-family:ui-monospace, monospace; font-size:13px }
+  ul li{ display:flex; gap:10px; align-items:baseline; font-size:14px; flex-wrap:wrap }
+  ul li b{ font-weight:600; font-family:ui-monospace, monospace; font-size:13px }
   .marca{ flex:none; width:18px; font-weight:700 }
   .si{ color:var(--ok) } .no{ color:var(--mal) }
-  li span{ color:var(--suave); font-size:13px }
+  ul li span{ color:var(--suave); font-size:13px }
 
   ol{ display:grid; gap:14px; padding-left:20px; font-size:14px }
-  ol code, p code{
+  ol li{ line-height:1.6 }
+  code{
     background:#14151a; border:1px solid var(--linea); border-radius:5px;
     padding:1px 6px; font-size:12.5px; font-family:ui-monospace, monospace;
+    overflow-wrap:anywhere;
   }
   a{ color:var(--ok) }
   .nota{ font-size:13px; color:var(--suave); margin-top:14px; line-height:1.5 }
