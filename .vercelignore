@@ -1,5 +1,5 @@
-# Solo se publica la placa. El editor y su servidor se quedan fuera del
-# despliegue: la URL de Vercel es pública aunque el repo sea privado.
+# El editor local en Python no se despliega: en Vercel corre el editor
+# que va entero en el navegador (index.html + editor.js + placa.js).
 app.py
 editor.html
 plantilla.html

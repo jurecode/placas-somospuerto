@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Somos Puerto — placa de noticia</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@900&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    /* Lado de la placa. Cambiar a 3000px para exportar en alta resolucion. */
+    --s: min(1080px, 100vw, 100svh);
+    /* Unidad de diseno: el arte original se midio sobre un lienzo de 3000x3000,
+       asi que cada medida se escribe con su valor original x --u. */
+    --u: calc(var(--s) / 3000);
+
+    --naranjo: #ff6100;
+    --ambar:   #ff9600;
+  }
+
+  *{ box-sizing: border-box; margin: 0; }
+
+  body{
+    min-height: 100svh;
+    display: grid;
+    place-items: center;
+    background: #1a1a1a;
+  }
+
+  .placa{
+    position: relative;
+    width: var(--s);
+    height: var(--s);
+    overflow: hidden;
+    background: var(--naranjo);
+    font-family: "Inter Tight", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- collage de fotos ---------- */
+
+  .media{
+    position: absolute;
+    left:   calc(318 * var(--u));
+    top:    calc(136 * var(--u));
+    width:  calc(2364 * var(--u));
+    height: calc(1604 * var(--u));
+    border-radius: calc(48 * var(--u));
+    overflow: hidden;
+    background: #fff;
+  }
+
+  .media__panels{
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: calc(30 * var(--u));   /* filete blanco central */
+  }
+
+  .media__panels img{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* recorte circular sobre la union de las dos fotos */
+  .media__circulo{
+    position: absolute;
+    left: 50%;
+    top: calc(1004 * var(--u));            /* 1140 - 136 respecto del collage */
+    transform: translate(-50%, -50%);
+    width:  calc(1024 * var(--u));
+    height: calc(1024 * var(--u));
+    border-radius: 50%;
+    border: calc(30 * var(--u)) solid #fff;
+    overflow: hidden;
+  }
+
+  .media__circulo img{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* degradado naranjo que funde la parte baja del collage con el fondo */
+  .media__fundido{
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      rgb(255 97 0 / 0)     47.6%,
+      rgb(255 97 0 / .038)  53.9%,
+      rgb(255 97 0 / .109)  60.1%,
+      rgb(255 97 0 / .199)  66.3%,
+      rgb(255 97 0 / .307)  72.6%,
+      rgb(255 97 0 / .428)  78.8%,
+      rgb(255 97 0 / .563)  85.0%,
+      rgb(255 97 0 / .709)  91.3%,
+      rgb(255 97 0 / .866)  97.5%,
+      rgb(255 97 0 / .933) 100%
+    );
+  }
+
+  /* ---------- titular ---------- */
+
+  .filete{
+    position: absolute;
+    left:   calc(414 * var(--u));
+    top:    calc(1633 * var(--u));
+    width:  calc(28 * var(--u));
+    height: calc(888 * var(--u));
+    background: var(--ambar);
+  }
+
+  .titular{
+    position: absolute;
+    left: calc(525 * var(--u));
+    top:  calc(1644.5 * var(--u));   /* la altura de mayuscula cae en y=1679 */
+    right: calc(318 * var(--u));
+    margin: 0;
+    color: #fff;
+    font-weight: 900;
+    font-size:   calc(143 * var(--u));
+    line-height: calc(173 * var(--u));
+    letter-spacing: .008em;
+    text-transform: uppercase;
+  }
+
+  /* ---------- logotipo ---------- */
+
+  .logo{
+    position: absolute;
+    left: 50%;
+    bottom: calc(117 * var(--u));
+    transform: translateX(-50%);
+    width: calc(592 * var(--u));
+    display: block;
+  }
+</style>
+</head>
+
+<body>
+  <div class="placa">
+
+    <div class="media">
+      <div class="media__panels">
+        <img src="assets/foto-izquierda.jpg" alt="Ignacia Michelson">
+        <img src="assets/foto-derecha.jpg" alt="Sargento Rap">
+      </div>
+
+      <div class="media__circulo">
+        <img src="assets/foto-central.jpg" alt="Ignacia Michelson y Sargento Rap">
+      </div>
+
+      <div class="media__fundido"></div>
+    </div>
+
+    <div class="filete"></div>
+
+    <h1 class="titular">
+      Ignacia Michelson<br>
+      recuerda su violenta<br>
+      relación con el cantante<br>
+      mexicano Sargento Rap:<br>
+      "Me destruyó"
+    </h1>
+
+    <img class="logo" src="assets/logo.png" alt="Somos Puerto — www.somospuerto.cl">
+
+  </div>
+</body>
+</html>

@@ -3,176 +3,294 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Somos Puerto — placa de noticia</title>
-
+<title>Editor de placas — Somos Puerto</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@900&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;900&family=Poppins:wght@700;900&display=swap" rel="stylesheet">
 <style>
   :root{
-    /* Lado de la placa. Cambiar a 3000px para exportar en alta resolucion. */
-    --s: min(1080px, 100vw, 100svh);
-    /* Unidad de diseno: el arte original se midio sobre un lienzo de 3000x3000,
-       asi que cada medida se escribe con su valor original x --u. */
-    --u: calc(var(--s) / 3000);
-
-    --naranjo: #ff6100;
-    --ambar:   #ff9600;
+    --bg:#15161a; --panel:#1e2026; --linea:#2e3138; --texto:#e7e9ee;
+    --suave:#9aa0ad; --acento:#ff6100;
   }
-
-  *{ box-sizing: border-box; margin: 0; }
-
+  *{ box-sizing:border-box; margin:0 }
   body{
-    min-height: 100svh;
-    display: grid;
-    place-items: center;
-    background: #1a1a1a;
+    background:var(--bg); color:var(--texto); font:14px/1.5 system-ui, sans-serif;
+    display:grid; grid-template-columns:minmax(340px, 430px) 1fr; height:100svh;
+  }
+  @media (max-width:900px){ body{ grid-template-columns:1fr; height:auto } }
+
+  /* ---------- panel de controles ---------- */
+  .panel{ overflow-y:auto; border-right:1px solid var(--linea); background:var(--panel) }
+  .panel > header{
+    position:sticky; top:0; z-index:2; background:var(--panel);
+    border-bottom:1px solid var(--linea); padding:14px 18px;
+  }
+  h1{ font-size:15px; letter-spacing:.02em; flex:1; min-width:0 }
+  h1 small{
+    color:var(--suave); font-weight:400; display:block; font-size:12px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .panel > header button{ padding:6px 10px; font-size:12px; flex:none }
+
+  fieldset{ border:0; border-bottom:1px solid var(--linea); padding:16px 18px }
+  legend{
+    font-size:11px; text-transform:uppercase; letter-spacing:.09em;
+    color:var(--suave); padding:0; margin-bottom:12px;
+  }
+  label{ display:block; font-size:12px; color:var(--suave); margin-bottom:5px }
+  .campo{ margin-bottom:14px }
+  .campo:last-child{ margin-bottom:0 }
+
+  input[type=text], input[type=number], textarea, select{
+    width:100%; background:#14151a; color:var(--texto); font:inherit;
+    border:1px solid var(--linea); border-radius:7px; padding:8px 10px;
+  }
+  input:focus, textarea:focus, select:focus{ outline:2px solid var(--acento); outline-offset:-1px }
+  textarea{ resize:vertical; min-height:120px; line-height:1.45 }
+  input[type=range]{ width:100%; accent-color:var(--acento) }
+  input[type=color]{
+    width:44px; height:34px; padding:2px; background:#14151a;
+    border:1px solid var(--linea); border-radius:7px; flex:none;
   }
 
-  .placa{
-    position: relative;
-    width: var(--s);
-    height: var(--s);
-    overflow: hidden;
-    background: var(--naranjo);
-    font-family: "Inter Tight", "Helvetica Neue", Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
+  .fila{ display:flex; gap:10px; align-items:center }
+  .fila > *{ min-width:0 }
+  .mitades{ display:grid; grid-template-columns:1fr 1fr; gap:10px }
+
+  button{
+    font:inherit; color:var(--texto); background:#282b33; cursor:pointer;
+    border:1px solid var(--linea); border-radius:7px; padding:8px 12px;
   }
+  button:hover{ background:#33373f }
+  button.principal{ background:var(--acento); border-color:var(--acento); color:#fff; font-weight:600 }
+  button.principal:hover{ filter:brightness(1.1) }
 
-  /* ---------- collage de fotos ---------- */
+  /* diseños de foto */
+  .disenos{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px }
+  .disenos button{ display:grid; gap:6px; justify-items:center; padding:10px 6px; font-size:11px; line-height:1.25; text-align:center }
+  .disenos button.activo{ border-color:var(--acento); background:#2c2019 }
+  .disenos svg{ width:44px; height:30px }
 
-  .media{
-    position: absolute;
-    left:   calc(318 * var(--u));
-    top:    calc(136 * var(--u));
-    width:  calc(2364 * var(--u));
-    height: calc(1604 * var(--u));
-    border-radius: calc(48 * var(--u));
-    overflow: hidden;
-    background: #fff;
+  /* paleta */
+  .paleta{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px }
+  .muestra{ display:grid; gap:6px; justify-items:center; padding:8px 4px; font-size:11px }
+  .muestra .par{ display:flex; width:100%; height:22px; border-radius:6px; overflow:hidden }
+  .muestra .par i{ flex:1 }
+  .muestra .par i:last-child{ flex:0 0 28% }
+  .muestra.activa{ border-color:var(--acento); background:#2c2019 }
+  .muestra.original span::after{ content:" ★" }
+
+  /* etiquetas rápidas */
+  .chips{ display:flex; flex-wrap:wrap; gap:6px }
+  .chips button{ padding:5px 10px; font-size:12px; border-radius:20px }
+  .chips button.activo{ border-color:var(--acento); background:#2c2019 }
+
+  /* ajuste de foto */
+  .ajuste{ display:flex; gap:6px; margin-top:8px }
+  .ajuste button{ flex:1; font-size:11px; padding:4px 6px }
+  .ajuste button.activo{ border-color:var(--acento); background:#2c2019 }
+
+  .foto{ display:flex; gap:12px; align-items:flex-start; margin-bottom:16px }
+  .foto:last-child{ margin-bottom:0 }
+  .foto img{
+    width:72px; height:72px; object-fit:cover; border-radius:8px;
+    background:#000; border:1px solid var(--linea); flex:none;
   }
+  .foto .cuerpo{ flex:1; min-width:0 }
+  .foto .cuerpo b{ display:block; font-size:12px; margin-bottom:6px; font-weight:600 }
+  .foto .encuadre{ display:grid; grid-template-columns:auto 1fr; gap:4px 8px; align-items:center; margin-top:8px }
+  .foto .encuadre span{ font-size:11px; color:var(--suave) }
+  input[type=file]{ display:none }
+  .archivo{ font-size:12px; padding:5px 10px }
 
-  .media__panels{
-    position: absolute;
-    inset: 0;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: calc(30 * var(--u));   /* filete blanco central */
+  /* el formato urgente no tiene fotos ni degradado */
+  body[data-formato="urgente"] [data-solo="noticia"]{ display:none }
+
+  .nota{ font-size:11px; color:var(--suave); margin-top:8px; line-height:1.45 }
+  #estado{ font-size:11px; color:var(--suave); min-height:16px; padding:0 18px 16px }
+  #estado.error{ color:#ff8a7a }
+
+  /* ---------- portada: qué vas a publicar ---------- */
+  .portada{
+    position:fixed; inset:0; z-index:50; background:#0f1013;
+    display:grid; place-content:center; justify-items:center; gap:32px; padding:32px;
   }
+  .portada[hidden]{ display:none }
+  .portada h2{ font-size:22px; font-weight:600; letter-spacing:.01em }
+  .portada__opciones{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px }
+  @media (max-width:720px){ .portada__opciones{ grid-template-columns:1fr } }
 
-  .media__panels img{
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
+  .tarjeta{
+    display:grid; gap:4px; align-content:center; justify-items:center;
+    width:min(38vw, 320px); aspect-ratio:1; padding:24px; border:0; border-radius:20px;
+    color:#fff; text-align:center; cursor:pointer; transition:transform .12s, box-shadow .12s;
   }
+  .tarjeta:hover{ transform:translateY(-4px); box-shadow:0 18px 40px #0009 }
+  .tarjeta b{ font-size:clamp(18px, 2.4vw, 30px); font-weight:900; letter-spacing:.06em; text-transform:uppercase }
+  .tarjeta span{ font-size:clamp(34px, 6vw, 76px); font-weight:900; line-height:.95; text-transform:uppercase }
+  .tarjeta em{ font-style:normal; font-size:12px; opacity:.8; margin-top:12px; max-width:24ch }
+  .tarjeta--urgente{ background:linear-gradient(180deg,#c4000a 0%,#ee0008 45%,#3a0003 100%) }
+  .tarjeta--noticia{ background:linear-gradient(180deg,#ff7a1f 0%,#ff6100 45%,#7a2e00 100%) }
 
-  /* recorte circular sobre la union de las dos fotos */
-  .media__circulo{
-    position: absolute;
-    left: 50%;
-    top: calc(1004 * var(--u));            /* 1140 - 136 respecto del collage */
-    transform: translate(-50%, -50%);
-    width:  calc(1024 * var(--u));
-    height: calc(1024 * var(--u));
-    border-radius: 50%;
-    border: calc(30 * var(--u)) solid #fff;
-    overflow: hidden;
-  }
+  .portada__seguir{ background:none; border:0; color:var(--suave); font-size:13px; text-decoration:underline }
+  .portada__seguir:hover{ background:none; color:var(--texto) }
+  .portada__seguir[hidden]{ display:none }
 
-  .media__circulo img{
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-
-  /* degradado naranjo que funde la parte baja del collage con el fondo */
-  .media__fundido{
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      to bottom,
-      rgb(255 97 0 / 0)     47.6%,
-      rgb(255 97 0 / .038)  53.9%,
-      rgb(255 97 0 / .109)  60.1%,
-      rgb(255 97 0 / .199)  66.3%,
-      rgb(255 97 0 / .307)  72.6%,
-      rgb(255 97 0 / .428)  78.8%,
-      rgb(255 97 0 / .563)  85.0%,
-      rgb(255 97 0 / .709)  91.3%,
-      rgb(255 97 0 / .866)  97.5%,
-      rgb(255 97 0 / .933) 100%
-    );
-  }
-
-  /* ---------- titular ---------- */
-
-  .filete{
-    position: absolute;
-    left:   calc(414 * var(--u));
-    top:    calc(1633 * var(--u));
-    width:  calc(28 * var(--u));
-    height: calc(888 * var(--u));
-    background: var(--ambar);
-  }
-
-  .titular{
-    position: absolute;
-    left: calc(525 * var(--u));
-    top:  calc(1644.5 * var(--u));   /* la altura de mayuscula cae en y=1679 */
-    right: calc(318 * var(--u));
-    margin: 0;
-    color: #fff;
-    font-weight: 900;
-    font-size:   calc(143 * var(--u));
-    line-height: calc(173 * var(--u));
-    letter-spacing: .008em;
-    text-transform: uppercase;
-  }
-
-  /* ---------- logotipo ---------- */
-
-  .logo{
-    position: absolute;
-    left: 50%;
-    bottom: calc(117 * var(--u));
-    transform: translateX(-50%);
-    width: calc(592 * var(--u));
-    display: block;
+  /* ---------- vista previa ---------- */
+  .previa{ display:grid; place-items:center; padding:24px; overflow:auto }
+  .previa canvas{
+    width:min(100%, calc(100svh - 48px)); height:auto; aspect-ratio:1;
+    border-radius:10px; box-shadow:0 12px 40px #0008; background:#000;
   }
 </style>
 </head>
-
 <body>
-  <div class="placa">
 
-    <div class="media">
-      <div class="media__panels">
-        <img src="assets/foto-izquierda.jpg" alt="Ignacia Michelson">
-        <img src="assets/foto-derecha.jpg" alt="Sargento Rap">
-      </div>
-
-      <div class="media__circulo">
-        <img src="assets/foto-central.jpg" alt="Ignacia Michelson y Sargento Rap">
-      </div>
-
-      <div class="media__fundido"></div>
-    </div>
-
-    <div class="filete"></div>
-
-    <h1 class="titular">
-      Ignacia Michelson<br>
-      recuerda su violenta<br>
-      relación con el cantante<br>
-      mexicano Sargento Rap:<br>
-      "Me destruyó"
-    </h1>
-
-    <img class="logo" src="assets/logo.png" alt="Somos Puerto — www.somospuerto.cl">
-
+<div class="portada" id="portada" hidden>
+  <h2>¿Qué vas a publicar?</h2>
+  <div class="portada__opciones">
+    <button class="tarjeta tarjeta--urgente" data-crear="urgente">
+      <b>Urgente</b>
+      <span>Ahora</span>
+      <em>Placa roja, sin fotos, una palabra enorme</em>
+    </button>
+    <button class="tarjeta tarjeta--noticia" data-crear="noticia">
+      <b>Noticia</b>
+      <span>Normal</span>
+      <em>Collage de fotos, etiqueta y titular</em>
+    </button>
   </div>
+  <button class="portada__seguir" id="seguir"></button>
+</div>
+
+
+<div class="panel">
+  <header>
+    <div class="fila">
+      <h1>Editor de placas <small id="cual">Somos Puerto</small></h1>
+      <button id="nueva" title="Crear una placa nueva">Nueva</button>
+      <button id="duplicar" title="Duplicar la placa actual">Duplicar</button>
+    </div>
+  </header>
+
+  <fieldset data-solo="noticia">
+    <legend>Diseño de la foto</legend>
+    <div class="disenos" id="disenos"></div>
+  </fieldset>
+
+  <fieldset data-solo="noticia">
+    <legend>Fotos</legend>
+    <div id="fotos"></div>
+    <p class="nota">
+      Las fotos quedan guardadas en este navegador. Ojo: las de fábrica traen
+      el círculo blanco incrustado; al reemplazarlas eso desaparece.
+    </p>
+  </fieldset>
+
+  <fieldset data-solo="noticia">
+    <legend id="leg_etiqueta">Etiqueta</legend>
+    <div class="campo">
+      <input type="text" id="etiqueta" data-campo="etiqueta" placeholder="Farándula, noticia, contingencia…">
+    </div>
+    <div class="campo chips" id="chips_etiqueta"></div>
+    <div class="campo" data-solo="noticia">
+      <label>Forma</label>
+      <div class="chips" id="estilos_etiqueta"></div>
+    </div>
+    <div class="campo mitades" data-solo="noticia">
+      <div>
+        <label>Fondo</label>
+        <div class="fila">
+          <input type="color" id="etiqueta_fondo_pick">
+          <input type="text" id="etiqueta_fondo" data-campo="etiqueta_fondo" spellcheck="false">
+        </div>
+      </div>
+      <div>
+        <label>Texto</label>
+        <div class="fila">
+          <input type="color" id="etiqueta_texto_pick">
+          <input type="text" id="etiqueta_texto" data-campo="etiqueta_texto" spellcheck="false">
+        </div>
+      </div>
+    </div>
+    <p class="nota" id="nota_etiqueta">Dejala vacía y la etiqueta desaparece de la placa.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend id="leg_titular">Titular</legend>
+    <div class="campo">
+      <label for="titulo" id="lab_titulo">Un salto de línea = una línea en la placa</label>
+      <textarea id="titulo" data-campo="titulo" spellcheck="false"></textarea>
+    </div>
+    <div class="campo mitades" data-solo="noticia">
+      <div>
+        <label for="tam_titulo">Tamaño de letra</label>
+        <input type="number" id="tam_titulo" data-campo="tam_titulo" step="1" min="40" max="300">
+      </div>
+      <div>
+        <label for="interlinea">Interlínea</label>
+        <input type="number" id="interlinea" data-campo="interlinea" step="1" min="40" max="400">
+      </div>
+    </div>
+    <p class="nota" data-solo="noticia">Medidas del lienzo original de 3000 px. El original usa 143 y 173.</p>
+  </fieldset>
+
+  <fieldset data-solo="noticia">
+    <legend>Color</legend>
+    <div class="campo">
+      <label>La estrella es la paleta oficial del medio</label>
+      <div class="paleta" id="paleta"></div>
+    </div>
+    <p class="nota">Cada paleta trae su fondo y su filete. El degradado sigue al fondo, así que se acomoda solo.</p>
+  </fieldset>
+
+  <fieldset data-solo="noticia">
+    <legend>Degradado</legend>
+    <div class="campo">
+      <label>Dónde empieza — <b id="v_inicio"></b>% del collage</label>
+      <input type="range" id="deg_inicio" data-campo="deg_inicio" min="0" max="95" step="0.5">
+    </div>
+    <div class="campo">
+      <label>Opacidad al borde inferior — <b id="v_final"></b></label>
+      <input type="range" id="deg_final" data-campo="deg_final" min="0" max="1" step="0.005">
+    </div>
+    <div class="campo">
+      <label>Curva — <b id="v_curva"></b></label>
+      <input type="range" id="deg_curva" data-campo="deg_curva" min="0.5" max="4" step="0.05">
+    </div>
+    <button id="reset_deg" class="archivo">Volver a los valores del original</button>
+    <p class="nota">Curva 1 = lineal. Sobre 1 el fundido arranca suave y se acelera abajo.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Exportar</legend>
+    <div class="campo fila">
+      <button class="principal" data-exportar="png" data-lado="1080">PNG 1080</button>
+      <button class="principal" data-exportar="png" data-lado="3000">PNG 3000</button>
+      
+    </div>
+    <p class="nota">Se descarga a tu carpeta de descargas.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Placas guardadas</legend>
+    <div class="campo fila">
+      <select id="selector"></select>
+      <button id="borrar" title="Borrar la placa actual">✕</button>
+    </div>
+    <p class="nota">
+      Al abrir el editor vuelve sola la última que estuviste editando.
+      Todo se guarda en este navegador, no en un servidor.
+    </p>
+  </fieldset>
+
+  <p id="estado"></p>
+</div>
+
+<div class="previa">
+  <canvas id="previa" width="1080" height="1080" aria-label="Vista previa"></canvas>
+</div>
+
+<script type="module" src="editor.js"></script>
 </body>
 </html>
