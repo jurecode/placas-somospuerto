@@ -524,6 +524,54 @@ $('#compartir').addEventListener('click', async (ev) => {
   ev.target.disabled = false;
 });
 
+/* La clave vive solo en este navegador; el token de Instagram nunca sale
+   del servidor. */
+function pedirClave(){
+  let clave = localStorage.getItem('clave_publicar');
+  if(!clave){
+    clave = prompt('Clave para publicar (la que definiste en Vercel como PUBLICAR_CLAVE):');
+    if(clave) localStorage.setItem('clave_publicar', clave);
+  }
+  return clave;
+}
+
+$('#publicar').addEventListener('click', async (ev) => {
+  const laminas = (placa.laminas || []).length + 1;
+  if(!confirm(`Se va a publicar en Instagram un carrusel de ${laminas} imagen${laminas > 1 ? 'es' : ''}. ¿Seguimos?`)) return;
+  const clave = pedirClave();
+  if(!clave) return;
+
+  ev.target.disabled = true;
+  estado('Generando imágenes…');
+  try{
+    const archivos = await archivosDelCarrusel();
+    const imagenes = await Promise.all(archivos.map((a) => new Promise((listo) => {
+      const lector = new FileReader();
+      lector.onload = () => listo(lector.result);
+      lector.readAsDataURL(a);
+    })));
+
+    estado('Subiendo a Instagram… puede tardar hasta un minuto');
+    const res = await fetch('/api/publicar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clave, imagenes,
+        caption: armarCaption(),
+        colaboradores: placa.colaboradores || '',
+      }),
+    });
+    const datos = await res.json().catch(() => ({}));
+    if(!res.ok){
+      if(res.status === 401) localStorage.removeItem('clave_publicar');
+      throw new Error(datos.error || `Error ${res.status}`);
+    }
+    estado('Publicado' + (datos.aviso ? ' — ' + datos.aviso : ''));
+    if(datos.enlace) window.open(datos.enlace, '_blank');
+  }catch(e){ estado(e.message, true); }
+  ev.target.disabled = false;
+});
+
 $('#copiar').addEventListener('click', async () => {
   const texto = armarCaption();
   try{

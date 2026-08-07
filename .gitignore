@@ -11,3 +11,4 @@ salida/
 venv/
 __pycache__/
 .vercel
+node_modules/
