@@ -207,17 +207,11 @@
       <label for="titulo" id="lab_titulo">Un salto de línea = una línea en la placa</label>
       <textarea id="titulo" data-campo="titulo" spellcheck="false"></textarea>
     </div>
-    <div class="campo mitades" data-solo="noticia">
-      <div>
-        <label for="tam_titulo">Tamaño de letra</label>
-        <input type="number" id="tam_titulo" data-campo="tam_titulo" step="1" min="40" max="300">
-      </div>
-      <div>
-        <label for="interlinea">Interlínea</label>
-        <input type="number" id="interlinea" data-campo="interlinea" step="1" min="40" max="400">
-      </div>
+    <div class="campo" data-solo="noticia">
+      <label for="tam_titulo">Tamaño de letra</label>
+      <input type="number" id="tam_titulo" data-campo="tam_titulo" step="1" min="40" max="300">
     </div>
-    <p class="nota" data-solo="noticia">Medidas del lienzo original de 3000 px. El original usa 143 y 173.</p>
+    <p class="nota" data-solo="noticia">Medida del lienzo original de 3000 px. El original usa 143. La interlínea se ajusta sola.</p>
   </fieldset>
   <fieldset data-solo="noticia">
     <legend>Diseño de la foto</legend>
@@ -252,19 +246,6 @@
     <p class="nota">Cada paleta trae su fondo y su filete. El degradado sigue al fondo, así que se acomoda solo.</p>
   </fieldset>
 
-  <fieldset data-solo="noticia">
-    <legend>Degradado</legend>
-    <div class="campo">
-      <label>Opacidad al borde inferior — <b id="v_final"></b></label>
-      <input type="range" id="deg_final" data-campo="deg_final" min="0" max="1" step="0.005">
-    </div>
-    <div class="campo">
-      <label>Curva — <b id="v_curva"></b></label>
-      <input type="range" id="deg_curva" data-campo="deg_curva" min="0.5" max="4" step="0.05">
-    </div>
-    <button id="reset_deg" class="archivo">Volver a los valores del original</button>
-    <p class="nota">Arranca fijo al 68% del collage. Curva 1 = lineal; sobre 1 el fundido empieza suave y se acelera abajo.</p>
-  </fieldset>
 
   <fieldset>
     <legend>Carrusel</legend>

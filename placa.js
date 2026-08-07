@@ -18,9 +18,15 @@ export const MEDIDAS = {
   // cinta: forma y colores fijos, es la etiqueta oficial del medio
   etiqueta: { fuente: 74, padY: 22, padX: 96, sesgo: 44, separacion: 38,
               fondo: '#ffffff', texto: '#111111' },
-  logo:     { ancho: 592, abajo: 117 },
+  // el logo se escala por altura, no por ancho: así el aire entre el titular
+  // y el pie no cambia si el logo cambia de proporción
+  logo:     { alto: 280, abajo: 117 },
   urgente:  { arriba: 790, margen: 180, bajada: 190, separacion: 166 },
 };
+
+/* La interlínea acompaña al tamaño de letra en la misma proporción que el
+   arte original (173/143), así no hay que ajustarla a mano. */
+export const PROPORCION_INTERLINEA = 173 / 143;
 
 const TIPOS = {
   titular:  '900 {px}px "Inter Tight", Arial, sans-serif',
@@ -42,9 +48,13 @@ export function aRgb(hex){
   return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
 }
 
-/* Mismo degradado que tenía el CSS: alpha(t) = final * t^curva, con t
-   recorriendo desde `inicio`% hasta el borde de abajo del collage. */
-export const DEG_INICIO = 68;   // fijo: dónde arranca el fundido, en % del collage
+/* alpha(t) = DEG_FINAL * t^DEG_CURVA, con t recorriendo desde `desde`%
+   hasta el borde de abajo.
+   El fundido es fijo: forma parte de la identidad, no se configura por placa.
+   La curva sale de medir el anillo blanco del círculo en el arte original. */
+export const DEG_INICIO = 68;    // dónde arranca, en % del alto
+export const DEG_FINAL  = 0.933; // opacidad en el borde de abajo
+export const DEG_CURVA  = 1.5;   // exponente: arranca suave y se acelera
 
 export function degradado(ctx, datos, x, y, ancho, alto, desde = DEG_INICIO){
   const [r, g, b] = aRgb(datos.color_fondo);
@@ -55,7 +65,7 @@ export function degradado(ctx, datos, x, y, ancho, alto, desde = DEG_INICIO){
   grad.addColorStop(inicio, `rgba(${r},${g},${b},0)`);
   for(let i = 1; i <= pasos; i++){
     const t = i / pasos;
-    const alfa = Number(datos.deg_final) * Math.pow(t, Number(datos.deg_curva));
+    const alfa = DEG_FINAL * Math.pow(t, DEG_CURVA);
     grad.addColorStop(inicio + t * (1 - inicio), `rgba(${r},${g},${b},${alfa.toFixed(4)})`);
   }
   return grad;
@@ -229,7 +239,7 @@ function dibujarNoticia(ctx, datos, fotos, u){
 
   // titular, anclado por abajo
   const px = Number(datos.tam_titulo) * u;
-  const interlinea = Number(datos.interlinea) * u;
+  const interlinea = px * PROPORCION_INTERLINEA;
   const inter = 0.008 * px;
   const maxAncho = (LIENZO - MEDIDAS.media.x - MEDIDAS.pie.x - MEDIDAS.pie.separacion) * u;
   const lineas = repartir(ctx, datos.titulo, TIPOS.titular, px, inter, maxAncho);
@@ -325,8 +335,8 @@ export function dibujar(ctx, datos, fotos, lado){
 
   if(fotos.logo){
     const L = MEDIDAS.logo;
-    const ancho = L.ancho * u;
-    const alto = ancho * fotos.logo.height / fotos.logo.width;
+    const alto = L.alto * u;
+    const ancho = alto * fotos.logo.width / fotos.logo.height;
     ctx.drawImage(fotos.logo, (lado - ancho) / 2, lado - (L.abajo * u) - alto, ancho, alto);
   }
 }
@@ -352,8 +362,8 @@ export function dibujarLamina(ctx, datos, lamina, foto, logo, lado){
 
   if(logo){
     const L = MEDIDAS.logo;
-    const anchoLogo = L.ancho * u;
-    const altoLogo = anchoLogo * logo.height / logo.width;
+    const altoLogo = L.alto * u;
+    const anchoLogo = altoLogo * logo.width / logo.height;
     ctx.drawImage(logo, (lado - anchoLogo) / 2, lado - (L.abajo * u) - altoLogo, anchoLogo, altoLogo);
   }
 }

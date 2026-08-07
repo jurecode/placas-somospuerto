@@ -49,8 +49,6 @@ const FOTOS_POR_DISENO = {
   'unica-circulo': [['foto_izq', 'Foto de fondo'], ['foto_cen', 'Foto del círculo']],
 };
 
-const ORIGINAL_DEG = { deg_final: 0.933, deg_curva: 1.5 };
-
 const BASE = {
   nombre: 'Placa nueva',
   titulo: 'Titular de\nla noticia',
@@ -62,9 +60,8 @@ const BASE = {
   foto_cen: 'assets/marcador.jpg', foto_cen_x: 50, foto_cen_y: 50, foto_cen_ajuste: 'completa',
   color_fondo: '#ff6100',
   color_filete: '#ff9600',
-  deg_final: 0.933, deg_curva: 1.5,
   circulo_x: 50, circulo_y: 62.6,
-  tam_titulo: 143, interlinea: 173,
+  tam_titulo: 143,
   laminas: [],            // fotos extra del carrusel; la placa es la primera
   descripcion: '', hashtags: '', colaboradores: '',
 };
@@ -386,11 +383,6 @@ function marcarSeleccion(){
   });
 }
 
-function volcarEtiquetas(){
-  $('#v_final').textContent  = Number(placa.deg_final).toFixed(3);
-  $('#v_curva').textContent  = Number(placa.deg_curva).toFixed(2);
-}
-
 async function volcarControles(){
   document.querySelectorAll('[data-campo]').forEach((el) => {
     const v = placa[el.dataset.campo];
@@ -398,7 +390,6 @@ async function volcarControles(){
   });
   await pintarFotos();
   await pintarLaminas();
-  volcarEtiquetas();
 }
 
 async function pintarSelector(){
@@ -436,7 +427,6 @@ async function cargar(id){
 function cambio(campo, valor){
   placa[campo] = valor;
   repintar();
-  volcarEtiquetas();
   marcarSeleccion();
   clearTimeout(guardando);
   guardando = setTimeout(async () => {
@@ -602,15 +592,6 @@ $('#borrar').addEventListener('click', async () => {
   await borrarPlacaBd(placa.id);
   const resto = await listarPlacas();
   cargar(resto[resto.length - 1].id);
-});
-
-$('#reset_deg').addEventListener('click', () => {
-  Object.entries(ORIGINAL_DEG).forEach(([k, v]) => {
-    placa[k] = v;
-    const el = document.querySelector(`[data-campo="${k}"]`);
-    if(el) el.value = v;
-  });
-  cambio('deg_curva', ORIGINAL_DEG.deg_curva);
 });
 
 document.querySelectorAll('[data-exportar]').forEach((boton) => {
