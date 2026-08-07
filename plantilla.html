@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{titulo_texto}}</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;900&family=Poppins:wght@700;900&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    /* Lado de la placa. El servidor lo fija con ?s=3000 al exportar. */
+    --s: {{lado}};
+    /* Unidad de diseno: el arte original se midio sobre un lienzo de 3000x3000,
+       asi que cada medida se escribe con su valor original x --u. */
+    --u: calc(var(--s) / 3000);
+
+    /* --- valores editables (los reescribe aplicar() en el editor) --- */
+    --fondo:      {{color_fondo}};
+    --filete:     {{color_filete}};
+    --degradado:  {{degradado}};
+    --tam-titulo: calc({{tam_titulo}} * var(--u));
+    --interlinea: calc({{interlinea}} * var(--u));
+    --pos-izq:    {{izq_x}}% {{izq_y}}%;
+    --pos-der:    {{der_x}}% {{der_y}}%;
+    --pos-cen:    {{cen_x}}% {{cen_y}}%;
+    --etiqueta-fondo:  {{etiqueta_fondo}};
+    --etiqueta-texto:  {{etiqueta_texto}};
+  }
+
+  *{ box-sizing: border-box; margin: 0; }
+
+  body{
+    min-height: 100svh;
+    display: grid;
+    place-items: center;
+    background: #1a1a1a;
+  }
+
+  .placa{
+    position: relative;
+    width: var(--s);
+    height: var(--s);
+    overflow: hidden;
+    background: var(--fondo);
+    font-family: "Inter Tight", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- collage de fotos ---------- */
+
+  .media{
+    position: absolute;
+    left:   calc(318 * var(--u));
+    top:    calc(136 * var(--u));
+    width:  calc(2364 * var(--u));
+    height: calc(1604 * var(--u));
+    border-radius: calc(48 * var(--u));
+    overflow: hidden;
+    background: #fff;
+  }
+
+  .media__panels{
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: calc(30 * var(--u));   /* filete blanco central */
+  }
+
+  /* Cada hueco de foto. En "completa" la imagen entra entera (nunca se
+     recorta) y el hueco que sobra lo rellena una copia difuminada de la
+     misma foto, para que no queden barras muertas. En "cubrir" vuelve al
+     comportamiento clasico: llena el hueco y recorta lo que sobra. */
+  .marco{
+    position: relative;
+    overflow: hidden;
+    background: #0b0b0d;
+    /* sin esto la foto a tamaño natural le impone su ancho a la columna
+       del grid (min-width:auto) y el collage se desborda */
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .marco__fondo{
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scale(1.18);
+    filter: blur(calc(26 * var(--u))) brightness(.72) saturate(1.15);
+  }
+
+  .marco__foto{
+    position: relative;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .marco[data-ajuste="cubrir"] .marco__fondo{ display: none; }
+  .marco[data-ajuste="cubrir"] .marco__foto{ object-fit: cover; }
+
+  .marco--izq .marco__foto{ object-position: var(--pos-izq); }
+  .marco--der .marco__foto{ object-position: var(--pos-der); }
+  .marco--cen .marco__foto{ object-position: var(--pos-cen); }
+
+  /* recorte circular sobre la union de las dos fotos */
+  .media__circulo{
+    position: absolute;
+    left: 50%;
+    top: calc(1004 * var(--u));            /* 1140 - 136 respecto del collage */
+    transform: translate(-50%, -50%);
+    width:  calc(1024 * var(--u));
+    height: calc(1024 * var(--u));
+    border-radius: 50%;
+    border: calc(30 * var(--u)) solid #fff;
+    overflow: hidden;
+  }
+  .media__circulo .marco{ width: 100%; height: 100%; }
+
+  /* --- los tres disenos de foto --- */
+  /* "duo-circulo": el original, dos fotos y el recorte circular encima */
+  /* "duo": las dos fotos, sin circulo */
+  .placa[data-diseno="duo"] .media__circulo,
+  .placa[data-diseno="unica"] .media__circulo{ display: none; }
+  /* "unica": una sola foto ocupando todo el collage */
+  .placa[data-diseno="unica"] .media__panels{ grid-template-columns: 1fr; gap: 0; }
+  .placa[data-diseno="unica"] .marco--der{ display: none; }
+
+  /* degradado que funde la parte baja del collage con el fondo */
+  .media__fundido{
+    position: absolute;
+    inset: 0;
+    background: var(--degradado);
+  }
+
+  /* ---------- etiqueta + titular ---------- */
+
+  /* el bloque se ancla por abajo: al agregar lineas crece hacia arriba y
+     nunca invade el logo */
+  .pie{
+    position: absolute;
+    left:   calc(414 * var(--u));
+    right:  calc(318 * var(--u));
+    bottom: calc(479 * var(--u));
+  }
+
+  .etiqueta{
+    display: inline-block;
+    margin: 0 0 calc(38 * var(--u)) calc(83 * var(--u));
+    padding: calc(22 * var(--u)) calc(62 * var(--u)) calc(24 * var(--u));
+    background: var(--etiqueta-fondo);
+    color: var(--etiqueta-texto);
+    font-size: calc(74 * var(--u));
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .etiqueta:empty{ display: none; }
+
+  /* --- formas de etiqueta --- */
+  /* diagonal: la del arte de referencia, borde derecho en bisel */
+  .etiqueta[data-estilo="diagonal"]{
+    padding-right: calc(118 * var(--u));
+    border-radius: calc(26 * var(--u));
+    clip-path: polygon(0 0, 100% 0, calc(100% - 76 * var(--u)) 100%, 0 100%);
+  }
+  /* pastilla: capsula completamente redondeada */
+  .etiqueta[data-estilo="pastilla"]{
+    padding-left: calc(78 * var(--u));
+    padding-right: calc(78 * var(--u));
+    border-radius: 999px;
+  }
+  /* bloque: rectangulo seco, sin radios */
+  .etiqueta[data-estilo="bloque"]{
+    border-radius: 0;
+    font-weight: 700;
+    letter-spacing: .1em;
+  }
+  /* cinta: paralelogramo, los dos bordes inclinados */
+  .etiqueta[data-estilo="cinta"]{
+    padding-left: calc(96 * var(--u));
+    padding-right: calc(96 * var(--u));
+    clip-path: polygon(calc(44 * var(--u)) 0, 100% 0, calc(100% - 44 * var(--u)) 100%, 0 100%);
+  }
+  /* contorno: solo el borde, para fondos con mucha foto */
+  .etiqueta[data-estilo="contorno"]{
+    background: transparent;
+    color: var(--etiqueta-fondo);
+    border: calc(7 * var(--u)) solid var(--etiqueta-fondo);
+    border-radius: 999px;
+    padding: calc(18 * var(--u)) calc(72 * var(--u)) calc(20 * var(--u));
+    font-weight: 700;
+    letter-spacing: .08em;
+  }
+  /* filete: barra vertical a la izquierda, sin caja */
+  .etiqueta[data-estilo="filete"]{
+    background: transparent;
+    color: var(--etiqueta-fondo);
+    border-left: calc(16 * var(--u)) solid var(--etiqueta-fondo);
+    border-radius: 0;
+    padding: calc(6 * var(--u)) 0 calc(8 * var(--u)) calc(40 * var(--u));
+    font-weight: 700;
+    letter-spacing: .12em;
+  }
+
+  /* el filete se estira solo con el texto, asi que acompaña tanto a los
+     saltos de linea como a las lineas que se cortan por ancho */
+  .bloque-titular{ display: flex; }
+
+  .filete{
+    flex: none;
+    width: calc(28 * var(--u));
+    background: var(--filete);
+  }
+
+  .titular{
+    margin: 0 0 0 calc(83 * var(--u));
+    padding: calc(11.5 * var(--u)) 0;
+    color: #fff;
+    font-weight: 900;
+    font-size:   var(--tam-titulo);
+    line-height: var(--interlinea);
+    letter-spacing: .008em;
+    text-transform: uppercase;
+  }
+
+  /* ---------- formato urgente ---------- */
+  /* Sin fotos: bajada chica arriba y una palabra enorme que se ajusta sola
+     al ancho disponible (ver ajustarUrgente()). El fondo es el color de la
+     paleta oscurecido hacia el negro por abajo. */
+  .placa[data-formato="urgente"] .media,
+  .placa[data-formato="urgente"] .pie{ display: none; }
+
+  .urgente{ display: none; }
+
+  .placa[data-formato="urgente"] .urgente{
+    display: block;
+    position: absolute;
+    left:  calc(180 * var(--u));
+    right: calc(180 * var(--u));
+    top:   calc(790 * var(--u));
+    text-align: center;
+    color: #fff;
+  }
+
+  .placa[data-formato="urgente"]{
+    background:
+      linear-gradient(180deg,
+        rgb(0 0 0 / .28)  0%,
+        rgb(0 0 0 / 0)   26%,
+        rgb(0 0 0 / 0)   44%,
+        rgb(0 0 0 / .50) 74%,
+        rgb(0 0 0 / .96) 100%),
+      var(--fondo);
+  }
+
+  .urgente__bajada{
+    font-family: "Poppins", "Inter Tight", Arial, sans-serif;
+    font-size: calc(190 * var(--u));
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -.01em;
+    text-transform: uppercase;
+  }
+
+  .urgente__texto{
+    margin-top: calc(166 * var(--u));
+    font-family: "Poppins", "Inter Tight", Arial, sans-serif;
+    font-size: var(--tam-titulo);   /* tope; ajustarUrgente() lo baja si no cabe */
+    font-weight: 900;
+    line-height: .95;
+    letter-spacing: -.1em;          /* -100 del interletrado de Illustrator */
+    text-transform: uppercase;
+    white-space: pre;
+  }
+
+  /* ---------- logotipo ---------- */
+
+  .logo{
+    position: absolute;
+    left: 50%;
+    bottom: calc(117 * var(--u));
+    transform: translateX(-50%);
+    width: calc(592 * var(--u));
+    display: block;
+  }
+</style>
+</head>
+
+<body>
+  <div class="placa" data-diseno="{{diseno}}" data-formato="{{formato}}">
+
+    <div class="media">
+      <div class="media__panels">
+        <div class="marco marco--izq" data-ajuste="{{izq_ajuste}}">
+          <img class="marco__fondo" src="{{foto_izq}}" alt="" aria-hidden="true">
+          <img class="marco__foto" src="{{foto_izq}}" alt="">
+        </div>
+        <div class="marco marco--der" data-ajuste="{{der_ajuste}}">
+          <img class="marco__fondo" src="{{foto_der}}" alt="" aria-hidden="true">
+          <img class="marco__foto" src="{{foto_der}}" alt="">
+        </div>
+      </div>
+
+      <div class="media__circulo">
+        <div class="marco marco--cen" data-ajuste="{{cen_ajuste}}">
+          <img class="marco__fondo" src="{{foto_cen}}" alt="" aria-hidden="true">
+          <img class="marco__foto" src="{{foto_cen}}" alt="">
+        </div>
+      </div>
+
+      <div class="media__fundido"></div>
+    </div>
+
+    <div class="pie">
+      <div class="etiqueta" data-estilo="{{etiqueta_estilo}}">{{etiqueta}}</div>
+      <div class="bloque-titular">
+        <div class="filete"></div>
+        <h1 class="titular">{{titulo_html}}</h1>
+      </div>
+    </div>
+
+    <div class="urgente">
+      <div class="urgente__bajada">Urgente</div>
+      <div class="urgente__texto"><span>{{titulo_plano}}</span></div>
+    </div>
+
+    <img class="logo" src="{{logo}}" alt="Somos Puerto — www.somospuerto.cl">
+
+  </div>
+
+<script>
+/* El servidor ya deja los valores escritos en el HTML: este script solo existe
+   para que el editor pueda refrescar la vista previa sin recargar el iframe.
+   La formula del degradado esta duplicada en app.py (funcion degradado_css). */
+(function(){
+  function rgb(hex){
+    var h = String(hex).replace('#','');
+    if(h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+  }
+
+  window.degradadoCss = function(hex, inicio, final, curva){
+    var c = rgb(hex), n = 10;
+    var stops = ['rgb(' + c.join(' ') + ' / 0) ' + inicio + '%'];
+    for(var i = 1; i <= n; i++){
+      var t = i / n;
+      var p = inicio + t * (100 - inicio);
+      var a = final * Math.pow(t, curva);
+      stops.push('rgb(' + c.join(' ') + ' / ' + a.toFixed(3) + ') ' + p.toFixed(2) + '%');
+    }
+    return 'linear-gradient(to bottom, ' + stops.join(', ') + ')';
+  };
+
+  /* En el formato urgente la palabra grande se estira hasta llenar el ancho,
+     con --tam-titulo como tope. Asi da lo mismo si dice "AHORA" o algo largo. */
+  window.ajustarUrgente = function(){
+    var placa = document.querySelector('.placa');
+    var caja = document.querySelector('.urgente__texto');
+    if(!placa || !caja || placa.dataset.formato !== 'urgente') return;
+    var span = caja.firstElementChild;
+    if(!span) return;
+
+    var disponible = caja.parentNode.clientWidth;
+    if(!disponible || !span.textContent.trim()) return;
+
+    caja.style.fontSize = '';                        // volver al tope
+    var tope = parseFloat(getComputedStyle(caja).fontSize);
+    caja.style.fontSize = tope + 'px';
+
+    // se mide el span renderizado, no el texto crudo: así entran las
+    // mayúsculas del text-transform y el interletrado
+    var ancho = 0, rects = span.getClientRects();
+    for(var i = 0; i < rects.length; i++) ancho = Math.max(ancho, rects[i].width);
+    if(!ancho) return;
+
+    if(ancho > disponible) caja.style.fontSize = (tope * disponible / ancho) + 'px';
+  };
+
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(window.ajustarUrgente);
+  window.addEventListener('load', window.ajustarUrgente);
+  window.addEventListener('resize', window.ajustarUrgente);
+
+  window.aplicar = function(d){
+    var r = document.documentElement.style;
+    r.setProperty('--fondo',  d.color_fondo);
+    r.setProperty('--filete', d.color_filete);
+    r.setProperty('--degradado',
+      window.degradadoCss(d.color_fondo, d.deg_inicio, d.deg_final, d.deg_curva));
+    r.setProperty('--tam-titulo', 'calc(' + d.tam_titulo + ' * var(--u))');
+    r.setProperty('--interlinea', 'calc(' + d.interlinea + ' * var(--u))');
+    r.setProperty('--pos-izq', d.foto_izq_x + '% ' + d.foto_izq_y + '%');
+    r.setProperty('--pos-der', d.foto_der_x + '% ' + d.foto_der_y + '%');
+    r.setProperty('--pos-cen', d.foto_cen_x + '% ' + d.foto_cen_y + '%');
+    r.setProperty('--etiqueta-fondo', d.etiqueta_fondo);
+    r.setProperty('--etiqueta-texto', d.etiqueta_texto);
+
+    var placa = document.querySelector('.placa');
+    placa.dataset.diseno = d.diseno;
+    placa.dataset.formato = d.formato;
+
+    /* en urgente la palabra de arriba es fija: lo único editable es el texto */
+    document.querySelector('.urgente__texto span').textContent = String(d.titulo);
+
+    var etiqueta = document.querySelector('.etiqueta');
+    etiqueta.dataset.estilo = d.etiqueta_estilo;
+    etiqueta.textContent = d.etiqueta || '';
+
+    var titular = document.querySelector('.titular');
+    titular.textContent = '';
+    String(d.titulo).split('\n').forEach(function(linea, i){
+      if(i) titular.appendChild(document.createElement('br'));
+      titular.appendChild(document.createTextNode(linea));
+    });
+
+    [['izq', d.foto_izq, d.foto_izq_ajuste],
+     ['der', d.foto_der, d.foto_der_ajuste],
+     ['cen', d.foto_cen, d.foto_cen_ajuste]].forEach(function(par){
+      var marco = document.querySelector('.marco--' + par[0]);
+      marco.dataset.ajuste = par[2];
+      var src = '/' + par[1];
+      marco.querySelectorAll('img').forEach(function(img){
+        if(img.getAttribute('src') !== src) img.setAttribute('src', src);
+      });
+    });
+
+    window.ajustarUrgente();
+  };
+})();
+</script>
+</body>
+</html>

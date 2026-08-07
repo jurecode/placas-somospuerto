@@ -1,0 +1,12 @@
+# base de datos con las placas en edición: es local de cada máquina
+placas.db
+
+# fotos subidas desde el editor y exportaciones
+assets/subidas/
+salida/
+
+# entorno
+.DS_Store
+.claude/settings.local.json
+venv/
+__pycache__/
