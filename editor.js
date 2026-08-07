@@ -49,7 +49,7 @@ const FOTOS_POR_DISENO = {
   'unica-circulo': [['foto_izq', 'Foto de fondo'], ['foto_cen', 'Foto del círculo']],
 };
 
-const ORIGINAL_DEG = { deg_inicio: 47.6, deg_final: 0.933, deg_curva: 1.5 };
+const ORIGINAL_DEG = { deg_final: 0.933, deg_curva: 1.5 };
 
 const BASE = {
   nombre: 'Placa nueva',
@@ -62,7 +62,8 @@ const BASE = {
   foto_cen: 'assets/marcador.jpg', foto_cen_x: 50, foto_cen_y: 50, foto_cen_ajuste: 'completa',
   color_fondo: '#ff6100',
   color_filete: '#ff9600',
-  deg_inicio: 47.6, deg_final: 0.933, deg_curva: 1.5,
+  deg_final: 0.933, deg_curva: 1.5,
+  circulo_x: 50, circulo_y: 62.6,
   tam_titulo: 143, interlinea: 173,
 };
 
@@ -245,6 +246,12 @@ async function pintarFotos(){
           <span>X</span><input type="range" data-campo="${campo}_x" min="0" max="100" step="1" value="${placa[campo + '_x']}">
           <span>Y</span><input type="range" data-campo="${campo}_y" min="0" max="100" step="1" value="${placa[campo + '_y']}">
         </div>
+        ${campo === 'foto_cen' ? `
+        <b class="sub">Posición del círculo</b>
+        <div class="encuadre">
+          <span>X</span><input type="range" data-campo="circulo_x" min="8" max="92" step="0.5" value="${placa.circulo_x ?? 50}">
+          <span>Y</span><input type="range" data-campo="circulo_y" min="8" max="92" step="0.5" value="${placa.circulo_y ?? 62.6}">
+        </div>` : ''}
       </div>
     </div>`).join('');
   for(const [campo] of slots){
@@ -270,7 +277,6 @@ function marcarSeleccion(){
 }
 
 function volcarEtiquetas(){
-  $('#v_inicio').textContent = Number(placa.deg_inicio).toFixed(1);
   $('#v_final').textContent  = Number(placa.deg_final).toFixed(3);
   $('#v_curva').textContent  = Number(placa.deg_curva).toFixed(2);
 }

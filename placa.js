@@ -11,7 +11,8 @@ export const LIENZO = 3000;
 
 export const MEDIDAS = {
   media:    { x: 318, y: 136, ancho: 2364, alto: 1604, radio: 48, filete: 30 },
-  circulo:  { cx: 1500, cy: 1140, radio: 512, anillo: 30 },
+  // el centro se da en % del collage; 50/62.6 es el del arte original
+  circulo:  { x: 50, y: 62.6, radio: 512, anillo: 30 },
   pie:      { x: 414, margenDerecho: 318, abajo: 479, separacion: 83 },
   filete:   { ancho: 28, respiro: 11.5 },
   // cinta: forma y colores fijos, es la etiqueta oficial del medio
@@ -43,10 +44,12 @@ export function aRgb(hex){
 
 /* Mismo degradado que tenía el CSS: alpha(t) = final * t^curva, con t
    recorriendo desde `inicio`% hasta el borde de abajo del collage. */
+export const DEG_INICIO = 68;   // fijo: dónde arranca el fundido, en % del collage
+
 export function degradado(ctx, datos, x, y, ancho, alto){
   const [r, g, b] = aRgb(datos.color_fondo);
   const grad = ctx.createLinearGradient(0, y, 0, y + alto);
-  const inicio = Number(datos.deg_inicio) / 100;
+  const inicio = DEG_INICIO / 100;
   const pasos = 12;
   grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
   grad.addColorStop(inicio, `rgba(${r},${g},${b},0)`);
@@ -201,7 +204,9 @@ function dibujarNoticia(ctx, datos, fotos, u){
   // recorte circular
   if(datos.diseno.endsWith('-circulo')){
     const C = MEDIDAS.circulo;
-    const cx = C.cx * u, cy = C.cy * u, radio = C.radio * u;
+    const cx = x + ancho * (datos.circulo_x ?? C.x) / 100;
+    const cy = y + alto * (datos.circulo_y ?? C.y) / 100;
+    const radio = C.radio * u;
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, radio - C.anillo * u, 0, Math.PI * 2);
