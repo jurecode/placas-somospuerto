@@ -66,7 +66,7 @@
   button.principal:hover{ filter:brightness(1.1) }
 
   /* diseños de foto */
-  .disenos{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px }
+  .disenos{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px }
   .disenos button{ display:grid; gap:6px; justify-items:center; padding:10px 6px; font-size:11px; line-height:1.25; text-align:center }
   .disenos button.activo{ border-color:var(--acento); background:#2c2019 }
   .disenos svg{ width:44px; height:30px }
@@ -193,27 +193,7 @@
       <input type="text" id="etiqueta" data-campo="etiqueta" placeholder="Farándula, noticia, contingencia…">
     </div>
     <div class="campo chips" id="chips_etiqueta"></div>
-    <div class="campo" data-solo="noticia">
-      <label>Forma</label>
-      <div class="chips" id="estilos_etiqueta"></div>
-    </div>
-    <div class="campo mitades" data-solo="noticia">
-      <div>
-        <label>Fondo</label>
-        <div class="fila">
-          <input type="color" id="etiqueta_fondo_pick">
-          <input type="text" id="etiqueta_fondo" data-campo="etiqueta_fondo" spellcheck="false">
-        </div>
-      </div>
-      <div>
-        <label>Texto</label>
-        <div class="fila">
-          <input type="color" id="etiqueta_texto_pick">
-          <input type="text" id="etiqueta_texto" data-campo="etiqueta_texto" spellcheck="false">
-        </div>
-      </div>
-    </div>
-    <p class="nota" id="nota_etiqueta">Dejala vacía y la etiqueta desaparece de la placa.</p>
+    <p class="nota">Cinta blanca, la etiqueta oficial del medio. Dejala vacía y desaparece de la placa.</p>
   </fieldset>
 
   <fieldset>

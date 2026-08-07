@@ -17,6 +17,8 @@ const DISENOS = [
     svg: '<rect x="1" y="1" width="20" height="28" rx="3"/><rect x="23" y="1" width="20" height="28" rx="3"/>' },
   { id: 'unica', nombre: 'Una sola foto',
     svg: '<rect x="1" y="1" width="42" height="28" rx="3"/>' },
+  { id: 'unica-circulo', nombre: 'Una foto + círculo',
+    svg: '<rect x="1" y="1" width="42" height="28" rx="3"/><circle cx="22" cy="15" r="9" fill="currentColor" stroke="none" opacity=".85"/>' },
 ];
 
 const PALETA = [
@@ -37,16 +39,14 @@ const PALETA = [
 const ETIQUETAS = ['Farándula', 'Noticia', 'Contingencia', 'Policial',
                    'Deportes', 'Política', 'Espectáculos', 'Comunidad'];
 
-const ESTILOS = [['diagonal', 'Diagonal'], ['pastilla', 'Pastilla'], ['bloque', 'Bloque'],
-                 ['cinta', 'Cinta'], ['contorno', 'Contorno'], ['filete', 'Filete']];
-
 const AJUSTES = [['completa', 'Completa', 'Entra entera, no se recorta'],
                  ['cubrir', 'Rellenar', 'Llena el hueco y recorta lo que sobra']];
 
 const FOTOS_POR_DISENO = {
-  'duo-circulo': [['foto_izq', 'Foto izquierda'], ['foto_der', 'Foto derecha'], ['foto_cen', 'Foto del círculo']],
-  'duo':         [['foto_izq', 'Foto izquierda'], ['foto_der', 'Foto derecha']],
-  'unica':       [['foto_izq', 'Foto de fondo']],
+  'duo-circulo':   [['foto_izq', 'Foto izquierda'], ['foto_der', 'Foto derecha'], ['foto_cen', 'Foto del círculo']],
+  'duo':           [['foto_izq', 'Foto izquierda'], ['foto_der', 'Foto derecha']],
+  'unica':         [['foto_izq', 'Foto de fondo']],
+  'unica-circulo': [['foto_izq', 'Foto de fondo'], ['foto_cen', 'Foto del círculo']],
 };
 
 const ORIGINAL_DEG = { deg_inicio: 47.6, deg_final: 0.933, deg_curva: 1.5 };
@@ -55,11 +55,8 @@ const BASE = {
   nombre: 'Placa nueva',
   titulo: 'Titular de\nla noticia',
   etiqueta: '',
-  etiqueta_estilo: 'diagonal',
-  etiqueta_fondo: '#ffffff',
-  etiqueta_texto: '#111111',
   formato: 'noticia',
-  diseno: 'duo-circulo',
+  diseno: 'unica',
   foto_izq: 'assets/marcador.jpg', foto_izq_x: 50, foto_izq_y: 50, foto_izq_ajuste: 'completa',
   foto_der: 'assets/marcador.jpg', foto_der_x: 50, foto_der_y: 50, foto_der_ajuste: 'completa',
   foto_cen: 'assets/marcador.jpg', foto_cen_x: 50, foto_cen_y: 50, foto_cen_ajuste: 'completa',
@@ -230,8 +227,6 @@ function pintarChips(){
   $('#chips_etiqueta').innerHTML =
     ETIQUETAS.map((t) => `<button data-etiqueta="${t}">${t}</button>`).join('') +
     '<button data-etiqueta="">Sin etiqueta</button>';
-  $('#estilos_etiqueta').innerHTML = ESTILOS
-    .map(([id, n]) => `<button data-estilo="${id}">${n}</button>`).join('');
 }
 
 async function pintarFotos(){
@@ -263,8 +258,6 @@ async function pintarFotos(){
 function marcarSeleccion(){
   document.querySelectorAll('[data-diseno]').forEach((b) =>
     b.classList.toggle('activo', b.dataset.diseno === placa.diseno));
-  document.querySelectorAll('[data-estilo]').forEach((b) =>
-    b.classList.toggle('activo', b.dataset.estilo === placa.etiqueta_estilo));
   document.querySelectorAll('[data-ajuste]').forEach((b) => {
     const [campo, valor] = b.dataset.ajuste.split(':');
     b.classList.toggle('activo', placa[campo] === valor);
@@ -287,7 +280,6 @@ async function volcarControles(){
     const v = placa[el.dataset.campo];
     if(v !== undefined && el.tagName !== 'DIV') el.value = v;
   });
-  ['etiqueta_fondo', 'etiqueta_texto'].forEach((c) => { $('#' + c + '_pick').value = placa[c]; });
   await pintarFotos();
   volcarEtiquetas();
 }
@@ -352,8 +344,6 @@ async function crear(datos){
 /* eventos                                                             */
 /* ------------------------------------------------------------------ */
 
-const PICKERS = { etiqueta_fondo_pick: 'etiqueta_fondo', etiqueta_texto_pick: 'etiqueta_texto' };
-
 document.addEventListener('input', (ev) => {
   const el = ev.target;
   if(el.dataset.campo && el.tagName !== 'DIV'){
@@ -362,21 +352,17 @@ document.addEventListener('input', (ev) => {
     cambio(el.dataset.campo, v);
     const pick = $('#' + el.dataset.campo + '_pick');
     if(pick && /^#[0-9a-f]{6}$/i.test(v)) pick.value = v;
-    return;
   }
-  const destino = PICKERS[el.id];
-  if(destino){ $('#' + destino).value = el.value; cambio(destino, el.value); }
 });
 
 document.addEventListener('click', async (ev) => {
-  const boton = ev.target.closest('[data-diseno], [data-paleta], [data-etiqueta], [data-estilo], [data-ajuste]');
+  const boton = ev.target.closest('[data-diseno], [data-paleta], [data-etiqueta], [data-ajuste]');
   if(!boton) return;
   if(boton.dataset.diseno){ cambio('diseno', boton.dataset.diseno); await pintarFotos(); return; }
   if(boton.dataset.ajuste){
     const [campo, valor] = boton.dataset.ajuste.split(':');
     return cambio(campo, valor);
   }
-  if(boton.dataset.estilo) return cambio('etiqueta_estilo', boton.dataset.estilo);
   if(boton.dataset.paleta !== undefined){
     const c = PALETA[Number(boton.dataset.paleta)];
     placa.color_filete = c.filete;

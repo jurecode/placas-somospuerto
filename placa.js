@@ -14,7 +14,9 @@ export const MEDIDAS = {
   circulo:  { cx: 1500, cy: 1140, radio: 512, anillo: 30 },
   pie:      { x: 414, margenDerecho: 318, abajo: 479, separacion: 83 },
   filete:   { ancho: 28, respiro: 11.5 },
-  etiqueta: { fuente: 74, padY: 22, padX: 62, separacion: 38, radio: 26 },
+  // cinta: forma y colores fijos, es la etiqueta oficial del medio
+  etiqueta: { fuente: 74, padY: 22, padX: 96, sesgo: 44, separacion: 38,
+              fondo: '#ffffff', texto: '#111111' },
   logo:     { ancho: 592, abajo: 117 },
   urgente:  { arriba: 790, margen: 180, bajada: 190, separacion: 166 },
 };
@@ -132,79 +134,40 @@ function dibujarFoto(ctx, img, x, y, ancho, alto, ajuste, posX, posY, u){
 /* etiqueta                                                            */
 /* ------------------------------------------------------------------ */
 
-function trazarEtiqueta(ctx, estilo, x, y, ancho, alto, u){
-  const r = MEDIDAS.etiqueta.radio * u;
-  ctx.beginPath();
-  if(estilo === 'pastilla' || estilo === 'contorno'){
-    ctx.roundRect(x, y, ancho, alto, alto / 2);
-  }else if(estilo === 'bloque'){
-    ctx.rect(x, y, ancho, alto);
-  }else if(estilo === 'cinta'){
-    const d = 44 * u;
-    ctx.moveTo(x + d, y);
-    ctx.lineTo(x + ancho, y);
-    ctx.lineTo(x + ancho - d, y + alto);
-    ctx.lineTo(x, y + alto);
-    ctx.closePath();
-  }else{ // diagonal
-    const d = 76 * u;
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + ancho, y);
-    ctx.lineTo(x + ancho - d, y + alto);
-    ctx.lineTo(x + r, y + alto);
-    ctx.arcTo(x, y + alto, x, y + alto - r, r);
-    ctx.lineTo(x, y + r);
-    ctx.arcTo(x, y, x + r, y, r);
-    ctx.closePath();
-  }
-}
-
+/* La etiqueta del medio: cinta blanca con texto oscuro, siempre igual.
+   No es configurable a propósito — es parte de la identidad, como el logo. */
 function dibujarEtiqueta(ctx, datos, u, abajoDe){
   const texto = String(datos.etiqueta || '').trim().toUpperCase();
   if(!texto) return abajoDe;
 
   const E = MEDIDAS.etiqueta;
-  const estilo = datos.etiqueta_estilo || 'diagonal';
   const px = E.fuente * u;
   const inter = 0.04 * px;
   const met = metricas(ctx, TIPOS.etiqueta, px);
-  const anchoTexto = anchoDe(ctx, texto, TIPOS.etiqueta, px, inter);
 
   const padY = E.padY * u;
-  const extraDerecha = { diagonal: 118, cinta: 96, pastilla: 78, contorno: 72, filete: 0 }[estilo] ?? E.padX;
-  const padIzq = { cinta: 96, pastilla: 78, contorno: 72, filete: 40 }[estilo] ?? E.padX;
-
+  const padX = E.padX * u;
+  const sesgo = E.sesgo * u;
   const alto = met.mayuscula + padY * 2;
-  const ancho = anchoTexto + (padIzq + extraDerecha) * u;
-  const x = MEDIDAS.pie.x * u + MEDIDAS.pie.separacion * u;
+  const ancho = anchoDe(ctx, texto, TIPOS.etiqueta, px, inter) + padX * 2;
+  const x = (MEDIDAS.pie.x + MEDIDAS.pie.separacion) * u;
   const y = abajoDe - alto;
 
   ctx.save();
-  if(estilo === 'filete'){
-    ctx.fillStyle = datos.etiqueta_fondo;
-    ctx.fillRect(x, y, 16 * u, alto);
-    ctx.fillStyle = datos.etiqueta_fondo;
-    ctx.font = fuente(TIPOS.etiqueta, px);
-    ctx.letterSpacing = `${inter}px`;
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(texto, x + 56 * u, y + padY + met.mayuscula);
-  }else{
-    trazarEtiqueta(ctx, estilo, x, y, ancho, alto, u);
-    if(estilo === 'contorno'){
-      ctx.strokeStyle = datos.etiqueta_fondo;
-      ctx.lineWidth = 7 * u;
-      ctx.stroke();
-      ctx.fillStyle = datos.etiqueta_fondo;
-    }else{
-      ctx.fillStyle = datos.etiqueta_fondo;
-      ctx.fill();
-      ctx.fillStyle = datos.etiqueta_texto;
-    }
-    ctx.font = fuente(TIPOS.etiqueta, px);
-    ctx.letterSpacing = `${inter}px`;
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(texto, x + padIzq * u, y + padY + met.mayuscula);
-  }
+  ctx.beginPath();
+  ctx.moveTo(x + sesgo, y);
+  ctx.lineTo(x + ancho, y);
+  ctx.lineTo(x + ancho - sesgo, y + alto);
+  ctx.lineTo(x, y + alto);
+  ctx.closePath();
+  ctx.fillStyle = E.fondo;
+  ctx.fill();
+
+  ctx.fillStyle = E.texto;
+  ctx.font = fuente(TIPOS.etiqueta, px);
+  ctx.letterSpacing = `${inter}px`;
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(texto, x + padX, y + padY + met.mayuscula);
   ctx.restore();
 
   return y - E.separacion * u;
@@ -226,16 +189,17 @@ function dibujarNoticia(ctx, datos, fotos, u){
   ctx.fillStyle = '#0b0b0d';
   ctx.fillRect(x, y, ancho, alto);
 
-  const hueco = datos.diseno === 'unica' ? ancho : (ancho - M.filete * u) / 2;
+  const unaSola = datos.diseno.startsWith('unica');
+  const hueco = unaSola ? ancho : (ancho - M.filete * u) / 2;
   dibujarFoto(ctx, fotos.izq, x, y, hueco, alto,
     datos.foto_izq_ajuste, datos.foto_izq_x, datos.foto_izq_y, u);
-  if(datos.diseno !== 'unica'){
+  if(!unaSola){
     dibujarFoto(ctx, fotos.der, x + hueco + M.filete * u, y, hueco, alto,
       datos.foto_der_ajuste, datos.foto_der_x, datos.foto_der_y, u);
   }
 
   // recorte circular
-  if(datos.diseno === 'duo-circulo'){
+  if(datos.diseno.endsWith('-circulo')){
     const C = MEDIDAS.circulo;
     const cx = C.cx * u, cy = C.cy * u, radio = C.radio * u;
     ctx.save();
