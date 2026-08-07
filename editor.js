@@ -4,7 +4,7 @@
  * base de datos que mantener. El PNG lo genera el mismo renderizador que
  * dibuja la vista previa (placa.js). */
 
-import { dibujar, esperarTipografias, LIENZO } from './placa.js';
+import { dibujar, dibujarLamina, esperarTipografias, LIENZO } from './placa.js';
 
 /* ------------------------------------------------------------------ */
 /* catálogos                                                           */
@@ -65,7 +65,11 @@ const BASE = {
   deg_final: 0.933, deg_curva: 1.5,
   circulo_x: 50, circulo_y: 62.6,
   tam_titulo: 143, interlinea: 173,
+  laminas: [],            // fotos extra del carrusel; la placa es la primera
+  descripcion: '', hashtags: '', colaboradores: '',
 };
+
+const MAX_LAMINAS = 9;   // 9 + la placa = las 10 que permite Instagram
 
 const EJEMPLO = {
   ...BASE,
@@ -190,18 +194,50 @@ function repintar(){
   }, 16);
 }
 
+function bajar(blob, nombre){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = nombre;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+const baseNombre = () => (placa.nombre || 'placa').toLowerCase()
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'placa';
+
+/* Instagram solo acepta JPEG, así que el carrusel sale en ese formato y a
+   1080, que es el tamaño con que muestra el feed. */
+async function exportarCarrusel(){
+  const laminas = placa.laminas || [];
+  const lienzo = document.createElement('canvas');
+  lienzo.width = lienzo.height = 1080;
+  const ctx = lienzo.getContext('2d');
+  const logo = await cargarImagen('assets/logo.png');
+  const jpeg = () => new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.92));
+
+  dibujar(ctx, placa, await imagenesDe(placa), 1080);
+  bajar(await jpeg(), `${baseNombre()}-1.jpg`);
+
+  for(let i = 0; i < laminas.length; i++){
+    await new Promise((r) => setTimeout(r, 350));   // si van de golpe el navegador las bloquea
+    dibujarLamina(ctx, placa, laminas[i], await cargarImagen(laminas[i].foto), logo, 1080);
+    bajar(await jpeg(), `${baseNombre()}-${i + 2}.jpg`);
+  }
+  return laminas.length + 1;
+}
+
+function armarCaption(){
+  const partes = [String(placa.descripcion || '').trim()];
+  const tags = String(placa.hashtags || '').trim();
+  if(tags) partes.push(tags);
+  return partes.filter(Boolean).join('\n\n');
+}
+
 async function exportarPng(lado){
   const lienzo = document.createElement('canvas');
   lienzo.width = lienzo.height = lado;
   dibujar(lienzo.getContext('2d'), placa, await imagenesDe(placa), lado);
-  const blob = await new Promise((r) => lienzo.toBlob(r, 'image/png'));
-  const nombre = (placa.nombre || 'placa').toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'placa';
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${nombre}-${lado}px.png`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  bajar(await new Promise((r) => lienzo.toBlob(r, 'image/png')), `${baseNombre()}-${lado}px.png`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -262,6 +298,35 @@ async function pintarFotos(){
   marcarSeleccion();
 }
 
+async function pintarLaminas(){
+  const laminas = placa.laminas || [];
+  $('#laminas').innerHTML = laminas.map((lam, i) => `
+    <div class="foto" data-lamina="${i}">
+      <img alt="">
+      <div class="cuerpo">
+        <b>Foto ${i + 2} del carrusel</b>
+        <button type="button" class="archivo"
+                onclick="this.parentNode.querySelector('input').click()">Cambiar…</button>
+        <button type="button" class="archivo" data-quitar="${i}">Quitar</button>
+        <input type="file" accept="image/*" data-lamina-foto="${i}">
+        <div class="ajuste">${AJUSTES.map(([id, n, ayuda]) =>
+          `<button data-lamina-ajuste="${i}:${id}" title="${ayuda}">${n}</button>`).join('')}</div>
+      </div>
+    </div>`).join('') || '<p class="nota">Solo la placa. Agregá fotos para armar un carrusel.</p>';
+
+  for(let i = 0; i < laminas.length; i++){
+    const img = await cargarImagen(laminas[i].foto);
+    const destino = document.querySelector(`[data-lamina="${i}"] img`);
+    if(img && destino) destino.src = img.src;
+  }
+  $('#agregar_lamina').disabled = laminas.length >= MAX_LAMINAS;
+  $('#cuantas').textContent = laminas.length + 1;
+  document.querySelectorAll('[data-lamina-ajuste]').forEach((b) => {
+    const [i, valor] = b.dataset.laminaAjuste.split(':');
+    b.classList.toggle('activo', (laminas[i].ajuste || 'completa') === valor);
+  });
+}
+
 function marcarSeleccion(){
   document.querySelectorAll('[data-diseno]').forEach((b) =>
     b.classList.toggle('activo', b.dataset.diseno === placa.diseno));
@@ -287,6 +352,7 @@ async function volcarControles(){
     if(v !== undefined && el.tagName !== 'DIV') el.value = v;
   });
   await pintarFotos();
+  await pintarLaminas();
   volcarEtiquetas();
 }
 
@@ -380,8 +446,60 @@ document.addEventListener('click', async (ev) => {
   }
 });
 
+$('#agregar_lamina').addEventListener('click', async () => {
+  placa.laminas = (placa.laminas || []).concat(
+    { foto: 'assets/marcador.jpg', ajuste: 'completa', x: 50, y: 50 });
+  cambio('laminas', placa.laminas);
+  await pintarLaminas();
+});
+
+document.addEventListener('click', async (ev) => {
+  const quitar = ev.target.closest('[data-quitar]');
+  if(quitar){
+    placa.laminas.splice(Number(quitar.dataset.quitar), 1);
+    cambio('laminas', placa.laminas);
+    return pintarLaminas();
+  }
+  const ajuste = ev.target.closest('[data-lamina-ajuste]');
+  if(ajuste){
+    const [i, valor] = ajuste.dataset.laminaAjuste.split(':');
+    placa.laminas[i].ajuste = valor;
+    cambio('laminas', placa.laminas);
+    return pintarLaminas();
+  }
+});
+
+$('#copiar').addEventListener('click', async () => {
+  const texto = armarCaption();
+  try{
+    await navigator.clipboard.writeText(texto);
+    estado('Descripción copiada' + (placa.colaboradores ? ' — los colaboradores se agregan en Instagram' : ''));
+  }catch(e){ estado('No se pudo copiar: ' + e.message, true); }
+});
+
+$('#bajar_carrusel').addEventListener('click', async (ev) => {
+  ev.target.disabled = true;
+  estado('Generando imágenes…');
+  try{
+    const n = await exportarCarrusel();
+    estado(`Listas ${n} imagen${n > 1 ? 'es' : ''} en JPEG 1080`);
+  }catch(e){ estado(e.message, true); }
+  ev.target.disabled = false;
+});
+
 document.addEventListener('change', async (ev) => {
   const el = ev.target;
+
+  if(el.dataset.laminaFoto !== undefined && el.files && el.files[0]){
+    const i = Number(el.dataset.laminaFoto);
+    const id = await guardarFoto(el.files[0]);
+    placa.laminas[i] = { foto: 'idb:' + id, ajuste: 'completa', x: 50, y: 50 };
+    cambio('laminas', placa.laminas);
+    await pintarLaminas();
+    el.value = '';
+    return estado('Foto del carrusel actualizada');
+  }
+
   if(!el.dataset.foto || !el.files || !el.files[0]) return;
   const archivo = el.files[0];
   estado('Guardando ' + archivo.name + '…');

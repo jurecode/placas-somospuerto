@@ -240,13 +240,50 @@
   </fieldset>
 
   <fieldset>
+    <legend>Carrusel</legend>
+    <div id="laminas"></div>
+    <div class="campo fila" style="margin-top:12px">
+      <button id="agregar_lamina">Agregar foto</button>
+      <span class="nota" style="margin:0"><b id="cuantas">1</b> de 10 en el carrusel</span>
+    </div>
+    <p class="nota">Cada foto extra sale con la misma moldura y el logo, para que el carrusel se vea parejo.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Texto para Instagram</legend>
+    <div class="campo">
+      <label for="descripcion">Descripción</label>
+      <textarea id="descripcion" data-campo="descripcion" style="min-height:90px"
+                placeholder="El texto que va debajo de la publicación"></textarea>
+    </div>
+    <div class="campo">
+      <label for="hashtags">Hashtags</label>
+      <input type="text" id="hashtags" data-campo="hashtags" placeholder="#valparaiso #farandula">
+    </div>
+    <div class="campo">
+      <label for="colaboradores">Colaboradores</label>
+      <input type="text" id="colaboradores" data-campo="colaboradores" placeholder="@cuenta1, @cuenta2">
+    </div>
+    <button id="copiar">Copiar descripción + hashtags</button>
+    <p class="nota">
+      Los colaboradores se agregan en Instagram al publicar, en "Etiquetar personas →
+      Invitar colaborador". Acá quedan anotados para no olvidarlos.
+    </p>
+  </fieldset>
+
+  <fieldset>
     <legend>Exportar</legend>
     <div class="campo fila">
       <button class="principal" data-exportar="png" data-lado="1080">PNG 1080</button>
       <button class="principal" data-exportar="png" data-lado="3000">PNG 3000</button>
-      
     </div>
-    <p class="nota">Se descarga a tu carpeta de descargas.</p>
+    <div class="campo fila" style="margin-top:10px">
+      <button class="principal" id="bajar_carrusel">Bajar carrusel para Instagram</button>
+    </div>
+    <p class="nota">
+      El carrusel sale en JPEG 1080, que es lo que pide Instagram. Los PNG son
+      para archivo o para usar en otro lado.
+    </p>
   </fieldset>
 
   <fieldset>

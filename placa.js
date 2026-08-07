@@ -331,6 +331,39 @@ export function dibujar(ctx, datos, fotos, lado){
   }
 }
 
+/* Lámina suelta del carrusel: la misma moldura de la placa con una sola
+   foto y el logo, sin titular. Así las fotos extra se ven de la misma
+   familia que la primera en el feed. */
+export function dibujarLamina(ctx, datos, lamina, foto, logo, lado){
+  const u = lado / LIENZO;
+  const M = MEDIDAS.media;
+  const x = M.x * u, y = M.y * u, ancho = M.ancho * u, alto = M.alto * u;
+
+  ctx.clearRect(0, 0, lado, lado);
+  ctx.fillStyle = datos.color_fondo;
+  ctx.fillRect(0, 0, lado, lado);
+  ctx.letterSpacing = '0px';
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x, y, ancho, alto, M.radio * u);
+  ctx.clip();
+  ctx.fillStyle = '#0b0b0d';
+  ctx.fillRect(x, y, ancho, alto);
+  dibujarFoto(ctx, foto, x, y, ancho, alto,
+    lamina.ajuste || 'completa', lamina.x ?? 50, lamina.y ?? 50, u);
+  ctx.fillStyle = degradado(ctx, datos, x, y, ancho, alto);
+  ctx.fillRect(x, y, ancho, alto);
+  ctx.restore();
+
+  if(logo){
+    const L = MEDIDAS.logo;
+    const anchoLogo = L.ancho * u;
+    const altoLogo = anchoLogo * logo.height / logo.width;
+    ctx.drawImage(logo, (lado - anchoLogo) / 2, lado - (L.abajo * u) - altoLogo, anchoLogo, altoLogo);
+  }
+}
+
 /* Las fuentes tienen que estar cargadas antes de medir nada. */
 export async function esperarTipografias(){
   if(!document.fonts) return;
