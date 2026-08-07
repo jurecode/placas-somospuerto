@@ -132,6 +132,7 @@ const leerFoto = (id) => tx('fotos', 'readonly', (s) => s.get(id));
 
 let placa = null;
 let guardando = null;
+let vista = 0;   // 0 = la placa; 1..n = las fotos del carrusel
 const cacheImg = new Map();
 
 const $ = (sel) => document.querySelector(sel);
@@ -186,7 +187,17 @@ function repintar(){
   pendiente = setTimeout(async () => {
     try{
       const lienzo = $('#previa');
-      dibujar(lienzo.getContext('2d'), placa, await imagenesDe(placa), lienzo.width);
+      const ctx = lienzo.getContext('2d');
+      const laminas = placa.laminas || [];
+      if(vista > laminas.length) vista = 0;
+      if(vista === 0){
+        dibujar(ctx, placa, await imagenesDe(placa), lienzo.width);
+      }else{
+        const lam = laminas[vista - 1];
+        dibujarLamina(ctx, placa, lam, await cargarImagen(lam.foto),
+          await cargarImagen('assets/logo.png'), lienzo.width);
+      }
+      await pintarTira();
     }catch(e){
       estado('No se pudo dibujar: ' + e.message, true);
       console.error(e);
@@ -207,7 +218,33 @@ const baseNombre = () => (placa.nombre || 'placa').toLowerCase()
 
 /* Instagram solo acepta JPEG, así que el carrusel sale en ese formato y a
    1080, que es el tamaño con que muestra el feed. */
-async function exportarCarrusel(){
+/* Miniaturas de todas las láminas, en orden, como van a salir en el feed. */
+async function pintarTira(){
+  const laminas = placa.laminas || [];
+  const tira = $('#tira');
+  tira.hidden = !laminas.length;
+  $('#compartir').hidden = !navigator.canShare;
+  if(!laminas.length){ tira.innerHTML = ''; return; }
+
+  if(tira.children.length !== laminas.length + 1){
+    tira.innerHTML = Array.from({ length: laminas.length + 1 }, (_, i) =>
+      `<button data-vista="${i}" title="${i ? 'Foto ' + (i + 1) : 'La placa'}">
+         <canvas width="128" height="128"></canvas><i>${i + 1}</i>
+       </button>`).join('');
+  }
+  const logo = await cargarImagen('assets/logo.png');
+  const botones = [...tira.children];
+  botones.forEach((b, i) => b.classList.toggle('activa', i === vista));
+  const ctx0 = botones[0].querySelector('canvas').getContext('2d');
+  dibujar(ctx0, placa, await imagenesDe(placa), 128);
+  for(let i = 0; i < laminas.length; i++){
+    const ctx = botones[i + 1].querySelector('canvas').getContext('2d');
+    dibujarLamina(ctx, placa, laminas[i], await cargarImagen(laminas[i].foto), logo, 128);
+  }
+}
+
+/* Genera las láminas como archivos JPEG en memoria. */
+async function archivosDelCarrusel(){
   const laminas = placa.laminas || [];
   const lienzo = document.createElement('canvas');
   lienzo.width = lienzo.height = 1080;
@@ -215,15 +252,23 @@ async function exportarCarrusel(){
   const logo = await cargarImagen('assets/logo.png');
   const jpeg = () => new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.92));
 
+  const archivos = [];
   dibujar(ctx, placa, await imagenesDe(placa), 1080);
-  bajar(await jpeg(), `${baseNombre()}-1.jpg`);
-
+  archivos.push(new File([await jpeg()], `${baseNombre()}-1.jpg`, { type: 'image/jpeg' }));
   for(let i = 0; i < laminas.length; i++){
-    await new Promise((r) => setTimeout(r, 350));   // si van de golpe el navegador las bloquea
     dibujarLamina(ctx, placa, laminas[i], await cargarImagen(laminas[i].foto), logo, 1080);
-    bajar(await jpeg(), `${baseNombre()}-${i + 2}.jpg`);
+    archivos.push(new File([await jpeg()], `${baseNombre()}-${i + 2}.jpg`, { type: 'image/jpeg' }));
   }
-  return laminas.length + 1;
+  return archivos;
+}
+
+async function exportarCarrusel(){
+  const archivos = await archivosDelCarrusel();
+  for(const archivo of archivos){
+    bajar(archivo, archivo.name);
+    await new Promise((r) => setTimeout(r, 350));   // si van de golpe el navegador las bloquea
+  }
+  return archivos.length;
 }
 
 function armarCaption(){
@@ -467,6 +512,36 @@ document.addEventListener('click', async (ev) => {
     cambio('laminas', placa.laminas);
     return pintarLaminas();
   }
+});
+
+$('#tira').addEventListener('click', (ev) => {
+  const boton = ev.target.closest('[data-vista]');
+  if(!boton) return;
+  vista = Number(boton.dataset.vista);
+  repintar();
+});
+
+/* En el celular esto abre la hoja de compartir del sistema con las imágenes
+   ya listas: se elige Instagram y se pega el texto. Si el navegador no lo
+   soporta (escritorio, casi siempre), se bajan los archivos. */
+$('#compartir').addEventListener('click', async (ev) => {
+  ev.target.disabled = true;
+  estado('Preparando imágenes…');
+  try{
+    const archivos = await archivosDelCarrusel();
+    const texto = armarCaption();
+    if(navigator.canShare && navigator.canShare({ files: archivos })){
+      await navigator.share({ files: archivos, text: texto });
+      estado('Compartido');
+    }else{
+      for(const a of archivos){ bajar(a, a.name); await new Promise((r) => setTimeout(r, 350)); }
+      estado('Tu navegador no comparte archivos: se descargaron ' + archivos.length);
+    }
+  }catch(e){
+    if(e.name !== 'AbortError') estado(e.message, true);
+    else estado('');
+  }
+  ev.target.disabled = false;
 });
 
 $('#copiar').addEventListener('click', async () => {

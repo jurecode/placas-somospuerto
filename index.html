@@ -138,10 +138,37 @@
   .portada__seguir[hidden]{ display:none }
 
   /* ---------- vista previa ---------- */
-  .previa{ display:grid; place-items:center; padding:24px; overflow:auto }
-  .previa canvas{
-    width:min(100%, calc(100svh - 48px)); height:auto; aspect-ratio:1;
+  .previa{ display:grid; align-content:start; justify-items:center; gap:14px; padding:24px; overflow:auto }
+  #previa{
+    width:min(100%, calc(100svh - 140px)); height:auto; aspect-ratio:1;
     border-radius:10px; box-shadow:0 12px 40px #0008; background:#000;
+  }
+
+  /* tira con todas las láminas del carrusel, como se van a ver en el feed */
+  .tira{ display:flex; gap:8px; overflow-x:auto; max-width:100%; padding:2px }
+  .tira button{
+    position:relative; flex:none; padding:0; border-radius:8px; overflow:hidden;
+    line-height:0; border:2px solid transparent; background:none;
+  }
+  .tira button.activa{ border-color:var(--acento) }
+  .tira canvas{ width:64px; height:64px; display:block }
+  .tira i{
+    position:absolute; left:3px; top:2px; font-style:normal; font-size:10px;
+    font-weight:700; color:#fff; text-shadow:0 1px 3px #000;
+  }
+  .tira[hidden]{ display:none }
+
+  /* En el celular la vista previa se queda arriba fija y los controles
+     scrollean debajo, para no editar a ciegas. */
+  @media (max-width:900px){
+    body{ height:auto; min-height:100svh }
+    .previa{
+      order:-1; position:sticky; top:0; z-index:5;
+      background:var(--bg); border-bottom:1px solid var(--linea); padding:10px;
+    }
+    #previa{ width:min(100%, 44svh) }
+    .panel{ border-right:0; overflow:visible }
+    .panel > header{ top:0 }
   }
 </style>
 </head>
@@ -303,6 +330,8 @@
 
 <div class="previa">
   <canvas id="previa" width="1080" height="1080" aria-label="Vista previa"></canvas>
+  <div class="tira" id="tira" hidden></div>
+  <button class="principal" id="compartir" hidden>Compartir en Instagram</button>
 </div>
 
 <script type="module" src="editor.js"></script>
