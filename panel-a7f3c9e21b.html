@@ -58,6 +58,8 @@
     border-left:3px solid var(--acento); padding:10px 14px; background:#25181d;
     border-radius:0 8px 8px 0; font-size:13.5px; line-height:1.5;
   }
+  details summary{ cursor:pointer; font-size:13px; color:var(--suave) }
+  #version{ font-size:14px }
   #resultado{ margin-top:14px; font-size:14px; min-height:20px }
   #resultado.error{ color:var(--mal) }
   #resultado.bien{ color:var(--ok) }
@@ -105,6 +107,32 @@
     <ul id="variables">
       <li><span>Escribí la clave y tocá Revisar.</span></li>
     </ul>
+  </section>
+
+  <section>
+    <h2>Actualizaciones</h2>
+    <p id="version">Revisando…</p>
+    <div class="fila" style="margin-top:14px">
+      <button class="principal" id="actualizar" disabled>Actualizar el sitio</button>
+    </div>
+    <details style="margin-top:16px">
+      <summary>Token de GitHub</summary>
+      <div class="campo" style="margin-top:12px">
+        <input type="password" id="gh_token" placeholder="Token con permiso de lectura sobre el repo" autocomplete="off">
+      </div>
+      <button id="guardar_gh">Guardar token</button>
+      <p class="nota">
+        El repositorio es privado, así que para bajar la versión hace falta un
+        token. En GitHub → Settings → Developer settings → Fine-grained tokens,
+        con permiso <b>Contents: read</b> sobre <code>placas-somospuerto</code>
+        y nada más. Queda en la base, igual que el de Instagram.
+      </p>
+    </details>
+    <p class="nota">
+      Baja el zip de la última versión publicada y lo descomprime encima.
+      <b>Nunca toca <code>api/config.php</code></b>, así que tus credenciales
+      quedan donde están.
+    </p>
   </section>
 
   <section>
@@ -242,11 +270,63 @@ $('#guardar').addEventListener('click', async () => {
   }catch(e){ res.className = 'error'; res.textContent = e.message; }
 });
 
-$('#revisar').addEventListener('click', revisar);
+async function revisarVersion(){
+  const el = $('#version');
+  try{
+    const r = await fetch('api/actualizar.php', { headers: { 'x-clave': $('#clave').value.trim() } });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
+    const instalada = d.instalada || 'sin registrar';
+    el.textContent = d.hayNueva
+      ? `Instalada: ${instalada} · disponible: ${d.ultima}`
+      : `Al día en la versión ${d.ultima}`;
+    el.className = d.hayNueva ? 'fallo' : '';
+    $('#actualizar').disabled = !d.hayNueva;
+  }catch(e){
+    el.className = '';
+    el.textContent = e.message;
+    $('#actualizar').disabled = true;
+  }
+}
+
+$('#guardar_gh').addEventListener('click', async () => {
+  const el = $('#version');
+  el.textContent = 'Guardando el token…';
+  try{
+    const r = await fetch('api/actualizar.php', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clave: $('#clave').value.trim(), gh_token: $('#gh_token').value.trim() }),
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
+    $('#gh_token').value = '';
+    revisarVersion();
+  }catch(e){ el.textContent = e.message; }
+});
+
+$('#actualizar').addEventListener('click', async (ev) => {
+  if(!confirm('Se va a reemplazar el código del sitio con la última versión de GitHub. ¿Seguimos?')) return;
+  ev.target.disabled = true;
+  const el = $('#version');
+  el.textContent = 'Actualizando…';
+  try{
+    const r = await fetch('api/actualizar.php', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clave: $('#clave').value.trim(), actualizar: true }),
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
+    el.className = '';
+    el.textContent = `Listo: versión ${d.version}, ${d.archivos} archivos actualizados.`;
+    setTimeout(() => location.reload(), 1500);
+  }catch(e){ el.className = 'fallo'; el.textContent = e.message; ev.target.disabled = false; }
+});
+
+$('#revisar').addEventListener('click', () => { revisar(); revisarVersion(); });
 $('#clave').addEventListener('keydown', (e) => { if(e.key === 'Enter') revisar(); });
 
 const guardada = localStorage.getItem('clave_publicar');
-if(guardada){ $('#clave').value = guardada; revisar(); }
+if(guardada){ $('#clave').value = guardada; revisar(); revisarVersion(); }
 else revisar();   // sin clave igual informa qué falta, para poder arrancar
 </script>
 </body>

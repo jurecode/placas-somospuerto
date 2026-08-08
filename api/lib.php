@@ -149,6 +149,32 @@ function carpeta(string $nombre): array {
 /* Instagram                                                           */
 /* ------------------------------------------------------------------ */
 
+/* Petición HTTP cruda, con cabeceras propias. La usa la actualización
+   contra GitHub, que necesita User-Agent y token. */
+function pedir_http(string $url, array $cabeceras = [], ?string $guardarEn = null): array {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => $guardarEn === null,
+        CURLOPT_TIMEOUT        => 120,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTPHEADER     => array_merge(['User-Agent: placas-somospuerto'], $cabeceras),
+    ]);
+    $fh = null;
+    if ($guardarEn !== null) {
+        $fh = fopen($guardarEn, 'wb');
+        if ($fh === false) throw new RuntimeException('No se pudo escribir el archivo temporal');
+        curl_setopt($ch, CURLOPT_FILE, $fh);
+    }
+    $cuerpo = curl_exec($ch);
+    $codigo = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error  = curl_error($ch);
+    if ($fh) fclose($fh);
+    if ($cuerpo === false && $guardarEn === null) {
+        throw new RuntimeException('No se pudo conectar: ' . $error);
+    }
+    return ['codigo' => $codigo, 'cuerpo' => is_string($cuerpo) ? $cuerpo : ''];
+}
+
 function pedir(string $url, ?array $post = null): array {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
