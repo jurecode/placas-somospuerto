@@ -208,7 +208,8 @@ async function pintarTira(){
   const laminas = placa.laminas || [];
   const tira = $('#tira');
   tira.hidden = !laminas.length;
-  $('#compartir').hidden = !navigator.canShare;
+  const compartir = $('#compartir');
+  if(compartir) compartir.hidden = !navigator.canShare;
   if(!laminas.length){ tira.innerHTML = ''; return; }
 
   if(tira.children.length !== laminas.length + 1){

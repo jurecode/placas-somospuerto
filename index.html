@@ -184,6 +184,8 @@
     font-weight:700; color:#fff; text-shadow:0 1px 3px #000;
   }
   .tira[hidden]{ display:none }
+  .previa .grande{ font-size:15px; padding:12px 22px }
+  .pie-previa{ font-size:12px; color:var(--suave); margin-top:-6px }
 
   /* En el celular la vista previa se queda arriba fija y los controles
      scrollean debajo, para no editar a ciegas. */
@@ -249,8 +251,8 @@
     <legend>Fotos</legend>
     <div id="fotos"></div>
     <p class="nota">
-      Las fotos quedan guardadas en este navegador. Ojo: las de fábrica traen
-      el círculo blanco incrustado; al reemplazarlas eso desaparece.
+      Ojo: las fotos de fábrica traen el círculo blanco incrustado; al
+      reemplazarlas eso desaparece.
     </p>
   </fieldset>
 
@@ -313,12 +315,13 @@
       <button class="principal" data-exportar="png" data-lado="3000">PNG 3000</button>
     </div>
     <div class="campo fila" style="margin-top:10px">
-      <button class="principal" id="bajar_carrusel">Bajar carrusel</button>
-      <button class="principal" id="publicar">Publicar en Instagram</button>
+      <button id="bajar_carrusel">Bajar imágenes</button>
+      <button id="compartir" hidden>Compartir al teléfono</button>
     </div>
     <p class="nota">
-      El carrusel sale en JPEG 1080, que es lo que pide Instagram. Los PNG son
-      para archivo o para usar en otro lado.
+      Salidas manuales, por si querés subirlas vos: el carrusel sale en JPEG
+      1080 y los PNG son para archivo. Para publicar directo está el botón
+      naranjo al lado de la vista previa.
     </p>
   </fieldset>
 
@@ -330,7 +333,8 @@
     </div>
     <p class="nota">
       Al abrir el editor vuelve sola la última que estuviste editando.
-      Todo se guarda en este navegador, no en un servidor.
+      Las placas se guardan en la base, así que son las mismas desde
+      cualquier dispositivo.
     </p>
   </fieldset>
 
@@ -340,7 +344,8 @@
 <div class="previa">
   <canvas id="previa" width="1080" height="1080" aria-label="Vista previa"></canvas>
   <div class="tira" id="tira" hidden></div>
-  <button class="principal" id="compartir" hidden>Compartir en Instagram</button>
+  <button class="principal grande" id="publicar">Publicar en Instagram</button>
+  <p class="pie-previa">Publica de verdad, en la cuenta real.</p>
 </div>
 
 <script type="module" src="editor.js"></script>
