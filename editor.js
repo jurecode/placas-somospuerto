@@ -42,7 +42,7 @@ const FOTOS_POR_DISENO = {
 const BASE = {
   nombre: 'Placa nueva',
   titulo: 'Titular de\nla noticia',
-  etiqueta: '',
+  etiqueta: 'Noticia',
   formato: 'noticia',
   diseno: 'unica',
   foto_izq: 'assets/marcador.jpg', foto_izq_x: 50, foto_izq_y: 50, foto_izq_ajuste: 'completa',
@@ -556,6 +556,15 @@ $('#compartir').addEventListener('click', async (ev) => {
 });
 
 $('#publicar').addEventListener('click', async (ev) => {
+  // sin descripción no se publica: un post vacío no se puede editar después
+  // sin borrarlo y volver a subirlo
+  if(!String(placa.descripcion || '').trim()){
+    estado('Falta la descripción: es lo que va debajo de la publicación.', true);
+    const campo = $('#descripcion');
+    campo.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    campo.focus();
+    return;
+  }
   const laminas = (placa.laminas || []).length + 1;
   if(!confirm(`Se va a publicar en Instagram un carrusel de ${laminas} imagen${laminas > 1 ? 'es' : ''}. ¿Seguimos?`)) return;
   ev.target.disabled = true;

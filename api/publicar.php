@@ -38,6 +38,9 @@ if (count($items) > MAX_LAMINAS) {
 }
 
 $caption      = (string) ($entrada['caption'] ?? '');
+if (trim($caption) === '') {
+    responder(['error' => 'Falta la descripción de la publicación'], 400);
+}
 $colaboradores = (string) ($entrada['colaboradores'] ?? '');
 $etiquetados   = (string) ($entrada['etiquetados'] ?? '');
 

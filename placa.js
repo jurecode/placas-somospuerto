@@ -16,11 +16,12 @@ export const MEDIDAS = {
   pie:      { x: 414, margenDerecho: 318, abajo: 479, separacion: 83 },
   filete:   { ancho: 28, respiro: 11.5 },
   // cinta: forma y colores fijos, es la etiqueta oficial del medio
-  etiqueta: { fuente: 74, padY: 22, padX: 96, sesgo: 44, separacion: 38,
+  etiqueta: { fuente: 74, padY: 22, padX: 96, sesgo: 44, separacion: 96,
               fondo: '#ffffff', texto: '#111111' },
-  // el logo se escala por altura, no por ancho: así el aire entre el titular
-  // y el pie no cambia si el logo cambia de proporción
-  logo:     { alto: 280, abajo: 117 },
+  // El logo entra en una caja: manda la altura, para que el aire entre el
+  // titular y el pie no cambie si el logo cambia de proporción, pero se
+  // acota el ancho por si el lockup es muy apaisado.
+  logo:     { alto: 280, ancho: 1560, abajo: 117 },
   urgente:  { arriba: 790, margen: 180, bajada: 190, separacion: 166 },
 };
 
@@ -147,6 +148,14 @@ function dibujarFoto(ctx, medio, x, y, ancho, alto, ajuste, posX, posY, u){
     ctx.drawImage(medio, ...encajar(Math.max(ancho / anchoOrig, alto / altoOrig)));
   }
   ctx.restore();
+}
+
+/* El logo se escala por altura y, si el resultado se pasa de ancho, se
+   acota por ancho. Así entra cualquier proporción sin desbordar. */
+function medidaLogo(logo, u){
+  const L = MEDIDAS.logo;
+  const escala = Math.min(L.alto / logo.height, L.ancho / logo.width);
+  return [logo.width * escala * u, logo.height * escala * u];
 }
 
 /* ------------------------------------------------------------------ */
@@ -341,8 +350,7 @@ export function dibujar(ctx, datos, fotos, lado){
 
   if(fotos.logo){
     const L = MEDIDAS.logo;
-    const alto = L.alto * u;
-    const ancho = alto * fotos.logo.width / fotos.logo.height;
+    const [ancho, alto] = medidaLogo(fotos.logo, u);
     ctx.drawImage(fotos.logo, (lado - ancho) / 2, lado - (L.abajo * u) - alto, ancho, alto);
   }
 }
@@ -368,8 +376,7 @@ export function dibujarLamina(ctx, datos, lamina, foto, logo, lado){
 
   if(logo){
     const L = MEDIDAS.logo;
-    const altoLogo = L.alto * u;
-    const anchoLogo = altoLogo * logo.width / logo.height;
+    const [anchoLogo, altoLogo] = medidaLogo(logo, u);
     ctx.drawImage(logo, (lado - anchoLogo) / 2, lado - (L.abajo * u) - altoLogo, anchoLogo, altoLogo);
   }
 }
