@@ -466,3 +466,132 @@ export async function esperarTipografias(){
   ]);
   await document.fonts.ready;
 }
+
+/* ------------------------------------------------------------------ */
+/* reel: vertical 9:16, con el titular animado al entrar               */
+/* ------------------------------------------------------------------ */
+
+/* Medidas en el espacio de 1080 de ancho, que es el del reel. */
+export const REEL = {
+  ancho: 1080, alto: 1920,
+  margen: 70, filete: 12, sangria: 30,
+  titular: 66, interlinea: 1.2,
+  etiqueta: { fuente: 30, padY: 11, padX: 40, sesgo: 18, separacion: 44 },
+  logo: { alto: 108, ancho: 620, abajo: 92 },
+  degradado: 46,          // dónde arranca el fundido, en % del alto
+};
+
+const suave = (t) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
+
+/* Cada pieza entra por separado: la etiqueta primero, después las líneas
+   del titular una tras otra, y el logo al final. `avance` va de 0 a 1. */
+function entrada(avance, desde, dura){
+  return suave((avance - desde) / dura);
+}
+
+export function dibujarReel(ctx, datos, medio, logo, ancho, alto, avance = 1){
+  const u = ancho / REEL.ancho;
+  const R = REEL;
+
+  ctx.clearRect(0, 0, ancho, alto);
+  ctx.fillStyle = '#0b0b0d';
+  ctx.fillRect(0, 0, ancho, alto);
+  ctx.letterSpacing = '0px';
+
+  // el video llena el cuadro
+  dibujarFoto(ctx, medio, 0, 0, ancho, alto, 'cubrir', 50, 50, u);
+
+  // fundido al color del medio, para que el texto se lea
+  ctx.fillStyle = degradado(ctx, datos, 0, 0, ancho, alto, R.degradado);
+  ctx.fillRect(0, 0, ancho, alto);
+
+  const px = R.titular * u;
+  const interlinea = px * R.interlinea;
+  const inter = 0.008 * px;
+  const izquierda = (R.margen + R.filete + R.sangria) * u;
+  const maxAncho = ancho - izquierda - R.margen * u;
+  const lineas = repartir(ctx, datos.titulo, TIPOS.titular, px, inter, maxAncho);
+  const met = metricas(ctx, TIPOS.titular, px);
+
+  // el logo abajo, y encima el titular
+  let abajo = alto - R.logo.abajo * u;
+  if(logo){
+    const escala = Math.min(R.logo.alto / logo.height, R.logo.ancho / logo.width) * u;
+    const anchoL = logo.width * escala, altoL = logo.height * escala;
+    const e = entrada(avance, .55, .4);
+    ctx.save();
+    ctx.globalAlpha = e;
+    ctx.drawImage(logo, (ancho - anchoL) / 2, abajo - altoL + (1 - e) * 40 * u, anchoL, altoL);
+    ctx.restore();
+    abajo -= altoL + 54 * u;
+  }
+
+  const arribaTexto = abajo - lineas.length * interlinea;
+  const medioInterlineado = (interlinea - (met.ascenso + met.descenso)) / 2;
+  const colores = {
+    normal: '#fff',
+    fondo: datos.color_filete,
+    texto: textoSobre(datos.color_filete),
+  };
+  const caja = {
+    mayuscula: met.mayuscula,
+    padX: 16 * u, padY: 11 * u, aire: 20 * u, interExtra: 0.022 * px,
+  };
+
+  ctx.save();
+  ctx.textBaseline = 'alphabetic';
+  lineas.forEach((linea, i) => {
+    const e = entrada(avance, .14 + i * .09, .38);
+    if(e <= 0) return;
+    ctx.globalAlpha = e;
+    ctx.save();
+    ctx.translate(0, (1 - e) * 46 * u);
+    dibujarLinea(ctx, linea, izquierda,
+      arribaTexto + i * interlinea + medioInterlineado + met.ascenso,
+      caja, TIPOS.titular, px, inter, colores);
+    ctx.restore();
+  });
+  ctx.restore();
+
+  // el filete crece con las líneas que ya entraron
+  const visibles = lineas.filter((_, i) => entrada(avance, .14 + i * .09, .38) > 0).length;
+  if(visibles){
+    const respiro = 10 * u;
+    ctx.globalAlpha = Math.min(1, entrada(avance, .14, .38) + .2);
+    ctx.fillStyle = datos.color_filete;
+    ctx.fillRect(R.margen * u, arribaTexto - respiro,
+      R.filete * u, visibles * interlinea + respiro * 2);
+    ctx.globalAlpha = 1;
+  }
+
+  // la etiqueta, arriba del titular
+  const texto = String(datos.etiqueta || '').trim().toUpperCase();
+  if(texto){
+    const E = R.etiqueta;
+    const pxE = E.fuente * u;
+    const interE = 0.04 * pxE;
+    const metE = metricas(ctx, TIPOS.etiqueta, pxE);
+    const altoE = metE.mayuscula + E.padY * u * 2;
+    const anchoE = anchoDe(ctx, texto, TIPOS.etiqueta, pxE, interE) + E.padX * u * 2;
+    const xE = R.margen * u;
+    const e = entrada(avance, 0, .3);
+    const yE = arribaTexto - E.separacion * u - altoE + (1 - e) * 40 * u;
+
+    ctx.save();
+    ctx.globalAlpha = e;
+    ctx.beginPath();
+    ctx.moveTo(xE + E.sesgo * u, yE);
+    ctx.lineTo(xE + anchoE, yE);
+    ctx.lineTo(xE + anchoE - E.sesgo * u, yE + altoE);
+    ctx.lineTo(xE, yE + altoE);
+    ctx.closePath();
+    ctx.fillStyle = MEDIDAS.etiqueta.fondo;
+    ctx.fill();
+    ctx.fillStyle = MEDIDAS.etiqueta.texto;
+    ctx.font = fuente(TIPOS.etiqueta, pxE);
+    ctx.letterSpacing = `${interE}px`;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(texto, xE + E.padX * u, yE + E.padY * u + metE.mayuscula);
+    ctx.restore();
+  }
+}

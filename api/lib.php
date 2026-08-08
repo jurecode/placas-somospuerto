@@ -88,6 +88,20 @@ function crear_tablas(PDO $pdo): void {
         creada   DATETIME     NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+    /* Instagram no tiene programación en su API: publica al instante. Por
+       eso la cola vive acá y un cron la va vaciando cuando llega la hora. */
+    $pdo->exec("CREATE TABLE IF NOT EXISTS programadas (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        placa_id    INT          NULL,
+        nombre      VARCHAR(120) NOT NULL DEFAULT '',
+        publicar_en DATETIME     NOT NULL,
+        estado      VARCHAR(12)  NOT NULL DEFAULT 'pendiente',
+        carga       LONGTEXT     NOT NULL,
+        resultado   TEXT         NULL,
+        creada      DATETIME     NOT NULL,
+        INDEX (estado, publicar_en)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
     $pdo->exec("CREATE TABLE IF NOT EXISTS ajustes (
         clave  VARCHAR(60) PRIMARY KEY,
         valor  TEXT NOT NULL

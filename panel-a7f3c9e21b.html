@@ -110,6 +110,26 @@
   </section>
 
   <section>
+    <h2>Publicaciones programadas</h2>
+    <p class="nota" style="margin-top:0">
+      Instagram no sabe programar: publica en el momento. La cola vive en tu
+      servidor y hay que vaciarla cuando llega la hora. Al abrir el editor se
+      revisa sola, pero eso solo funciona si alguien lo abre.
+    </p>
+    <p class="nota">
+      Para que salga puntual aunque no haya nadie, creá un <b>Cron Job</b> en
+      SiteGround cada 5 minutos con esta orden:
+    </p>
+    <p class="aviso" style="font-family:ui-monospace,monospace; font-size:12px">
+      curl -s "<span id="url_cron">…</span>"
+    </p>
+    <p class="nota">
+      Lleva tu clave adentro, así que no la compartas. Si la cambiás, hay que
+      actualizar también el cron.
+    </p>
+  </section>
+
+  <section>
     <h2>Actualizaciones</h2>
     <p id="version">Revisando…</p>
     <div class="fila" style="margin-top:14px">
@@ -322,11 +342,18 @@ $('#actualizar').addEventListener('click', async (ev) => {
   }catch(e){ el.className = 'fallo'; el.textContent = e.message; ev.target.disabled = false; }
 });
 
-$('#revisar').addEventListener('click', () => { revisar(); revisarVersion(); });
+function pintarCron(){
+  const base = location.href.replace(/\/[^/]*$/, '');
+  $('#url_cron').textContent =
+    `${base}/api/programar.php?tarea=vaciar&clave=${encodeURIComponent($('#clave').value.trim() || 'TU_CLAVE')}`;
+}
+
+$('#revisar').addEventListener('click', () => { revisar(); revisarVersion(); pintarCron(); });
 $('#clave').addEventListener('keydown', (e) => { if(e.key === 'Enter') revisar(); });
 
 const guardada = localStorage.getItem('clave_publicar');
 if(guardada){ $('#clave').value = guardada; revisar(); revisarVersion(); }
+pintarCron();
 else revisar();   // sin clave igual informa qué falta, para poder arrancar
 </script>
 </body>
