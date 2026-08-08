@@ -41,6 +41,7 @@ if ($metodo === 'POST') {
             guardar_ajuste($c, trim((string) $cuerpo[$c]));
         }
     }
+    guardar_ajuste('ig_host', '');   // que se vuelva a detectar con el token nuevo
     responder(['ok' => true]);
 }
 
@@ -59,11 +60,14 @@ $variables = [
 ];
 $faltan = array_keys(array_filter($variables, static fn($ok) => !$ok));
 
-$cuenta = null; $tokenError = $bdError;
+$cuenta = null; $tokenError = $bdError; $host = null;
 if ($igUser !== '' && $igToken !== '') {
     try {
-        $cuenta = pedir(API_IG . '/' . $igUser
-            . '?fields=id,username,account_type&access_token=' . urlencode($igToken));
+        // se reprueban los dos hosts: si acaban de cambiar el token, el
+        // anotado puede ser el que ya no corresponde
+        $host = host_ig(true);
+        $cuenta = pedir($host . '/' . $igUser
+            . '?fields=id,username&access_token=' . urlencode($igToken));
     } catch (Throwable $e) { $tokenError = $e->getMessage(); }
 }
 
@@ -71,4 +75,5 @@ responder([
     'listo' => $cuenta !== null && !$faltan,
     'variables' => $variables, 'faltan' => $faltan,
     'cuenta' => $cuenta, 'tokenError' => $tokenError,
+    'host' => $host ? parse_url($host, PHP_URL_HOST) : null,
 ]);

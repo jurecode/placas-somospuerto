@@ -146,6 +146,22 @@
 <script>
 const $ = (s) => document.querySelector(s);
 
+/* Los errores de Meta son crípticos; se traduce lo que uno se encuentra. */
+function pistaToken(error){
+  const e = String(error).toLowerCase();
+  if(e.includes('decrypt') || e.includes('cannot parse')){
+    return ' — el token está cortado o es de otra app. Copialo entero de nuevo ' +
+           'desde Meta; suelen tener más de 150 caracteres.';
+  }
+  if(e.includes('expired') || e.includes('session has expired')){
+    return ' — el token venció. Generá uno nuevo en Meta y pegalo acá.';
+  }
+  if(e.includes('does not exist') || e.includes('nonexisting field')){
+    return ' — revisá que el id de la cuenta sea el correcto.';
+  }
+  return '';
+}
+
 function pintar(datos){
   const nombres = {
     IG_USER_ID: 'Id de la cuenta de Instagram',
@@ -166,7 +182,11 @@ function pintar(datos){
       <span>cuenta ${String(datos.cuenta.account_type || '').toLowerCase()} — el token funciona</span></li>`);
   }else if(datos.tokenError){
     filas.push(`<li><span class="marca no">✕</span><b>Token</b>
-      <span>${datos.tokenError}</span></li>`);
+      <span>${datos.tokenError}${pistaToken(datos.tokenError)}</span></li>`);
+  }
+  if(datos.cuenta && datos.host){
+    filas.push(`<li><span class="marca si">✓</span><b>${datos.host}</b>
+      <span>puerta de Meta que acepta este token</span></li>`);
   }
   $('#variables').innerHTML = filas.join('');
 }

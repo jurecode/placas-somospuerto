@@ -14,7 +14,17 @@ declare(strict_types=1);
 @ini_set('display_errors', '0');
 error_reporting(E_ALL);
 
-const API_IG = 'https://graph.instagram.com/v25.0';
+/* Meta tiene dos puertas y cada token sirve solo en la que lo emitió:
+   graph.instagram.com para las apps con Instagram Login, graph.facebook.com
+   para las que van con Facebook Login. Mandar el token a la puerta
+   equivocada devuelve "Failed to decrypt", que no dice nada útil. Como no
+   hay forma de saberlo mirando el token, se prueban las dos y se recuerda
+   cuál anduvo. */
+const HOSTS_IG = [
+    'https://graph.instagram.com/v25.0',
+    'https://graph.facebook.com',   // sin versión: Meta usa la que corresponda
+];
+const API_IG = 'https://graph.instagram.com/v25.0';   // sólo por compatibilidad
 
 function cargar_config(): void {
     $ruta = __DIR__ . '/config.php';
@@ -165,17 +175,41 @@ function pedir(string $url, ?array $post = null): array {
     return $datos;
 }
 
+/* Devuelve el host que funciona con el token guardado, probándolos si hace
+   falta. La respuesta queda anotada para no probar en cada llamada. */
+function host_ig(bool $reprobar = false): string {
+    $guardado = ajuste('ig_host');
+    if ($guardado !== '' && !$reprobar) return $guardado;
+
+    $id    = ajuste('ig_user_id');
+    $token = ajuste('ig_access_token');
+    if ($id === '' || $token === '') throw new RuntimeException('Falta la cuenta de Instagram');
+
+    $ultimo = null;
+    foreach (HOSTS_IG as $host) {
+        try {
+            pedir($host . '/' . $id . '?fields=id,username&access_token=' . urlencode($token));
+            guardar_ajuste('ig_host', $host);
+            return $host;
+        } catch (RuntimeException $e) {
+            $ultimo = $e;
+        }
+    }
+    throw new RuntimeException($ultimo ? $ultimo->getMessage() : 'El token no funciona');
+}
+
 function graph(string $ruta, array $cuerpo): array {
     $cuerpo['access_token'] = ajuste('ig_access_token');
-    return pedir(API_IG . '/' . $ruta, $cuerpo);
+    return pedir(host_ig() . '/' . $ruta, $cuerpo);
 }
 
 /* Instagram descarga la imagen en segundo plano: hay que esperar a que el
    contenedor quede FINISHED antes de publicarlo. */
 function esperar_contenedor(string $id, int $intentos = 20): void {
     $token = ajuste('ig_access_token');
+    $host  = host_ig();
     for ($i = 0; $i < $intentos; $i++) {
-        $d = pedir(API_IG . '/' . $id . '?fields=status_code&access_token=' . urlencode($token));
+        $d = pedir($host . '/' . $id . '?fields=status_code&access_token=' . urlencode($token));
         $estado = $d['status_code'] ?? '';
         if ($estado === 'FINISHED') return;
         if ($estado === 'ERROR' || $estado === 'EXPIRED') {
