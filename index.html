@@ -161,6 +161,12 @@
   }
   .trabajando__pista{ font-size:13px; color:var(--suave); line-height:1.5 }
   .trabajando__pista:empty{ display:none }
+  /* nunca dejar la pantalla trabada sin salida */
+  .trabajando__cortar{
+    background:none; border:0; color:var(--suave); font-size:13px;
+    text-decoration:underline; padding:4px 8px;
+  }
+  .trabajando__cortar:hover{ background:none; color:var(--texto) }
 
   /* ---------- portada: qué vas a publicar ---------- */
   .portada{
@@ -302,6 +308,10 @@
   .descarga:hover{ background:#22242a; color:var(--texto) }
   .descarga svg{ width:15px; height:15px; flex:none }
 
+  /* solo tienen sentido en el teléfono, donde la vista previa compite por la
+     pantalla con el teclado */
+  .encoger, .mostrar_vista{ display:none }
+
   /* En el celular la vista previa se queda arriba fija y los controles
      scrollean debajo, para no editar a ciegas. */
   @media (max-width:900px){
@@ -315,6 +325,28 @@
     /* el reel es angosto: con la misma altura se veía diminuto */
     body[data-formato="reel"] #previa,
     body[data-formato="reel"] #previa_video{ max-height:46svh }
+
+    /* Escribiendo, la vista previa se hace chica y se va todo lo que no sea
+       mirar el titular. Con el teclado abierto y la vista entera no quedaba
+       lugar para el campo que se estaba editando: no se podía escribir. */
+    .encoger{
+      display:inline-flex; align-items:center; gap:6px; align-self:flex-end;
+      background:transparent; border:1px solid var(--linea); color:var(--suave);
+      font-size:12px; padding:4px 10px; border-radius:8px; min-height:30px;
+    }
+    body.escribiendo .previa{ padding:6px 10px }
+    body.escribiendo #previa, body.escribiendo #previa_video{ max-height:13svh }
+    body.escribiendo[data-formato="reel"] #previa,
+    body.escribiendo[data-formato="reel"] #previa_video{ max-height:16svh }
+    body.escribiendo .carrusel-vista,
+    body.escribiendo .publicar,
+    body.escribiendo .pie-previa,
+    body.escribiendo .programar,
+    body.escribiendo #estado{ display:none }
+
+    /* y si además la esconde a mano, no queda nada arriba */
+    body.sin_vista .previa{ display:none }
+    body.sin_vista .mostrar_vista{ display:inline-flex }
     .panel{ border-right:0; overflow:visible; padding-bottom:env(safe-area-inset-bottom) }
     .panel > header{ top:0 }
 
@@ -362,6 +394,7 @@
       <h1>Editor de placas <small id="cual">Somos Puerto</small></h1>
       <button id="nueva" title="Crear una placa nueva">Nueva</button>
       <button id="duplicar" title="Duplicar la placa actual">Duplicar</button>
+      <button class="mostrar_vista" id="mostrar_vista" type="button">Ver la placa</button>
     </div>
   </header>
 
@@ -501,6 +534,7 @@
     <p class="trabajando__pct" id="trabajando_pct" hidden></p>
     <div class="trabajando__riel"><i id="trabajando_barra"></i></div>
     <p class="trabajando__pista" id="trabajando_pista"></p>
+    <button class="trabajando__cortar" id="cortar_trabajo" type="button">Cancelar</button>
   </div>
 </div>
 
@@ -514,6 +548,7 @@
            aria-label="Vista previa del reel" hidden></video>
     <canvas id="previa" width="1080" height="1080" aria-label="Vista previa"></canvas>
   </div>
+  <button class="encoger" id="encoger" type="button">Ocultar la vista</button>
   <div class="carrusel-vista">
     <p id="rotulo_tira"></p>
     <div class="tira" id="tira"></div>

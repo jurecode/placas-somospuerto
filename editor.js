@@ -164,6 +164,38 @@ const esc = (s) => String(s).replace(/[&<>"]/g,
   location.replace(location.pathname + '?v=' + Date.now());
 })();
 
+/* ------------------------------------------------------------------ */
+/* la vista previa en el teléfono                                      */
+/* ------------------------------------------------------------------ */
+
+/* Con el teclado abierto, la vista previa entera no dejaba lugar para el
+   campo que se estaba escribiendo. Mientras se escribe se achica y se guarda
+   lo que no sirve en ese momento; al terminar, vuelve. */
+const esCampo = (el) => el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+
+document.addEventListener('focusin', (ev) => {
+  if(!esCampo(ev.target)) return;
+  document.body.classList.add('escribiendo');
+  // ya achicada la vista, el campo puede haber quedado debajo del teclado
+  setTimeout(() => ev.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);
+});
+
+document.addEventListener('focusout', (ev) => {
+  if(!esCampo(ev.target)) return;
+  // si el foco salta de un campo a otro, no vale la pena agrandar y achicar
+  setTimeout(() => {
+    if(!esCampo(document.activeElement)) document.body.classList.remove('escribiendo');
+  }, 120);
+});
+
+function verVista(mostrar){
+  document.body.classList.toggle('sin_vista', !mostrar);
+  localStorage.setItem('sin_vista', mostrar ? '' : '1');
+}
+$('#encoger')?.addEventListener('click', () => verVista(false));
+$('#mostrar_vista')?.addEventListener('click', () => verVista(true));
+if(localStorage.getItem('sin_vista')) verVista(false);
+
 function estado(texto, esError){
   const el = $('#estado');
   if(!el) return;
@@ -175,12 +207,22 @@ function estado(texto, esError){
    lleva lo que dura el video y con el aviso chico de abajo parecía colgado.
    `avance` es 0..1 cuando se puede medir; sin número la barra va y viene.
    Se cierra con cerrarTrabajo(), siempre desde un finally. */
+/* Procesar un video puede tardar minutos y el aviso tapa la pantalla. Sin
+   una salida, cualquier atasco dejaba el editor trabado hasta recargar. */
+let pedidoCortar = false;
+const cortaron = () => pedidoCortar;
+$('#cortar_trabajo')?.addEventListener('click', () => {
+  pedidoCortar = true;
+  trabajo('Cortando…', null, 'Termina en unos segundos.');
+});
+
 function trabajo(texto, avance, pista){
   const caja = $('#trabajando');
   // si el HTML es viejo no hay dónde mostrarlo: se avisa abajo y se sigue
   if(!caja){
     return estado(texto + (typeof avance === 'number' ? ` ${Math.round(avance * 100)}%` : '…'));
   }
+  if(caja.hidden) pedidoCortar = false;   // arranca un trabajo nuevo
   caja.hidden = false;
   $('#trabajando_que').textContent = texto;
   const medible = typeof avance === 'number' && isFinite(avance);
@@ -719,6 +761,8 @@ $('#publicar').addEventListener('click', async (ev) => {
   const laminas = (placa.laminas || []).length + 1;
   if(!confirm(`Se va a publicar en Instagram un carrusel de ${laminas} imagen${laminas > 1 ? 'es' : ''}. ¿Seguimos?`)) return;
   ev.target.disabled = true;
+  // publicar puede llevar minutos; si la pantalla se apaga, se corta todo
+  const despierto = await mantenerDespierto();
   try{
     if(placa.formato === 'reel' && !placa.video){
       estado('Falta el video del reel.', true);
@@ -753,7 +797,7 @@ $('#publicar').addEventListener('click', async (ev) => {
     estado('Publicado' + (datos.aviso ? ' — ' + datos.aviso : ''));
     if(datos.enlace) window.open(datos.enlace, '_blank');
   }catch(e){ estado(e.message, true); }
-  finally{ cerrarTrabajo(); }
+  finally{ cerrarTrabajo(); despierto?.release().catch(() => {}); }
   ev.target.disabled = false;
 });
 
@@ -809,6 +853,7 @@ $('#programar').addEventListener('click', async (ev) => {
     return estado('Falta la descripción: es lo que va debajo de la publicación.', true);
   }
   ev.target.disabled = true;
+  const despierto = await mantenerDespierto();
   try{
     const carga = await cargaParaProgramar();
     trabajo('Anotando en la cola', null);
@@ -827,7 +872,7 @@ $('#programar').addEventListener('click', async (ev) => {
     estado('Programado');
     await pintarCola();
   }catch(e){ estado(e.message, true); }
-  finally{ cerrarTrabajo(); }
+  finally{ cerrarTrabajo(); despierto?.release().catch(() => {}); }
   ev.target.disabled = false;
 });
 
@@ -912,14 +957,61 @@ document.addEventListener('change', async (ev) => {
 const TIPO_MP4 = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
 const DURACION_MAX = 60;   // lo que acepta Instagram en un carrusel
 
+/* Safari nombra el códec distinto según la versión, y con el nombre largo
+   contesta que no puede. Se prueban de más preciso a más general; todos son
+   MP4 con H.264, que es lo único que Instagram acepta. */
+function tipoDeSalida(){
+  const opciones = [TIPO_MP4, 'video/mp4;codecs=avc1,mp4a', 'video/mp4;codecs=avc1', 'video/mp4'];
+  return opciones.find((t) => MediaRecorder.isTypeSupported(t)) || null;
+}
+
+/* El teléfono apaga la pantalla solo y con eso frena el video, los temporizadores
+   y la grabación: la publicación quedaba colgada sin terminar nunca. */
+async function mantenerDespierto(){
+  try{ return await navigator.wakeLock.request('screen'); }
+  catch(e){ return null; }   // no todos los navegadores lo tienen
+}
+
+/* En el teléfono la grabación cuesta bastante más: menos bits por segundo
+   evita que se atore, y la diferencia no se nota en un video de Instagram. */
+const tasaDeVideo = () => (innerWidth < 900 ? 5_000_000 : 8_000_000);
+
+/* Reproduce hasta el final, pero no espera para siempre. Si el video deja de
+   avanzar —pestaña dormida, memoria, un archivo cortado— corta con un motivo
+   en vez de dejar el botón girando. */
+function reproducirHastaElFinal(video){
+  return new Promise((listo, falla) => {
+    let posicion = -1, quieto = 0;
+    const reloj = setInterval(() => {
+      if(cortaron()){ cerrar(); video.pause(); return falla(new Error('Cancelado')); }
+      if(video.currentTime !== posicion){ posicion = video.currentTime; quieto = 0; return; }
+      quieto += 0.5;
+      if(quieto >= 24){
+        cerrar();
+        falla(new Error('El video dejó de avanzar. Suele pasar si la pantalla se apaga '
+          + 'o si se cambia de aplicación mientras se procesa: dejá esta pantalla a la vista.'));
+      }
+    }, 500);
+    const cerrar = () => { clearInterval(reloj); video.onended = null; video.onerror = null; };
+    video.onended = () => { cerrar(); listo(); };
+    video.onerror = () => { cerrar(); falla(new Error('El video se cortó a mitad de camino')); };
+    video.play().catch((e) => {
+      cerrar();
+      falla(new Error('El navegador no dejó reproducir el video: ' + e.message));
+    });
+  });
+}
+
 /* Se reproduce el video, se dibuja cada cuadro dentro de la moldura junto
    con el logo, y se graba la salida. La grabación es en tiempo real: un
    video de 30 segundos tarda 30 segundos. No hay forma de acelerarlo con
    MediaRecorder, y a cambio el resultado sale en MP4/H.264, que es el
    único formato que Instagram acepta. */
 async function quemarVideo(archivo, lamina, avisar){
-  if(!MediaRecorder.isTypeSupported(TIPO_MP4)){
-    throw new Error('Este navegador no puede generar MP4. Probá con Chrome o Safari.');
+  const tipo = tipoDeSalida();
+  if(!tipo){
+    throw new Error('Este navegador no puede generar MP4, que es lo único que acepta '
+      + 'Instagram. Probá con Chrome, o con Safari actualizado.');
   }
 
   const video = document.createElement('video');
@@ -945,6 +1037,8 @@ async function quemarVideo(archivo, lamina, avisar){
   let audio = null;
   try{
     audio = new AudioContext();
+    // iOS lo entrega dormido: sin esto la salida queda muda
+    if(audio.state === 'suspended') await audio.resume();
     const fuente = audio.createMediaElementSource(video);
     const destino = audio.createMediaStreamDestination();
     fuente.connect(destino);
@@ -952,10 +1046,12 @@ async function quemarVideo(archivo, lamina, avisar){
   }catch(e){ /* si el video no trae audio, sigue sin él */ }
 
   const grabador = new MediaRecorder(flujo, {
-    mimeType: TIPO_MP4, videoBitsPerSecond: 6_000_000,
+    mimeType: tipo, videoBitsPerSecond: tasaDeVideo(),
   });
   const trozos = [];
   grabador.ondataavailable = (e) => { if(e.data.size) trozos.push(e.data); };
+  let falloGrabador = null;
+  grabador.onerror = (e) => { falloGrabador = e.error || new Error('falló la grabación'); };
 
   let dibujando = true;
   const pintar = () => {
@@ -976,14 +1072,20 @@ async function quemarVideo(archivo, lamina, avisar){
   dibujarLamina(ctx, placa, lamina, video, logo, 1080);
 
   const listo = new Promise((r) => { grabador.onstop = r; });
-  grabador.start();
-  pintar();
-  await video.play();
-  await new Promise((r) => { video.onended = r; });
-  dibujando = false;
-  grabador.stop();
+  const despierto = await mantenerDespierto();
+  try{
+    grabador.start();
+    pintar();
+    await reproducirHastaElFinal(video);
+  }finally{
+    dibujando = false;
+    if(grabador.state !== 'inactive') grabador.stop();
+    despierto?.release().catch(() => {});
+  }
   await listo;
   audio?.close();
+  if(falloGrabador) throw falloGrabador;
+  if(!trozos.length) throw new Error('La grabación salió vacía. Probá con un video más corto.');
 
   // una imagen del primer cuadro, para la vista previa y las miniaturas
   video.currentTime = 0;
@@ -1000,8 +1102,10 @@ const ANIMACION = 1.2;   // segundos que tarda en entrar el titular
 /* Igual que quemarVideo pero vertical y con el titular animado. La
    animación ocupa el primer segundo y pico; después queda fijo. */
 async function quemarReel(fuente, avisar){
-  if(!MediaRecorder.isTypeSupported(TIPO_MP4)){
-    throw new Error('Este navegador no puede generar MP4. Probá con Chrome o Safari.');
+  const tipo = tipoDeSalida();
+  if(!tipo){
+    throw new Error('Este navegador no puede generar MP4, que es lo único que acepta '
+      + 'Instagram. Probá con Chrome, o con Safari actualizado.');
   }
   const video = document.createElement('video');
   // sirve tanto un archivo recién elegido como uno ya guardado en el servidor
@@ -1024,15 +1128,19 @@ async function quemarReel(fuente, avisar){
   let audio = null;
   try{
     audio = new AudioContext();
+    // iOS lo entrega dormido: sin esto la salida queda muda
+    if(audio.state === 'suspended') await audio.resume();
     const fuente = audio.createMediaElementSource(video);
     const destino = audio.createMediaStreamDestination();
     fuente.connect(destino);
     destino.stream.getAudioTracks().forEach((t) => flujo.addTrack(t));
   }catch(e){ /* si no trae audio, sigue sin él */ }
 
-  const grabador = new MediaRecorder(flujo, { mimeType: TIPO_MP4, videoBitsPerSecond: 8_000_000 });
+  const grabador = new MediaRecorder(flujo, { mimeType: tipo, videoBitsPerSecond: tasaDeVideo() });
   const trozos = [];
   grabador.ondataavailable = (e) => { if(e.data.size) trozos.push(e.data); };
+  let falloGrabador = null;
+  grabador.onerror = (e) => { falloGrabador = e.error || new Error('falló la grabación'); };
 
   let dibujando = true;
   const pintar = () => {
@@ -1057,14 +1165,20 @@ async function quemarReel(fuente, avisar){
   dibujarReel(ctx, placa, video, logo, REEL.ancho, REEL.alto, 0);
 
   const listo = new Promise((r) => { grabador.onstop = r; });
-  grabador.start();
-  pintar();
-  await video.play();
-  await new Promise((r) => { video.onended = r; });
-  dibujando = false;
-  grabador.stop();
+  const despierto = await mantenerDespierto();
+  try{
+    grabador.start();
+    pintar();
+    await reproducirHastaElFinal(video);
+  }finally{
+    dibujando = false;
+    if(grabador.state !== 'inactive') grabador.stop();
+    despierto?.release().catch(() => {});
+  }
   await listo;
   audio?.close();
+  if(falloGrabador) throw falloGrabador;
+  if(!trozos.length) throw new Error('La grabación salió vacía. Probá con un video más corto.');
 
   // portada: un cuadro con el titular ya entrado
   video.currentTime = Math.min(2, video.duration / 2);
