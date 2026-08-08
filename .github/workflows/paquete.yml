@@ -41,8 +41,11 @@ jobs:
         run: |
           sed -i "s|src=\"editor.js\"|src=\"editor.js?v=$V\"|" sitio/index.html
           sed -i "s|from './placa.js'|from './placa.js?v=$V'|g" sitio/editor.js
+          # y el logo y demás imágenes de assets/, que también quedaban viejas
+          sed -i "s|const VERSION = 'dev'|const VERSION = '$V'|" sitio/editor.js
           grep -q "editor.js?v=$V" sitio/index.html || { echo "no se firmó index.html"; exit 1; }
           grep -q "placa.js?v=$V"  sitio/editor.js  || { echo "no se firmó editor.js";  exit 1; }
+          grep -q "const VERSION = '$V'" sitio/editor.js || { echo "no se firmó VERSION"; exit 1; }
 
       - name: Comprimir
         run: cd sitio && zip -r ../placas-somospuerto.zip . && cd ..

@@ -16,7 +16,7 @@ declare(strict_types=1);
  * El bloque se reemplaza entero cuando cambia, por eso lleva número: la
  * primera versión no traía el DirectoryIndex y había que poder actualizarla.
  * Nada de lo que el .htaccess ya tenga se toca. */
-const MARCA_CACHE = '# --- placas: reglas del editor (v2) ---';
+const MARCA_CACHE = '# --- placas: reglas del editor (v3) ---';
 const FIN_CACHE   = '# --- fin placas ---';
 
 function asegurar_cache(string $raiz): string
@@ -38,9 +38,10 @@ function asegurar_cache(string $raiz): string
         . "  ExpiresByType text/javascript \"access plus 0 seconds\"\n"
         . "  ExpiresByType application/javascript \"access plus 0 seconds\"\n"
         . "  ExpiresByType text/css \"access plus 0 seconds\"\n"
+        . "  ExpiresByType image/png \"access plus 0 seconds\"\n"
         . "</IfModule>\n"
         . "<IfModule mod_headers.c>\n"
-        . "  <FilesMatch \"\\.(html|js|css)$\">\n"
+        . "  <FilesMatch \"\\.(html|js|css|png)$\">\n"
         . "    Header unset Expires\n"
         . "    Header set Cache-Control \"no-cache, must-revalidate\"\n"
         . "  </FilesMatch>\n"

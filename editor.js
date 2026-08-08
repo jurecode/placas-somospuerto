@@ -246,11 +246,20 @@ function cerrarTrabajo(){
   if(caja) caja.hidden = true;
 }
 
+/* El hosting sirve las imágenes con un año de caché y no hace caso al
+   .htaccess, así que un logo cambiado seguía viéndose viejo en el teléfono
+   por más que se actualizara el sitio. Se les cuelga el número de versión:
+   para el navegador es otra dirección y la pide de nuevo.
+   Las fotos subidas no lo llevan: cada una tiene su propio nombre y nunca
+   cambia de contenido. */
+const VERSION = 'dev';   // el paquete la reemplaza por el número de la versión
+const recurso = (ruta) => (String(ruta).startsWith('assets/') ? `${ruta}?v=${VERSION}` : ruta);
+
 /* Las fotos son rutas del propio sitio ("assets/…" o "fotos/…"). */
 async function cargarImagen(ref){
   if(!ref) return null;
   if(cacheImg.has(ref)) return cacheImg.get(ref);
-  const url = ref;
+  const url = recurso(ref);
   const img = await new Promise((listo) => {
     const i = new Image();
     i.onload = () => listo(i);
@@ -539,7 +548,7 @@ async function pintarFotos(){
     const fuente = fuenteDelReel();
     const miniatura = fuente
       ? `<video src="${esc(fuente)}#t=0.5" muted playsinline preload="metadata"></video>`
-      : '<img src="assets/marcador.jpg" alt="">';
+      : `<img src="${recurso('assets/marcador.jpg')}" alt="">`;
     $('#fotos').innerHTML = `
       <div class="foto" data-reel>
         ${miniatura}
