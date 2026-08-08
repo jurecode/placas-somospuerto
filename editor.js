@@ -223,19 +223,23 @@ function repintar(){
       }
       const ctx = lienzo.getContext('2d');
       // con el video ya subido se muestra el video mismo, que trae el titular
-      // animado; sin video, el lienzo con el titular ya entrado
+      // animado; sin video, el lienzo con el titular ya entrado.
+      // El reproductor puede faltar si el navegador se quedó con un index.html
+      // viejo en la caché: entonces se dibuja igual y no queda todo en negro.
       const reproductor = $('#previa_video');
-      const conVideo = esReel && !!placa.video;
+      const conVideo = esReel && !!placa.video && !!reproductor;
       lienzo.hidden = conVideo;
-      reproductor.hidden = !conVideo;
-      if(conVideo && !reproductor.src.endsWith(placa.video)){
-        reproductor.src = placa.video;
-        reproductor.play().catch(() => {});   // si el navegador no deja, quedan los controles
+      if(reproductor){
+        reproductor.hidden = !conVideo;
+        if(conVideo && !reproductor.src.endsWith(placa.video)){
+          reproductor.src = placa.video;
+          reproductor.play().catch(() => {});  // si el navegador no deja, quedan los controles
+        }
+        if(!conVideo && reproductor.src){ reproductor.pause(); reproductor.removeAttribute('src'); }
       }
-      if(!conVideo && reproductor.src){ reproductor.pause(); reproductor.removeAttribute('src'); }
       if(esReel){
         if(!conVideo){
-          dibujarReel(ctx, placa, null,
+          dibujarReel(ctx, placa, await cargarImagen(placa.portada),
             await cargarImagen('assets/logo.png'), REEL.ancho, REEL.alto, 1);
         }
         await pintarTira();

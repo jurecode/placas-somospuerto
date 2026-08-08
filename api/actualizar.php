@@ -18,6 +18,8 @@ const ARCHIVO_ZIP = 'placas-somospuerto.zip';
 // nunca se sobrescriben: son configuración o contenido, no código
 const INTOCABLES = ['api/config.php'];
 
+require_once __DIR__ . '/actualizar_cache.php';
+
 $metodo = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $cuerpo = null;
 if ($metodo === 'POST') {
@@ -122,8 +124,10 @@ try {
 
     if (!$escritos) throw new RuntimeException('No se pudo escribir ningún archivo. Revisá los permisos.');
 
+    $cache = asegurar_cache($raiz);
+
     guardar_ajuste('version_instalada', $v['tag']);
-    responder(['ok' => true, 'version' => $v['tag'],
+    responder(['ok' => true, 'version' => $v['tag'], 'cache' => $cache,
                'archivos' => count($escritos), 'omitidos' => $omitidos]);
 
 } catch (Throwable $e) {

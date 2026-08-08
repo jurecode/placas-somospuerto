@@ -31,6 +31,13 @@ if ($metodo === 'POST') {
 }
 exigir_clave($cuerpo);
 
+/* El bloque de caché del .htaccess se asegura acá y no solo al actualizar: la
+ * actualización corre con el código viejo todavía cargado, así que si esperara
+ * al próximo release el navegador seguiría sirviendo el editor viejo. Es
+ * idempotente: la segunda vez no hace nada. */
+require_once __DIR__ . '/actualizar_cache.php';
+asegurar_cache(dirname(__DIR__));
+
 $bdOk = true; $bdError = null;
 try { bd(); } catch (Throwable $e) { $bdOk = false; $bdError = $e->getMessage(); }
 
