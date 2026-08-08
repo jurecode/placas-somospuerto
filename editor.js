@@ -4,7 +4,7 @@
  * las placas y las fotos se guardan en MySQL a través de api/, así que son
  * las mismas desde cualquier dispositivo. */
 
-import { dibujar, dibujarLamina, dibujarReel, esperarTipografias, LIENZO, REEL } from './placa.js';
+import { dibujar, dibujarLamina, dibujarCierre, dibujarReel, esperarTipografias, LIENZO, REEL } from './placa.js';
 
 /* ------------------------------------------------------------------ */
 /* catálogos                                                           */
@@ -69,7 +69,13 @@ const BASE = {
   descripcion: '', hashtags: '', colaboradores: '', etiquetados: '',
 };
 
-const MAX_LAMINAS = 9;   // 9 + la placa = las 10 que permite Instagram
+const MAX_LAMINAS = 8;   // 8 + la placa + el cierre = las 10 que permite Instagram
+
+/* Todo post que no sea un reel termina con la lámina de cierre: el color de
+   la paleta y el arte de «síguenos y comparte». Va sola, no se agrega a mano,
+   y por eso ocupa uno de los diez lugares de Instagram. */
+const CIERRE = 'assets/cierre.png';
+const llevaCierre = () => placa.formato !== 'reel';
 
 const EJEMPLO = {
   ...BASE,
@@ -334,9 +340,13 @@ function repintar(){
         return;
       }
       const laminas = placa.laminas || [];
-      if(vista > laminas.length) vista = 0;
+      const conCierre = llevaCierre() && laminas.length + 2 <= 10;
+      const ultima = laminas.length + (conCierre ? 1 : 0);
+      if(vista > ultima) vista = 0;
       if(vista === 0){
         dibujar(ctx, placa, await imagenesDe(placa), lienzo.width);
+      }else if(conCierre && vista === ultima){
+        dibujarCierre(ctx, placa, await cargarImagen(CIERRE), lienzo.width);
       }else{
         const lam = laminas[vista - 1];
         dibujarLamina(ctx, placa, lam, await cargarImagen(lam.foto),
@@ -377,17 +387,25 @@ async function pintarTira(){
   const compartir = $('#compartir');
   if(compartir) compartir.hidden = !navigator.canShare;
 
+  // el cierre va siempre al final, y se muestra acá para que no sea una
+  // sorpresa al publicar: lo que se ve en la tira es lo que sale
+  const cierre = llevaCierre() && laminas.length + 2 <= 10;
+  const cuantas = laminas.length + 1 + (cierre ? 1 : 0);
+
   // Se muestra siempre, aunque haya una sola lámina: es la vista del post
   // completo, y escondiéndola no se entendía que el carrusel existe.
   $('#rotulo_tira').textContent = laminas.length
-    ? `El carrusel · ${laminas.length + 1} de 10`
-    : 'Una sola imagen · agregá fotos o videos para armar un carrusel';
+    ? `El carrusel · ${cuantas} de 10, con el cierre`
+    : 'La placa y el cierre · agregá fotos o videos para armar un carrusel';
 
-  if(tira.children.length !== laminas.length + 1){
-    tira.innerHTML = Array.from({ length: laminas.length + 1 }, (_, i) =>
-      `<button data-vista="${i}" title="${i ? 'Lámina ' + (i + 1) : 'La placa'}">
+  if(tira.children.length !== cuantas){
+    tira.innerHTML = Array.from({ length: cuantas }, (_, i) => {
+      const esCierre = cierre && i === cuantas - 1;
+      const titulo = esCierre ? 'El cierre' : (i ? 'Lámina ' + (i + 1) : 'La placa');
+      return `<button data-vista="${i}" title="${titulo}">
          <canvas width="160" height="160"></canvas><i>${i + 1}</i>
-       </button>`).join('');
+       </button>`;
+    }).join('');
   }
   const logo = await cargarImagen('assets/logo.png');
   const botones = [...tira.children];
@@ -398,6 +416,10 @@ async function pintarTira(){
     const ctx = botones[i + 1].querySelector('canvas').getContext('2d');
     dibujarLamina(ctx, placa, laminas[i], await cargarImagen(laminas[i].foto), logo, 160);
   }
+  if(cierre){
+    const ctx = botones[cuantas - 1].querySelector('canvas').getContext('2d');
+    dibujarCierre(ctx, placa, await cargarImagen(CIERRE), 160);
+  }
 }
 
 /* Genera las láminas como archivos JPEG en memoria. */
@@ -405,7 +427,10 @@ async function pintarTira(){
    videos ya están en el servidor desde que se subieron. */
 async function itemsParaPublicar(avisar){
   const laminas = placa.laminas || [];
-  const total = laminas.length + 1;
+  // el cierre entra si queda lugar: los diez de Instagram son un tope duro y
+  // vale más el contenido que la firma
+  const cierre = llevaCierre() && laminas.length + 2 <= 10;
+  const total = laminas.length + 1 + (cierre ? 1 : 0);
   const lienzo = document.createElement('canvas');
   lienzo.width = lienzo.height = 1080;
   const ctx = lienzo.getContext('2d');
@@ -429,6 +454,12 @@ async function itemsParaPublicar(avisar){
     }
     avisar?.(items.length / total);
   }
+
+  if(cierre){
+    dibujarCierre(ctx, placa, await cargarImagen(CIERRE), 1080);
+    items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
+    avisar?.(1);
+  }
   return items;
 }
 
@@ -446,6 +477,10 @@ async function archivosDelCarrusel(){
   for(let i = 0; i < laminas.length; i++){
     dibujarLamina(ctx, placa, laminas[i], await cargarImagen(laminas[i].foto), logo, 1080);
     archivos.push(new File([await jpeg()], `${baseNombre()}-${i + 2}.jpg`, { type: 'image/jpeg' }));
+  }
+  if(llevaCierre()){
+    dibujarCierre(ctx, placa, await cargarImagen(CIERRE), 1080);
+    archivos.push(new File([await jpeg()], `${baseNombre()}-cierre.jpg`, { type: 'image/jpeg' }));
   }
   return archivos;
 }
@@ -1359,7 +1394,7 @@ document.addEventListener('drop', async (ev) => {
       // en la zona del carrusel se agregan todas las que entren
       const lugar = MAX_LAMINAS - (placa.laminas || []).length;
       const entran = archivos.slice(0, lugar);
-      if(!entran.length) return estado(`El carrusel ya tiene las ${MAX_LAMINAS + 1} imágenes`, true);
+      if(!entran.length) return estado(`El carrusel ya está lleno: ${MAX_LAMINAS + 1} imágenes más el cierre`, true);
       for(const [i, archivo] of entran.entries()){
         // el video abre su propio aviso, con su porcentaje
         if(esVideo(archivo)){ await agregarVideo(archivo); continue; }

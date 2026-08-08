@@ -434,6 +434,17 @@ export function dibujar(ctx, datos, fotos, lado){
    abajo, para que el logo se lea sobre cualquier foto. */
 export const LAMINA_DEG_INICIO = 82;
 
+/* La lámina de cierre: el color de la paleta y encima el arte de siempre,
+   que ya viene con el logo, el «síguenos y comparte» y los iconos. El arte
+   es transparente y del mismo tamaño que el lienzo, así que va entero: no
+   hay nada que calcular ni que se pueda desalinear. */
+export function dibujarCierre(ctx, datos, arte, lado){
+  ctx.clearRect(0, 0, lado, lado);
+  ctx.fillStyle = datos.color_fondo || '#111111';
+  ctx.fillRect(0, 0, lado, lado);
+  if(arte) ctx.drawImage(arte, 0, 0, lado, lado);
+}
+
 export function dibujarLamina(ctx, datos, lamina, foto, logo, lado){
   const u = lado / LIENZO;
 
