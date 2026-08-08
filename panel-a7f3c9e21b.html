@@ -204,13 +204,18 @@ async function revisar(){
     }
     if(clave) localStorage.setItem('clave_publicar', clave);
     pintar(datos);
+    const faltan = datos.faltan || [];
+    res.className = datos.listo ? 'bien' : 'error';
     if(datos.listo){
-      res.className = 'bien';
       res.textContent = 'Todo listo: ya podés publicar desde el editor.';
+    }else if(datos.tokenError){
+      // lo que falla es el token, no la configuración: decir eso y no una
+      // lista vacía de cosas por configurar
+      res.textContent = 'El token no funciona: ' + datos.tokenError + pistaToken(datos.tokenError);
+    }else if(faltan.length){
+      res.textContent = 'Falta configurar: ' + faltan.join(', ');
     }else{
-      res.className = 'error';
-      res.textContent = datos.mensaje ||
-        ('Falta configurar: ' + (datos.faltan || []).join(', '));
+      res.textContent = datos.mensaje || 'Falta algo por configurar.';
     }
   }catch(e){
     res.className = 'error'; res.textContent = 'No se pudo consultar: ' + e.message;
