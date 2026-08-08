@@ -102,6 +102,14 @@
   .foto .encuadre{ display:grid; grid-template-columns:auto 1fr; gap:4px 8px; align-items:center; margin-top:8px }
   .foto .encuadre span{ font-size:11px; color:var(--suave) }
   input[type=file]{ display:none }
+
+  /* arrastrar y soltar */
+  .foto, [data-lamina], #zona_carrusel{
+    border-radius:10px; transition:outline-color .12s, background .12s;
+    outline:2px dashed transparent; outline-offset:4px;
+  }
+  .soltar{ outline-color:var(--acento); background:#2c201933 }
+  #zona_carrusel{ padding:2px }
   .archivo{ font-size:12px; padding:5px 10px }
 
   /* el formato urgente no tiene fotos ni degradado */
@@ -273,8 +281,9 @@
     <legend>Fotos</legend>
     <div id="fotos"></div>
     <p class="nota">
-      Ojo: las fotos de fábrica traen el círculo blanco incrustado; al
-      reemplazarlas eso desaparece.
+      Arrastrá una foto sobre el recuadro para cambiarla, o usá el botón.
+      Ojo: las de fábrica traen el círculo blanco incrustado; al reemplazarlas
+      eso desaparece.
     </p>
   </fieldset>
 
@@ -300,12 +309,17 @@
 
   <fieldset>
     <legend>Carrusel</legend>
-    <div id="laminas"></div>
+    <div id="zona_carrusel">
+      <div id="laminas"></div>
     <div class="campo fila" style="margin-top:12px">
       <button id="agregar_lamina">Agregar foto</button>
       <span class="nota" style="margin:0"><b id="cuantas">1</b> de 10 en el carrusel</span>
     </div>
-    <p class="nota">Cada foto extra sale con la misma moldura y el logo, para que el carrusel se vea parejo.</p>
+      <p class="nota">
+        Arrastrá fotos acá para agregarlas de a varias. Cada una sale con la
+        misma moldura y el logo, para que el carrusel se vea parejo.
+      </p>
+    </div>
   </fieldset>
 
   <fieldset>

@@ -574,33 +574,104 @@ $('#bajar_carrusel').addEventListener('click', async (ev) => {
   ev.target.disabled = false;
 });
 
+/* Una foto nueva parte entera y centrada: así no se corta aunque venga con
+   otra resolución. */
+async function reemplazarFoto(campo, archivo){
+  const { ruta } = await guardarFoto(archivo);
+  placa[campo + '_ajuste'] = 'completa';
+  placa[campo + '_x'] = 50;
+  placa[campo + '_y'] = 50;
+  cambio(campo, ruta);
+  await pintarFotos();
+}
+
+async function reemplazarLamina(i, archivo){
+  const { ruta } = await guardarFoto(archivo);
+  placa.laminas[i] = { foto: ruta, ajuste: 'completa', x: 50, y: 50 };
+  cambio('laminas', placa.laminas);
+  await pintarLaminas();
+}
+
 document.addEventListener('change', async (ev) => {
   const el = ev.target;
+  const archivo = el.files && el.files[0];
+  if(!archivo) return;
 
-  if(el.dataset.laminaFoto !== undefined && el.files && el.files[0]){
-    const i = Number(el.dataset.laminaFoto);
-    const { ruta } = await guardarFoto(el.files[0]);
-    placa.laminas[i] = { foto: ruta, ajuste: 'completa', x: 50, y: 50 };
-    cambio('laminas', placa.laminas);
-    await pintarLaminas();
-    el.value = '';
-    return estado('Foto del carrusel actualizada');
-  }
-
-  if(!el.dataset.foto || !el.files || !el.files[0]) return;
-  const archivo = el.files[0];
-  estado('Guardando ' + archivo.name + '…');
   try{
-    const { ruta } = await guardarFoto(archivo);
-    const campo = el.dataset.foto;
-    placa[campo + '_ajuste'] = 'completa';
-    placa[campo + '_x'] = 50;
-    placa[campo + '_y'] = 50;
-    cambio(campo, ruta);
-    await pintarFotos();
-    estado('Foto actualizada');
+    if(el.dataset.laminaFoto !== undefined){
+      await reemplazarLamina(Number(el.dataset.laminaFoto), archivo);
+      estado('Foto del carrusel actualizada');
+    }else if(el.dataset.foto){
+      estado('Guardando ' + archivo.name + '…');
+      await reemplazarFoto(el.dataset.foto, archivo);
+      estado('Foto actualizada');
+    }
   }catch(e){ estado(e.message, true); }
   el.value = '';
+});
+
+/* ------------------------------------------------------------------ */
+/* arrastrar y soltar fotos                                            */
+/* ------------------------------------------------------------------ */
+
+const imagenesDe_ = (dt) => [...(dt?.files || [])].filter((f) => f.type.startsWith('image/'));
+
+/* Dónde se puede soltar: cada hueco de foto, cada lámina, y la sección
+   del carrusel entera (ahí se sueltan varias de una vez). */
+function zonaDeSoltado(destino){
+  return destino.closest('.foto[data-campo]')
+      || destino.closest('[data-lamina]')
+      || destino.closest('#zona_carrusel');
+}
+
+let zonaActual = null;
+const marcar = (zona) => {
+  if(zonaActual === zona) return;
+  zonaActual?.classList.remove('soltar');
+  zonaActual = zona;
+  zonaActual?.classList.add('soltar');
+};
+
+// sin esto el navegador abre la imagen y se pierde lo que estabas haciendo
+document.addEventListener('dragover', (ev) => {
+  if(!ev.dataTransfer?.types.includes('Files')) return;
+  ev.preventDefault();
+  marcar(zonaDeSoltado(ev.target));
+});
+document.addEventListener('dragleave', (ev) => {
+  if(ev.relatedTarget === null) marcar(null);
+});
+document.addEventListener('drop', async (ev) => {
+  if(!ev.dataTransfer?.types.includes('Files')) return;
+  ev.preventDefault();
+  const zona = zonaDeSoltado(ev.target);
+  marcar(null);
+  const archivos = imagenesDe_(ev.dataTransfer);
+  if(!zona || !archivos.length || !placa) return;
+
+  try{
+    if(zona.dataset.campo){
+      await reemplazarFoto(zona.dataset.campo, archivos[0]);
+      estado('Foto actualizada');
+    }else if(zona.dataset.lamina !== undefined){
+      await reemplazarLamina(Number(zona.dataset.lamina), archivos[0]);
+      estado('Foto del carrusel actualizada');
+    }else{
+      // en la zona del carrusel se agregan todas las que entren
+      const lugar = MAX_LAMINAS - (placa.laminas || []).length;
+      const entran = archivos.slice(0, lugar);
+      if(!entran.length) return estado(`El carrusel ya tiene las ${MAX_LAMINAS + 1} imágenes`, true);
+      estado(`Subiendo ${entran.length} foto${entran.length > 1 ? 's' : ''}…`);
+      for(const archivo of entran){
+        const { ruta } = await guardarFoto(archivo);
+        placa.laminas = (placa.laminas || []).concat({ foto: ruta, ajuste: 'completa', x: 50, y: 50 });
+      }
+      cambio('laminas', placa.laminas);
+      await pintarLaminas();
+      estado(`${entran.length} foto${entran.length > 1 ? 's' : ''} al carrusel` +
+             (archivos.length > entran.length ? ` (${archivos.length - entran.length} no entraron)` : ''));
+    }
+  }catch(e){ estado(e.message, true); }
 });
 
 $('#selector').addEventListener('change', (ev) => cargar(Number(ev.target.value)));
