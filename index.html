@@ -92,7 +92,7 @@
 
   .foto{ display:flex; gap:12px; align-items:flex-start; margin-bottom:16px }
   .foto:last-child{ margin-bottom:0 }
-  .foto img{
+  .foto img, .foto video{
     width:72px; height:72px; object-fit:cover; border-radius:8px;
     background:#000; border:1px solid var(--linea); flex:none;
   }
@@ -227,10 +227,20 @@
   /* Se limita por los dos lados y no por el ancho: el lienzo cambia de forma
      según el formato (1:1 la placa, 9:16 el reel) y con una sola medida el
      reel se salía de la ventana. */
-  #previa, #previa_video{
+  #previa{
     width:auto; height:auto; max-width:100%; max-height:calc(100svh - 300px);
-    border-radius:10px; box-shadow:0 12px 40px #0008; background:#000;
+    border-radius:10px; background:#000; position:relative; z-index:1;
   }
+  /* El marco toma el tamaño del lienzo y el video se estira por debajo: en el
+     reel el lienzo es transparente y solo lleva el texto, que así se puede
+     redibujar mientras se escribe sin tocar el video. */
+  .marco{ position:relative; display:grid; min-width:0;
+          border-radius:10px; box-shadow:0 12px 40px #0008 }
+  #previa_video{
+    position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover; border-radius:10px; background:#000; z-index:0;
+  }
+  body[data-formato="reel"] #previa{ background:transparent }
   #previa[hidden], #previa_video[hidden]{ display:none }
 
   /* La tira muestra el post completo, en el orden en que va a salir. */
@@ -495,13 +505,15 @@
 </div>
 
 <div class="previa">
-  <canvas id="previa" width="1080" height="1080" aria-label="Vista previa"></canvas>
-  <!-- el reel ya sale del horno con todo quemado encima, así que se mira
-       tal cual va a salir publicado, moviéndose -->
-  <!-- muted porque si no el navegador no deja que arranque solo; los
-       controles quedan a la vista para subir el sonido -->
-  <video id="previa_video" width="1080" height="1920" playsinline loop controls
-         autoplay muted aria-label="Vista previa del reel" hidden></video>
+  <div class="marco">
+    <!-- el video crudo abajo y el texto dibujado encima, que es lo que
+         permite escribir y ver el titular cambiar sin volver a procesar.
+         Va en silencio: es la única forma de que el navegador lo deje
+         arrancar solo, y el sonido del reel publicado no se toca. -->
+    <video id="previa_video" playsinline loop autoplay muted
+           aria-label="Vista previa del reel" hidden></video>
+    <canvas id="previa" width="1080" height="1080" aria-label="Vista previa"></canvas>
+  </div>
   <div class="carrusel-vista">
     <p id="rotulo_tira"></p>
     <div class="tira" id="tira"></div>

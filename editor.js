@@ -226,12 +226,15 @@ async function imagenesDe(p){
 /* ------------------------------------------------------------------ */
 
 let pendiente = null;
+let bucleReel = null;   // redibuja la capa de texto mientras el reel se mueve
 
 /* Se juntan varios cambios seguidos en un solo dibujo. Con setTimeout y no
    con requestAnimationFrame a propósito: rAF no corre si la pestaña está
    en segundo plano y la vista previa quedaría congelada. */
 function repintar(){
   clearTimeout(pendiente);
+  clearInterval(bucleReel);   // si había una capa animándose, se rearma abajo
+  bucleReel = null;
   pendiente = setTimeout(async () => {
     try{
       const lienzo = $('#previa');
@@ -245,23 +248,42 @@ function repintar(){
         lienzo.style.aspectRatio = `${anchoQuiere} / ${altoQuiere}`;
       }
       const ctx = lienzo.getContext('2d');
-      // con el video ya subido se muestra el video mismo, que trae el titular
-      // animado; sin video, el lienzo con el titular ya entrado.
-      // El reproductor puede faltar si el navegador se quedó con un index.html
-      // viejo en la caché: entonces se dibuja igual y no queda todo en negro.
+      /* El video se guarda crudo y el texto se dibuja encima, así se ve
+         cambiar mientras se escribe. Las placas hechas antes traen el video
+         ya quemado (sin reel_crudo): esas se muestran tal cual, porque si
+         no el titular saldría dos veces.
+         El reproductor puede faltar si el navegador se quedó con un
+         index.html viejo en la caché: ahí se dibuja el lienzo y ya. */
       const reproductor = $('#previa_video');
       const conVideo = esReel && !!placa.video && !!reproductor;
-      lienzo.hidden = conVideo;
+      const crudo = conVideo && !!placa.reel_crudo;
+      // el lienzo nunca se esconde: es lo que le da tamaño al marco, y el
+      // video va estirado por debajo
       if(reproductor){
         reproductor.hidden = !conVideo;
         if(conVideo && !reproductor.src.endsWith(placa.video)){
           reproductor.src = placa.video;
-          reproductor.play().catch(() => {});  // si el navegador no deja, quedan los controles
+          reproductor.play().catch(() => {});
         }
         if(!conVideo && reproductor.src){ reproductor.pause(); reproductor.removeAttribute('src'); }
       }
       if(esReel){
-        if(!conVideo){
+        if(crudo){
+          const logo = await cargarImagen('assets/logo.png');
+          // solo se redibuja cuando el momento de la animación cambió: pasado
+          // el primer segundo la capa queda quieta y no gasta nada
+          let ultimo = -1;
+          const encima = () => {
+            const a = Math.min(1, (reproductor.currentTime || 0) / ANIMACION);
+            if(a === ultimo) return;
+            ultimo = a;
+            dibujarReel(ctx, placa, null, logo, REEL.ancho, REEL.alto, a, true);
+          };
+          encima();
+          bucleReel = setInterval(encima, 80);
+        }else if(conVideo){
+          ctx.clearRect(0, 0, lienzo.width, lienzo.height);   // ya viene quemado
+        }else{
           dibujarReel(ctx, placa, await cargarImagen(placa.portada),
             await cargarImagen('assets/logo.png'), REEL.ancho, REEL.alto, 1);
         }
@@ -436,18 +458,21 @@ function pintarChips(){
 
 async function pintarFotos(){
   if(placa.formato === 'reel'){
-    const img = placa.portada ? await cargarImagen(placa.portada) : null;
+    const miniatura = placa.video
+      ? `<video src="${esc(placa.video)}#t=0.5" muted playsinline preload="metadata"></video>`
+      : '<img src="assets/marcador.jpg" alt="">';
     $('#fotos').innerHTML = `
       <div class="foto" data-reel>
-        <img src="${img ? img.src : 'assets/marcador.jpg'}" alt="">
+        ${miniatura}
         <div class="cuerpo">
           <b>Video del reel</b>
           <button type="button" class="archivo"
                   onclick="this.parentNode.querySelector('input').click()">${placa.video ? 'Cambiar video…' : 'Elegir video…'}</button>
           <input type="file" accept="video/mp4,video/quicktime" data-reel-video>
           <p class="nota">
-            Vertical, hasta 90 segundos. Se procesa al subirlo y tarda lo que
-            dura. El titular entra animado en el primer segundo.
+            Vertical, hasta 90 segundos. El titular entra animado en el primer
+            segundo y se le graba encima al publicar, así que podés seguir
+            cambiando el texto hasta el final.
           </p>
         </div>
       </div>`;
@@ -700,10 +725,13 @@ $('#publicar').addEventListener('click', async (ev) => {
       ev.target.disabled = false;
       return;
     }
-    trabajo('Generando las imágenes', 0);
-    const items = placa.formato === 'reel'
-      ? [{ tipo: 'reel', ruta: placa.video }]
-      : await itemsParaPublicar((a) => trabajo('Generando las imágenes', a));
+    let items;
+    if(placa.formato === 'reel'){
+      items = [await reelParaPublicar()];
+    }else{
+      trabajo('Generando las imágenes', 0);
+      items = await itemsParaPublicar((a) => trabajo('Generando las imágenes', a));
+    }
 
     trabajo('Publicando en Instagram', null,
       'Instagram tiene que recibir y procesar cada pieza. Con video puede tardar unos minutos. No cierres esta ventana.');
@@ -736,10 +764,7 @@ $('#publicar').addEventListener('click', async (ev) => {
 /* Al programar, las imágenes se generan ahora y quedan subidas: cuando
    llegue la hora no va a haber ningún navegador que las dibuje. */
 async function cargaParaProgramar(){
-  if(placa.formato === 'reel'){
-    if(!placa.video) throw new Error('Falta el video del reel');
-    return { items: [{ tipo: 'reel', ruta: placa.video }] };
-  }
+  if(placa.formato === 'reel') return { items: [await reelParaPublicar()] };
   trabajo('Generando las imágenes', 0);
   const listos = await itemsParaPublicar((a) => trabajo('Generando las imágenes', a));
   const items = [];
@@ -957,12 +982,14 @@ const ANIMACION = 1.2;   // segundos que tarda en entrar el titular
 
 /* Igual que quemarVideo pero vertical y con el titular animado. La
    animación ocupa el primer segundo y pico; después queda fijo. */
-async function quemarReel(archivo, avisar){
+async function quemarReel(fuente, avisar){
   if(!MediaRecorder.isTypeSupported(TIPO_MP4)){
     throw new Error('Este navegador no puede generar MP4. Probá con Chrome o Safari.');
   }
   const video = document.createElement('video');
-  video.src = URL.createObjectURL(archivo);
+  // sirve tanto un archivo recién elegido como uno ya guardado en el servidor
+  const propia = typeof fuente !== 'string';
+  video.src = propia ? URL.createObjectURL(fuente) : fuente;
   video.playsInline = true;
   await new Promise((listo, falla) => {
     video.onloadedmetadata = listo;
@@ -1015,25 +1042,40 @@ async function quemarReel(archivo, avisar){
   dibujarReel(ctx, placa, video, logo, REEL.ancho, REEL.alto, 1);
   const portada = await new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.9));
 
-  URL.revokeObjectURL(video.src);
+  if(propia) URL.revokeObjectURL(video.src);
   return { video: new Blob(trozos, { type: 'video/mp4' }), portada };
 }
 
+/* El video se guarda tal cual llega. Antes se le quemaba el titular acá
+   mismo, y entonces cambiar el texto no servía de nada: el video ya estaba
+   hecho. Ahora se quema recién al publicar. */
 async function agregarReel(archivo){
-  const espera = 'Se le queman encima el titular, la etiqueta y el logo. Tarda lo que dura el video.';
-  trabajo('Procesando el reel', 0, espera);
+  trabajo('Subiendo el video', null,
+    'Se guarda tal cual: el titular se le quema encima recién al publicar, así podés seguir cambiando el texto.');
   try{
-    const { video, portada } = await quemarReel(archivo, (a) => {
-      trabajo('Procesando el reel', a, espera);
-    });
-    trabajo('Subiendo el reel', null, 'Ya está listo: falta que llegue al servidor.');
-    const sub = await guardarFoto(new File([video], 'reel.mp4', { type: 'video/mp4' }));
-    const por = await guardarFoto(new File([portada], 'portada.jpg', { type: 'image/jpeg' }));
-    placa.portada = por.ruta;
+    const sub = await guardarFoto(archivo);
+    placa.reel_crudo = 1;
+    placa.portada = '';
     cambio('video', sub.ruta);
     await pintarFotos();
-    estado('Reel listo');
+    estado('Video listo');
   }finally{ cerrarTrabajo(); }
+}
+
+/* Lo que se manda a Instagram: acá sí se quema, con el texto que tenga la
+   placa en este momento. Las de antes ya vienen quemadas del servidor. */
+async function reelParaPublicar(){
+  if(!placa.video) throw new Error('Falta el video del reel');
+  if(!placa.reel_crudo) return { tipo: 'reel', ruta: placa.video };
+
+  const espera = 'Se le queman encima el titular, la etiqueta y el logo. Tarda lo que dura el video.';
+  trabajo('Grabando el titular en el video', 0, espera);
+  const { video } = await quemarReel(placa.video, (a) => {
+    trabajo('Grabando el titular en el video', a, espera);
+  });
+  trabajo('Subiendo el reel', null, 'Ya está listo: falta que llegue al servidor.');
+  const sub = await guardarFoto(new File([video], 'reel.mp4', { type: 'video/mp4' }));
+  return { tipo: 'reel', ruta: sub.ruta };
 }
 
 async function agregarVideo(archivo, indice){

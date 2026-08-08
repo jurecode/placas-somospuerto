@@ -489,17 +489,23 @@ function entrada(avance, desde, dura){
   return suave((avance - desde) / dura);
 }
 
-export function dibujarReel(ctx, datos, medio, logo, ancho, alto, avance = 1){
+/* Con `soloEncima` dibuja únicamente lo que va sobre el video —degradado,
+   titular, filete, etiqueta y logo— sobre fondo transparente. Así la vista
+   previa puede poner esta capa arriba del video crudo y el texto se ve
+   cambiar mientras se escribe, sin tener que volver a quemar nada. */
+export function dibujarReel(ctx, datos, medio, logo, ancho, alto, avance = 1, soloEncima = false){
   const u = ancho / REEL.ancho;
   const R = REEL;
 
   ctx.clearRect(0, 0, ancho, alto);
-  ctx.fillStyle = '#0b0b0d';
-  ctx.fillRect(0, 0, ancho, alto);
   ctx.letterSpacing = '0px';
 
-  // el video llena el cuadro
-  dibujarFoto(ctx, medio, 0, 0, ancho, alto, 'cubrir', 50, 50, u);
+  if(!soloEncima){
+    ctx.fillStyle = '#0b0b0d';
+    ctx.fillRect(0, 0, ancho, alto);
+    // el video llena el cuadro
+    dibujarFoto(ctx, medio, 0, 0, ancho, alto, 'cubrir', 50, 50, u);
+  }
 
   // fundido al color del medio, para que el texto se lea
   ctx.fillStyle = degradado(ctx, datos, 0, 0, ancho, alto, R.degradado);
