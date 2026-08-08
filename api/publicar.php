@@ -39,6 +39,31 @@ if (count($items) > MAX_LAMINAS) {
 
 $caption      = (string) ($entrada['caption'] ?? '');
 $colaboradores = (string) ($entrada['colaboradores'] ?? '');
+$etiquetados   = (string) ($entrada['etiquetados'] ?? '');
+
+/* Instagram pide, además del usuario, dónde cae la etiqueta sobre la
+   imagen, en porcentajes de 0 a 1. En una placa de noticia la posición da
+   igual, así que se reparten en vertical para que no se pisen. */
+function cuentas_de(string $texto, int $tope): array {
+    $limpias = array_filter(array_map(
+        static fn($c) => ltrim(trim($c), '@'),
+        preg_split('/[,\s]+/', $texto) ?: []
+    ));
+    return array_slice(array_values($limpias), 0, $tope);
+}
+
+function etiquetas_usuario(string $texto): array {
+    $cuentas = cuentas_de($texto, 20);   // el máximo que admite Instagram
+    $tags = [];
+    foreach ($cuentas as $i => $usuario) {
+        $tags[] = [
+            'username' => $usuario,
+            'x' => $i % 2 === 0 ? 0.35 : 0.65,
+            'y' => round(min(0.85, 0.2 + $i * 0.12), 2),
+        ];
+    }
+    return $tags;
+}
 
 [$dir, $urlBase] = carpeta('publicaciones');
 if (!is_dir($dir) || !is_writable($dir)) {
@@ -83,17 +108,16 @@ try {
         $medios[] = ['tipo' => 'imagen', 'url' => $urlBase . '/' . $nombre];
     }
 
-    $cuentas = array_slice(array_values(array_filter(array_map(
-        static fn($c) => ltrim(trim($c), '@'),
-        preg_split('/[,\s]+/', $colaboradores) ?: []
-    ))), 0, 3);
+    $cuentas  = cuentas_de($colaboradores, 3);
+    $etiquetas = etiquetas_usuario($etiquetados);
 
     $varias = count($medios) > 1;
     $hayVideo = false;
 
-    // 2. un contenedor por lámina
+    // 2. un contenedor por lámina. Las etiquetas de personas van en la
+    //    primera, que es la placa: solo las imágenes las admiten.
     $hijos = [];
-    foreach ($medios as $medio) {
+    foreach ($medios as $i => $medio) {
         if ($medio['tipo'] === 'video') {
             $hayVideo = true;
             $cuerpo = ['media_type' => 'VIDEO', 'video_url' => $medio['url']];
@@ -102,7 +126,20 @@ try {
         }
         if ($varias) $cuerpo['is_carousel_item'] = 'true';
         else         $cuerpo['caption'] = $caption;
-        $hijos[] = graph($IG_USER_ID . '/media', $cuerpo)['id'];
+
+        $conEtiquetas = $i === 0 && $etiquetas && $medio['tipo'] !== 'video';
+        if ($conEtiquetas) $cuerpo['user_tags'] = json_encode($etiquetas);
+
+        try {
+            $hijos[] = graph($IG_USER_ID . '/media', $cuerpo)['id'];
+        } catch (RuntimeException $e) {
+            // una cuenta privada o mal escrita tumba la etiqueta, no el post
+            if (!$conEtiquetas) throw $e;
+            unset($cuerpo['user_tags']);
+            $hijos[] = graph($IG_USER_ID . '/media', $cuerpo)['id'];
+            $aviso = 'no se pudo etiquetar a nadie (' . $e->getMessage() .
+                     '). Solo se puede etiquetar cuentas públicas.';
+        }
     }
     // Instagram tarda bastante más en procesar video que imagen
     $espera = $hayVideo ? 150 : 20;

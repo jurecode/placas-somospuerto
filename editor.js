@@ -53,7 +53,7 @@ const BASE = {
   circulo_x: 50, circulo_y: 62.6,
   tam_titulo: 143,
   laminas: [],            // fotos extra del carrusel; la placa es la primera
-  descripcion: '', hashtags: '', colaboradores: '',
+  descripcion: '', hashtags: '', colaboradores: '', etiquetados: '',
 };
 
 const MAX_LAMINAS = 9;   // 9 + la placa = las 10 que permite Instagram
@@ -567,6 +567,7 @@ $('#publicar').addEventListener('click', async (ev) => {
         clave: clave(), items,
         caption: armarCaption(),
         colaboradores: placa.colaboradores || '',
+        etiquetados: placa.etiquetados || '',
       }),
     });
     const datos = await res.json().catch(() => ({}));
