@@ -21,9 +21,22 @@ const DISENOS = [
     svg: '<rect x="1" y="1" width="42" height="28" rx="3"/><circle cx="22" cy="15" r="9" fill="currentColor" stroke="none" opacity=".85"/>' },
 ];
 
+/* Las paletas del medio. El filete es siempre uno de los dos colores de
+   marca, así todo queda en familia aunque cambie el fondo. Los fondos se
+   eligieron con contraste suficiente para el titular blanco. */
 const PALETA = [
-  { nombre: 'Menta',  fondo: '#0ae7ae', filete: '#ff0054' },
-  { nombre: 'Fucsia', fondo: '#ff0054', filete: '#0ae7ae', original: true },
+  { nombre: 'Fucsia',   fondo: '#ff0054', filete: '#0ae7ae', original: true },
+  { nombre: 'Menta',    fondo: '#0ae7ae', filete: '#ff0054' },
+  { nombre: 'Rojo',     fondo: '#ee0008', filete: '#0ae7ae' },
+  { nombre: 'Naranjo',  fondo: '#ff6100', filete: '#0ae7ae' },
+  { nombre: 'Vino',     fondo: '#7a0b32', filete: '#0ae7ae' },
+  { nombre: 'Violeta',  fondo: '#6228d7', filete: '#0ae7ae' },
+  { nombre: 'Púrpura',  fondo: '#2d0a4e', filete: '#0ae7ae' },
+  { nombre: 'Azul',     fondo: '#0b3fd4', filete: '#0ae7ae' },
+  { nombre: 'Marino',   fondo: '#0a1f44', filete: '#0ae7ae' },
+  { nombre: 'Petróleo', fondo: '#0d4d4d', filete: '#ff0054' },
+  { nombre: 'Selva',    fondo: '#0b3d2c', filete: '#ff0054' },
+  { nombre: 'Negro',    fondo: '#101014', filete: '#0ae7ae' },
 ];
 
 const ETIQUETAS = ['Farándula', 'Noticia', 'Contingencia', 'Policial',
