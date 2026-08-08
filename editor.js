@@ -202,9 +202,22 @@ function repintar(){
         lienzo.style.aspectRatio = `${anchoQuiere} / ${altoQuiere}`;
       }
       const ctx = lienzo.getContext('2d');
+      // con el video ya subido se muestra el video mismo, que trae el titular
+      // animado; sin video, el lienzo con el titular ya entrado
+      const reproductor = $('#previa_video');
+      const conVideo = esReel && !!placa.video;
+      lienzo.hidden = conVideo;
+      reproductor.hidden = !conVideo;
+      if(conVideo && !reproductor.src.endsWith(placa.video)){
+        reproductor.src = placa.video;
+        reproductor.play().catch(() => {});   // si el navegador no deja, quedan los controles
+      }
+      if(!conVideo && reproductor.src){ reproductor.pause(); reproductor.removeAttribute('src'); }
       if(esReel){
-        dibujarReel(ctx, placa, await cargarImagen(placa.portada), 
-          await cargarImagen('assets/logo.png'), REEL.ancho, REEL.alto, 1);
+        if(!conVideo){
+          dibujarReel(ctx, placa, null,
+            await cargarImagen('assets/logo.png'), REEL.ancho, REEL.alto, 1);
+        }
         await pintarTira();
         return;
       }

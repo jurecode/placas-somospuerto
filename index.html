@@ -182,10 +182,14 @@
   }
   /* se descuenta lo que ocupan la tira, el botón y su pie: si no, la tira
      quedaba empujada fuera de la ventana en pantallas bajas */
-  #previa{
-    width:min(100%, calc(100svh - 300px)); height:auto; aspect-ratio:1;
+  /* Se limita por los dos lados y no por el ancho: el lienzo cambia de forma
+     según el formato (1:1 la placa, 9:16 el reel) y con una sola medida el
+     reel se salía de la ventana. */
+  #previa, #previa_video{
+    width:auto; height:auto; max-width:100%; max-height:calc(100svh - 300px);
     border-radius:10px; box-shadow:0 12px 40px #0008; background:#000;
   }
+  #previa[hidden], #previa_video[hidden]{ display:none }
 
   /* La tira muestra el post completo, en el orden en que va a salir. */
   .carrusel-vista{
@@ -255,7 +259,10 @@
       background:var(--bg); border-bottom:1px solid var(--linea);
       padding:10px 10px calc(10px + env(safe-area-inset-bottom));
     }
-    #previa{ width:min(100%, 38svh) }
+    #previa, #previa_video{ max-height:38svh }
+    /* el reel es angosto: con la misma altura se veía diminuto */
+    body[data-formato="reel"] #previa,
+    body[data-formato="reel"] #previa_video{ max-height:46svh }
     .panel{ border-right:0; overflow:visible; padding-bottom:env(safe-area-inset-bottom) }
     .panel > header{ top:0 }
 
@@ -438,6 +445,12 @@
 
 <div class="previa">
   <canvas id="previa" width="1080" height="1080" aria-label="Vista previa"></canvas>
+  <!-- el reel ya sale del horno con todo quemado encima, así que se mira
+       tal cual va a salir publicado, moviéndose -->
+  <!-- muted porque si no el navegador no deja que arranque solo; los
+       controles quedan a la vista para subir el sonido -->
+  <video id="previa_video" width="1080" height="1920" playsinline loop controls
+         autoplay muted aria-label="Vista previa del reel" hidden></video>
   <div class="carrusel-vista">
     <p id="rotulo_tira"></p>
     <div class="tira" id="tira"></div>
