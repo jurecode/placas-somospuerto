@@ -155,6 +155,26 @@ function estado(texto, esError){
   el.classList.toggle('error', !!esError);
 }
 
+/* Lo que tarda se muestra en grande, tapando el editor: quemar un video
+   lleva lo que dura el video y con el aviso chico de abajo parecía colgado.
+   `avance` es 0..1 cuando se puede medir; sin número la barra va y viene.
+   Se cierra con cerrarTrabajo(), siempre desde un finally. */
+function trabajo(texto, avance, pista){
+  const caja = $('#trabajando');
+  caja.hidden = false;
+  $('#trabajando_que').textContent = texto;
+  const medible = typeof avance === 'number' && isFinite(avance);
+  const pct = $('#trabajando_pct');
+  pct.hidden = !medible;
+  if(medible) pct.textContent = Math.round(Math.min(1, Math.max(0, avance)) * 100) + '%';
+  const barra = $('#trabajando_barra');
+  barra.classList.toggle('sinmedida', !medible);
+  barra.style.width = medible ? Math.round(avance * 100) + '%' : '';
+  if(pista !== undefined) $('#trabajando_pista').textContent = pista || '';
+}
+
+function cerrarTrabajo(){ $('#trabajando').hidden = true; }
+
 /* Las fotos son rutas del propio sitio ("assets/…" o "fotos/…"). */
 async function cargarImagen(ref){
   if(!ref) return null;
@@ -291,8 +311,9 @@ async function pintarTira(){
 /* Genera las láminas como archivos JPEG en memoria. */
 /* Lo que se manda a publicar: la placa y las imágenes se generan acá, los
    videos ya están en el servidor desde que se subieron. */
-async function itemsParaPublicar(){
+async function itemsParaPublicar(avisar){
   const laminas = placa.laminas || [];
+  const total = laminas.length + 1;
   const lienzo = document.createElement('canvas');
   lienzo.width = lienzo.height = 1080;
   const ctx = lienzo.getContext('2d');
@@ -305,14 +326,16 @@ async function itemsParaPublicar(){
   const items = [];
   dibujar(ctx, placa, await imagenesDe(placa), 1080);
   items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
+  avisar?.(1 / total);
 
   for(const lam of laminas){
     if(lam.tipo === 'video'){
       items.push({ tipo: 'video', ruta: lam.video });
-      continue;
+    }else{
+      dibujarLamina(ctx, placa, lam, await cargarImagen(lam.foto), logo, 1080);
+      items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
     }
-    dibujarLamina(ctx, placa, lam, await cargarImagen(lam.foto), logo, 1080);
-    items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
+    avisar?.(items.length / total);
   }
   return items;
 }
@@ -611,9 +634,10 @@ $('#tira').addEventListener('click', (ev) => {
    soporta (escritorio, casi siempre), se bajan los archivos. */
 $('#compartir').addEventListener('click', async (ev) => {
   ev.target.disabled = true;
-  estado('Preparando imágenes…');
+  trabajo('Preparando las imágenes', null);
   try{
     const archivos = await archivosDelCarrusel();
+    cerrarTrabajo();   // lo que sigue es la hoja del sistema: estorbaba taparla
     const texto = armarCaption();
     if(navigator.canShare && navigator.canShare({ files: archivos })){
       await navigator.share({ files: archivos, text: texto });
@@ -626,6 +650,7 @@ $('#compartir').addEventListener('click', async (ev) => {
     if(e.name !== 'AbortError') estado(e.message, true);
     else estado('');
   }
+  finally{ cerrarTrabajo(); }
   ev.target.disabled = false;
 });
 
@@ -642,18 +667,19 @@ $('#publicar').addEventListener('click', async (ev) => {
   const laminas = (placa.laminas || []).length + 1;
   if(!confirm(`Se va a publicar en Instagram un carrusel de ${laminas} imagen${laminas > 1 ? 'es' : ''}. ¿Seguimos?`)) return;
   ev.target.disabled = true;
-  estado('Generando imágenes…');
   try{
     if(placa.formato === 'reel' && !placa.video){
       estado('Falta el video del reel.', true);
       ev.target.disabled = false;
       return;
     }
+    trabajo('Generando las imágenes', 0);
     const items = placa.formato === 'reel'
       ? [{ tipo: 'reel', ruta: placa.video }]
-      : await itemsParaPublicar();
+      : await itemsParaPublicar((a) => trabajo('Generando las imágenes', a));
 
-    estado('Subiendo a Instagram… puede tardar unos minutos si hay video');
+    trabajo('Publicando en Instagram', null,
+      'Instagram tiene que recibir y procesar cada pieza. Con video puede tardar unos minutos. No cierres esta ventana.');
     const res = await fetch('api/publicar.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -672,6 +698,7 @@ $('#publicar').addEventListener('click', async (ev) => {
     estado('Publicado' + (datos.aviso ? ' — ' + datos.aviso : ''));
     if(datos.enlace) window.open(datos.enlace, '_blank');
   }catch(e){ estado(e.message, true); }
+  finally{ cerrarTrabajo(); }
   ev.target.disabled = false;
 });
 
@@ -686,8 +713,12 @@ async function cargaParaProgramar(){
     if(!placa.video) throw new Error('Falta el video del reel');
     return { items: [{ tipo: 'reel', ruta: placa.video }] };
   }
+  trabajo('Generando las imágenes', 0);
+  const listos = await itemsParaPublicar((a) => trabajo('Generando las imágenes', a));
   const items = [];
-  for(const item of await itemsParaPublicar()){
+  for(const item of listos){
+    trabajo('Guardando las imágenes', items.length / listos.length,
+      'Quedan subidas desde ahora: a la hora de publicar no va a haber ningún navegador que las dibuje.');
     if(item.tipo !== 'imagen'){ items.push(item); continue; }
     const blob = await (await fetch(item.dataUrl)).blob();
     const { ruta } = await guardarFoto(new File([blob], 'programada.jpg', { type: 'image/jpeg' }));
@@ -719,9 +750,9 @@ $('#programar').addEventListener('click', async (ev) => {
     return estado('Falta la descripción: es lo que va debajo de la publicación.', true);
   }
   ev.target.disabled = true;
-  estado('Preparando las imágenes…');
   try{
     const carga = await cargaParaProgramar();
+    trabajo('Anotando en la cola', null);
     await api('api/programar.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -737,6 +768,7 @@ $('#programar').addEventListener('click', async (ev) => {
     estado('Programado');
     await pintarCola();
   }catch(e){ estado(e.message, true); }
+  finally{ cerrarTrabajo(); }
   ev.target.disabled = false;
 });
 
@@ -759,32 +791,39 @@ $('#copiar').addEventListener('click', async () => {
 
 $('#bajar_carrusel').addEventListener('click', async (ev) => {
   ev.target.disabled = true;
-  estado('Generando imágenes…');
+  trabajo('Generando las imágenes', null);
   try{
     const n = await exportarCarrusel();
     estado(`Listas ${n} imagen${n > 1 ? 'es' : ''} en JPEG 1080`);
   }catch(e){ estado(e.message, true); }
+  finally{ cerrarTrabajo(); }
   ev.target.disabled = false;
 });
 
 /* Una foto nueva parte entera y centrada: así no se corta aunque venga con
    otra resolución. */
 async function reemplazarFoto(campo, archivo){
-  const { ruta } = await guardarFoto(archivo);
-  placa[campo + '_ajuste'] = 'completa';
-  placa[campo + '_x'] = 50;
-  placa[campo + '_y'] = 50;
-  cambio(campo, ruta);
-  await pintarFotos();
+  trabajo('Subiendo la foto', null, archivo.name);
+  try{
+    const { ruta } = await guardarFoto(archivo);
+    placa[campo + '_ajuste'] = 'completa';
+    placa[campo + '_x'] = 50;
+    placa[campo + '_y'] = 50;
+    cambio(campo, ruta);
+    await pintarFotos();
+  }finally{ cerrarTrabajo(); }
 }
 
 async function reemplazarLamina(i, archivo){
-  if(esVideo(archivo)) return agregarVideo(archivo, i);
-  const { ruta } = await guardarFoto(archivo);
-  placa.laminas[i] = { foto: ruta, ajuste: 'completa', x: 50, y: 50 };
-  cambio('laminas', placa.laminas);
-  await pintarLaminas();
-  estado('Foto del carrusel actualizada');
+  if(esVideo(archivo)) return agregarVideo(archivo, i);   // ese trae su propio aviso
+  trabajo('Subiendo la foto', null, archivo.name);
+  try{
+    const { ruta } = await guardarFoto(archivo);
+    placa.laminas[i] = { foto: ruta, ajuste: 'completa', x: 50, y: 50 };
+    cambio('laminas', placa.laminas);
+    await pintarLaminas();
+    estado('Foto del carrusel actualizada');
+  }finally{ cerrarTrabajo(); }
 }
 
 document.addEventListener('change', async (ev) => {
@@ -954,36 +993,42 @@ async function quemarReel(archivo, avisar){
 }
 
 async function agregarReel(archivo){
-  estado('Procesando el reel… tarda lo que dura el video');
-  const { video, portada } = await quemarReel(archivo, (a) => {
-    estado(`Procesando el reel… ${Math.round(a * 100)}%`);
-  });
-  estado('Subiendo el reel…');
-  const sub = await guardarFoto(new File([video], 'reel.mp4', { type: 'video/mp4' }));
-  const por = await guardarFoto(new File([portada], 'portada.jpg', { type: 'image/jpeg' }));
-  placa.portada = por.ruta;
-  cambio('video', sub.ruta);
-  await pintarFotos();
-  estado('Reel listo');
+  const espera = 'Se le queman encima el titular, la etiqueta y el logo. Tarda lo que dura el video.';
+  trabajo('Procesando el reel', 0, espera);
+  try{
+    const { video, portada } = await quemarReel(archivo, (a) => {
+      trabajo('Procesando el reel', a, espera);
+    });
+    trabajo('Subiendo el reel', null, 'Ya está listo: falta que llegue al servidor.');
+    const sub = await guardarFoto(new File([video], 'reel.mp4', { type: 'video/mp4' }));
+    const por = await guardarFoto(new File([portada], 'portada.jpg', { type: 'image/jpeg' }));
+    placa.portada = por.ruta;
+    cambio('video', sub.ruta);
+    await pintarFotos();
+    estado('Reel listo');
+  }finally{ cerrarTrabajo(); }
 }
 
 async function agregarVideo(archivo, indice){
   const lamina = { ajuste: 'cubrir', x: 50, y: 50 };
-  estado('Procesando el video… tarda lo que dura el video');
-  const { video, portada } = await quemarVideo(archivo, lamina, (avance) => {
-    estado(`Procesando el video… ${Math.round(avance * 100)}%`);
-  });
+  const espera = 'Se le queman encima el degradado y el logo. Tarda lo que dura el video.';
+  trabajo('Procesando el video', 0, espera);
+  try{
+    const { video, portada } = await quemarVideo(archivo, lamina, (avance) => {
+      trabajo('Procesando el video', avance, espera);
+    });
 
-  estado('Subiendo el video…');
-  const subido = await guardarFoto(new File([video], 'lamina.mp4', { type: 'video/mp4' }));
-  const conPortada = await guardarFoto(new File([portada], 'portada.jpg', { type: 'image/jpeg' }));
+    trabajo('Subiendo el video', null, 'Ya está listo: falta que llegue al servidor.');
+    const subido = await guardarFoto(new File([video], 'lamina.mp4', { type: 'video/mp4' }));
+    const conPortada = await guardarFoto(new File([portada], 'portada.jpg', { type: 'image/jpeg' }));
 
-  const nueva = { ...lamina, tipo: 'video', video: subido.ruta, foto: conPortada.ruta };
-  if(indice === undefined) placa.laminas = (placa.laminas || []).concat(nueva);
-  else placa.laminas[indice] = nueva;
-  cambio('laminas', placa.laminas);
-  await pintarLaminas();
-  estado('Video listo en el carrusel');
+    const nueva = { ...lamina, tipo: 'video', video: subido.ruta, foto: conPortada.ruta };
+    if(indice === undefined) placa.laminas = (placa.laminas || []).concat(nueva);
+    else placa.laminas[indice] = nueva;
+    cambio('laminas', placa.laminas);
+    await pintarLaminas();
+    estado('Video listo en el carrusel');
+  }finally{ cerrarTrabajo(); }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1038,9 +1083,11 @@ document.addEventListener('drop', async (ev) => {
       const lugar = MAX_LAMINAS - (placa.laminas || []).length;
       const entran = archivos.slice(0, lugar);
       if(!entran.length) return estado(`El carrusel ya tiene las ${MAX_LAMINAS + 1} imágenes`, true);
-      estado(`Subiendo ${entran.length}…`);
-      for(const archivo of entran){
+      for(const [i, archivo] of entran.entries()){
+        // el video abre su propio aviso, con su porcentaje
         if(esVideo(archivo)){ await agregarVideo(archivo); continue; }
+        trabajo(`Subiendo ${entran.length > 1 ? `${i + 1} de ${entran.length}` : 'la foto'}`,
+          i / entran.length, archivo.name);
         const { ruta } = await guardarFoto(archivo);
         placa.laminas = (placa.laminas || []).concat({ foto: ruta, ajuste: 'completa', x: 50, y: 50 });
       }
@@ -1050,6 +1097,7 @@ document.addEventListener('drop', async (ev) => {
              (archivos.length > entran.length ? ` (${archivos.length - entran.length} no entraron)` : ''));
     }
   }catch(e){ estado(e.message, true); }
+  finally{ cerrarTrabajo(); }
 });
 
 $('#selector').addEventListener('change', (ev) => cargar(Number(ev.target.value)));
@@ -1067,12 +1115,13 @@ $('#borrar').addEventListener('click', async () => {
 
 document.querySelectorAll('[data-exportar]').forEach((boton) => {
   boton.addEventListener('click', async () => {
-    estado('Generando PNG…');
+    trabajo('Generando el PNG', null);
     boton.disabled = true;
     try{
       await exportarPng(Number(boton.dataset.lado));
       estado('Listo, se descargó el PNG');
     }catch(e){ estado(e.message, true); }
+    finally{ cerrarTrabajo(); }
     boton.disabled = false;
   });
 });

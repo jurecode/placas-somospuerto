@@ -120,6 +120,48 @@
   #estado{ font-size:11px; color:var(--suave); min-height:16px; padding:0 18px 16px }
   #estado.error{ color:#ff8a7a }
 
+  /* ---------- trabajando: lo que tarda se ve en grande ---------- */
+  /* Quemar un video tarda lo que dura el video. Con el aviso chiquito abajo
+     del panel parecía que el editor se había colgado. */
+  .trabajando{
+    position:fixed; inset:0; z-index:50; display:grid; place-items:center;
+    background:#0b0b0dcc; backdrop-filter:blur(3px);
+    padding:24px; text-align:center;
+  }
+  .trabajando[hidden]{ display:none }
+  .trabajando__caja{
+    width:min(100%, 460px); display:grid; gap:14px; justify-items:center;
+    background:#16181d; border:1px solid var(--linea); border-radius:18px;
+    padding:34px 30px; box-shadow:0 24px 70px #000a;
+  }
+  .trabajando__que{ font-size:19px; font-weight:600; line-height:1.35 }
+  .trabajando__pct{
+    font-size:56px; font-weight:800; letter-spacing:-.02em; line-height:1;
+    font-variant-numeric:tabular-nums;
+  }
+  .trabajando__pct[hidden]{ display:none }
+  .trabajando__riel{
+    width:100%; height:10px; border-radius:99px; overflow:hidden;
+    background:#2a2d34;
+  }
+  .trabajando__riel i{
+    display:block; height:100%; width:0; border-radius:99px;
+    background:linear-gradient(90deg, #f9c449, #e0399a, #7a4ff0);
+    transition:width .25s ease;
+  }
+  /* sin porcentaje que mostrar, la barra va y viene para que se note que
+     algo sigue pasando */
+  /* 38% de ancho: el recorrido va de -100% (justo afuera por la izquierda)
+     a 263%, que es lo que mide el riel en unidades de la propia barra */
+  .trabajando__riel i.sinmedida{
+    width:38%; animation:vaiven 1.3s ease-in-out infinite; transition:none;
+  }
+  @keyframes vaiven{
+    0%{ transform:translateX(-100%) } 100%{ transform:translateX(263%) }
+  }
+  .trabajando__pista{ font-size:13px; color:var(--suave); line-height:1.5 }
+  .trabajando__pista:empty{ display:none }
+
   /* ---------- portada: qué vas a publicar ---------- */
   .portada{
     position:fixed; inset:0; z-index:50; background:#0f1013;
@@ -441,6 +483,15 @@
   </fieldset>
 
   <p id="estado"></p>
+</div>
+
+<div class="trabajando" id="trabajando" hidden role="status" aria-live="polite">
+  <div class="trabajando__caja">
+    <p class="trabajando__que" id="trabajando_que"></p>
+    <p class="trabajando__pct" id="trabajando_pct" hidden></p>
+    <div class="trabajando__riel"><i id="trabajando_barra"></i></div>
+    <p class="trabajando__pista" id="trabajando_pista"></p>
+  </div>
 </div>
 
 <div class="previa">
