@@ -90,24 +90,81 @@ function anchoDe(ctx, texto, tipo, px, interletrado){
   return ctx.measureText(texto).width;
 }
 
+/* Las palabras entre asteriscos van resaltadas con un recuadro detrás.
+   Se devuelve cada palabra con su marca para poder dibujarlas distinto. */
+function enPalabras(parrafo){
+  const palabras = [];
+  let marcado = false;
+  for(const trozo of parrafo.split('*')){
+    for(const p of trozo.split(' ')){
+      if(p !== '') palabras.push({ t: p, marcado });
+    }
+    marcado = !marcado;   // cada asterisco abre o cierra
+  }
+  return palabras;
+}
+
 /* Corta cada línea del titular por ancho, como hacía el navegador. */
 function repartir(ctx, texto, tipo, px, interletrado, maxAncho){
-  const salida = [];
+  const lineas = [];
   for(const parrafo of String(texto).toUpperCase().split('\n')){
-    const palabras = parrafo.split(' ');
-    let linea = '';
-    for(const palabra of palabras){
-      const prueba = linea ? linea + ' ' + palabra : palabra;
-      if(linea && anchoDe(ctx, prueba, tipo, px, interletrado) > maxAncho){
-        salida.push(linea);
-        linea = palabra;
+    let linea = [];
+    for(const palabra of enPalabras(parrafo)){
+      const prueba = [...linea, palabra].map((p) => p.t).join(' ');
+      if(linea.length && anchoDe(ctx, prueba, tipo, px, interletrado) > maxAncho){
+        lineas.push(linea);
+        linea = [palabra];
       }else{
-        linea = prueba;
+        linea.push(palabra);
       }
     }
-    salida.push(linea);
+    lineas.push(linea);
   }
-  return salida;
+  return lineas;
+}
+
+/* Blanco o casi negro según lo que se lea mejor sobre ese color. */
+function textoSobre(hex){
+  const canal = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  const [r, g, b] = aRgb(hex);
+  const lum = 0.2126 * canal(r) + 0.7152 * canal(g) + 0.0722 * canal(b);
+  return lum > 0.4 ? '#111111' : '#ffffff';
+}
+
+/* Dibuja una línea, con recuadro detrás de las palabras marcadas. Las
+   marcadas seguidas comparten un solo recuadro, para que una frase entera
+   no quede como una fila de bloques sueltos. */
+function dibujarLinea(ctx, palabras, x, baseline, alto, tipo, px, inter, colores){
+  const espacio = anchoDe(ctx, ' ', tipo, px, inter);
+  const anchos = palabras.map((p) => anchoDe(ctx, p.t, tipo, px, inter));
+
+  // primero los recuadros, para que el texto quede encima
+  let cursor = x;
+  for(let i = 0; i < palabras.length; i++){
+    if(palabras[i].marcado){
+      let fin = i, ancho = anchos[i];
+      while(fin + 1 < palabras.length && palabras[fin + 1].marcado){
+        ancho += espacio + anchos[fin + 1];
+        fin++;
+      }
+      ctx.fillStyle = colores.fondo;
+      ctx.fillRect(cursor - alto.padX, baseline - alto.mayuscula - alto.padY,
+                   ancho + alto.padX * 2, alto.mayuscula + alto.padY * 2);
+      for(let k = i; k <= fin; k++) cursor += anchos[k] + espacio;
+      i = fin;
+    }else{
+      cursor += anchos[i] + espacio;
+    }
+  }
+
+  cursor = x;
+  ctx.font = fuente(tipo, px);
+  ctx.letterSpacing = `${inter}px`;
+  for(let i = 0; i < palabras.length; i++){
+    ctx.fillStyle = palabras[i].marcado ? colores.texto : colores.normal;
+    ctx.fillText(palabras[i].t, cursor, baseline);
+    cursor += anchos[i] + espacio;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -266,14 +323,19 @@ function dibujarNoticia(ctx, datos, fotos, u){
   const medioInterlineado = (interlinea - (met.ascenso + met.descenso)) / 2;
 
   ctx.save();
-  ctx.fillStyle = '#fff';
-  ctx.font = fuente(TIPOS.titular, px);
-  ctx.letterSpacing = `${inter}px`;
   ctx.textBaseline = 'alphabetic';
   const equis = (MEDIDAS.pie.x + MEDIDAS.pie.separacion) * u + MEDIDAS.filete.ancho * u;
+  // el resaltado usa el color del filete, que es el opuesto de la paleta
+  const colores = {
+    normal: '#fff',
+    fondo: datos.color_filete,
+    texto: textoSobre(datos.color_filete),
+  };
+  const caja = { mayuscula: met.mayuscula, padX: 20 * u, padY: 16 * u };
   lineas.forEach((linea, i) => {
-    ctx.fillText(linea, equis,
-      arribaTexto + i * interlinea + medioInterlineado + met.ascenso);
+    dibujarLinea(ctx, linea, equis,
+      arribaTexto + i * interlinea + medioInterlineado + met.ascenso,
+      caja, TIPOS.titular, px, inter, colores);
   });
   ctx.restore();
 
