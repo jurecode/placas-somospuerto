@@ -35,7 +35,13 @@ try {
                     DATE_FORMAT(publicar_en, '%Y-%m-%dT%H:%i:%sZ') AS publicar_en,
                     estado, resultado
              FROM programadas ORDER BY publicar_en DESC LIMIT 50")->fetchAll();
-        responder(['programadas' => $filas, 'ahora' => gmdate('Y-m-d\TH:i:s\Z')]);
+        // los dos relojes, para poder ver de un vistazo si alguno está corrido
+        $relojBd = null;
+        try { $relojBd = (string) bd()->query('SELECT UTC_TIMESTAMP()')->fetchColumn(); }
+        catch (Throwable $e) { /* si no contesta, con el de PHP alcanza */ }
+        responder(['programadas' => $filas,
+                   'ahora' => gmdate('Y-m-d\TH:i:s\Z'),
+                   'ahora_bd' => $relojBd]);
     }
 
     if ($metodo === 'DELETE') {

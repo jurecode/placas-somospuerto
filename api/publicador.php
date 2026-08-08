@@ -98,7 +98,12 @@ function publicar_ahora(array $carga): array {
         foreach ($medios as $i => $medio) {
             if ($medio['tipo'] === 'reel') {
                 $hayVideo = true;
-                $cuerpo = ['media_type' => 'REELS', 'video_url' => $medio['url'], 'caption' => $caption];
+                /* thumb_offset: la portada del reel. Sin esto Instagram toma
+                   el primer cuadro, que es el video antes de que entre el
+                   titular; a segundo y medio ya está el titular puesto y en
+                   la grilla del perfil se lee de qué se trata. */
+                $cuerpo = ['media_type' => 'REELS', 'video_url' => $medio['url'],
+                           'caption' => $caption, 'thumb_offset' => 1500];
             } elseif ($medio['tipo'] === 'video') {
                 $hayVideo = true;
                 $cuerpo = ['media_type' => 'VIDEO', 'video_url' => $medio['url']];
@@ -115,12 +120,15 @@ function publicar_ahora(array $carga): array {
             try {
                 $hijos[] = graph($igUser . '/media', $cuerpo)['id'];
             } catch (RuntimeException $e) {
-                // una cuenta privada o mal escrita tumba la etiqueta, no el post
-                if (!$conEtiquetas) throw $e;
-                unset($cuerpo['user_tags']);
+                // ni la etiqueta ni la portada valen perder la publicación
+                if (!$conEtiquetas && !isset($cuerpo['thumb_offset'])) throw $e;
+                if ($conEtiquetas) {
+                    unset($cuerpo['user_tags']);
+                    $aviso = 'no se pudo etiquetar a nadie (' . $e->getMessage() .
+                             '). Solo se puede etiquetar cuentas públicas.';
+                }
+                unset($cuerpo['thumb_offset']);
                 $hijos[] = graph($igUser . '/media', $cuerpo)['id'];
-                $aviso = 'no se pudo etiquetar a nadie (' . $e->getMessage() .
-                         '). Solo se puede etiquetar cuentas públicas.';
             }
         }
 
@@ -168,11 +176,16 @@ function publicar_ahora(array $carga): array {
 /* Publica todo lo que ya venció. La usa el cron y también el editor al
    abrirse, para que funcione aunque no haya cron configurado. */
 function vaciar_cola(int $tope = 5): array {
+    /* La hora la pone PHP y no MySQL. Las dos deberían dar lo mismo, pero si
+       el reloj del servidor de base está corrido, con UTC_TIMESTAMP() todo lo
+       programado vence antes de tiempo y sale al toque. Comparando contra el
+       reloj de la misma máquina que aceptó la programación, eso no puede
+       pasar: el que anota y el que revisa son el mismo. */
     $st = bd()->prepare(
         "SELECT id, carga FROM programadas
-         WHERE estado = 'pendiente' AND publicar_en <= UTC_TIMESTAMP()
+         WHERE estado = 'pendiente' AND publicar_en <= ?
          ORDER BY publicar_en LIMIT $tope");
-    $st->execute();
+    $st->execute([gmdate('Y-m-d H:i:s')]);
     $hechas = [];
     foreach ($st->fetchAll() as $fila) {
         // se marca antes de empezar: si el proceso muere a mitad, no se

@@ -20,7 +20,7 @@ jobs:
         run: |
           mkdir -p sitio
           # lo que va al hosting: el editor, el panel y los recursos
-          cp index.html editor.js placa.js robots.txt sitio/
+          cp index.html index.php editor.js placa.js robots.txt sitio/
           cp panel-*.html sitio/
           cp -r assets sitio/
           cp -r api sitio/
@@ -30,6 +30,19 @@ jobs:
           # lo que NO va: el editor viejo en Python y el arte original
           rm -f sitio/assets/subidas/* 2>/dev/null || true
           echo "Versión $(date -u '+%Y-%m-%d %H:%M UTC') · commit ${GITHUB_SHA::7}" > sitio/VERSION.txt
+
+      # El hosting cachea los archivos sueltos por meses y no respeta el
+      # .htaccess. Firmando el nombre con la versión, cada HTML pide su propio
+      # editor: aunque el navegador tenga guardada una copia vieja, nunca puede
+      # mezclar mitades de dos versiones distintas.
+      - name: Firmar los archivos con la versión
+        env:
+          V: ${{ github.run_number }}
+        run: |
+          sed -i "s|src=\"editor.js\"|src=\"editor.js?v=$V\"|" sitio/index.html
+          sed -i "s|from './placa.js'|from './placa.js?v=$V'|g" sitio/editor.js
+          grep -q "editor.js?v=$V" sitio/index.html || { echo "no se firmó index.html"; exit 1; }
+          grep -q "placa.js?v=$V"  sitio/editor.js  || { echo "no se firmó editor.js";  exit 1; }
 
       - name: Comprimir
         run: cd sitio && zip -r ../placas-somospuerto.zip . && cd ..

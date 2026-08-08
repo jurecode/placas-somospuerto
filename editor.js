@@ -783,15 +783,22 @@ async function pintarCola(){
   const cola = $('#cola');
   if(!cola) return;
   try{
-    const { programadas } = await api('api/programar.php');
-    cola.innerHTML = (programadas || []).map((p) => `
+    const { programadas, ahora, ahora_bd: bd } = await api('api/programar.php');
+    // si los relojes del servidor no coinciden, lo programado sale a
+    // destiempo y hay que saberlo antes de que pase
+    const desfase = bd ? Math.abs(new Date(ahora) - new Date(bd.replace(' ', 'T') + 'Z')) : 0;
+    const aviso = desfase > 120000
+      ? `<li class="error">Ojo: el reloj de la base va ${Math.round(desfase / 60000)} min
+         corrido respecto del servidor. Avisale a quien programó esto.</li>`
+      : '';
+    cola.innerHTML = aviso + ((programadas || []).map((p) => `
       <li class="${esc(p.estado)}">
         <b>${esc(new Date(p.publicar_en).toLocaleString('es-CL',
               { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</b>
         <span>${esc(p.nombre)} · ${esc(p.estado)}</span>
         ${p.estado === 'pendiente'
           ? `<button class="descarga quitar" data-quitar-cola="${p.id}">Cancelar</button>` : ''}
-      </li>`).join('') || '<li class="pendiente">Nada programado.</li>';
+      </li>`).join('') || '<li class="pendiente">Nada programado.</li>');
   }catch(e){ cola.innerHTML = `<li class="error">${esc(e.message)}</li>`; }
 }
 
@@ -958,6 +965,16 @@ async function quemarVideo(archivo, lamina, avisar){
     setTimeout(pintar, 33);   // ~30 cuadros por segundo
   };
 
+  // igual que en el reel: sin un cuadro listo, lo primero que se graba es
+  // el lienzo vacío y eso termina siendo la portada
+  video.currentTime = 0;
+  await new Promise((r) => {
+    if(video.readyState >= 2) return r();
+    video.onloadeddata = r;
+    setTimeout(r, 1500);
+  });
+  dibujarLamina(ctx, placa, lamina, video, logo, 1080);
+
   const listo = new Promise((r) => { grabador.onstop = r; });
   grabador.start();
   pintar();
@@ -1025,6 +1042,19 @@ async function quemarReel(fuente, avisar){
     if(video.duration) avisar?.(video.currentTime / video.duration);
     setTimeout(pintar, 33);
   };
+
+  /* El primer cuadro decide la portada del reel en el perfil. Si se empieza
+     a grabar antes de que el video tenga un cuadro listo, lo primero que
+     entra es el lienzo vacío: negro con el degradado abajo, que es lo que
+     salía en la grilla. Así que se espera a tener imagen y se dibuja antes
+     de arrancar la grabadora. */
+  video.currentTime = 0;
+  await new Promise((r) => {
+    if(video.readyState >= 2) return r();
+    video.onloadeddata = r;
+    setTimeout(r, 1500);
+  });
+  dibujarReel(ctx, placa, video, logo, REEL.ancho, REEL.alto, 0);
 
   const listo = new Promise((r) => { grabador.onstop = r; });
   grabador.start();
