@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Editor de placas — Somos Puerto</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -173,9 +173,14 @@
   .portada__seguir[hidden]{ display:none }
 
   /* ---------- vista previa ---------- */
-  .previa{ display:grid; align-content:start; justify-items:center; gap:14px; padding:24px; overflow:auto }
+  .previa{
+    display:grid; align-content:center; justify-items:center; gap:14px;
+    padding:24px; overflow:auto; min-height:0;
+  }
+  /* se descuenta lo que ocupan la tira, el botón y su pie: si no, la tira
+     quedaba empujada fuera de la ventana en pantallas bajas */
   #previa{
-    width:min(100%, calc(100svh - 140px)); height:auto; aspect-ratio:1;
+    width:min(100%, calc(100svh - 250px)); height:auto; aspect-ratio:1;
     border-radius:10px; box-shadow:0 12px 40px #0008; background:#000;
   }
 
@@ -223,11 +228,23 @@
     body{ height:auto; min-height:100svh }
     .previa{
       order:-1; position:sticky; top:0; z-index:5;
-      background:var(--bg); border-bottom:1px solid var(--linea); padding:10px;
+      background:var(--bg); border-bottom:1px solid var(--linea);
+      padding:10px 10px calc(10px + env(safe-area-inset-bottom));
     }
-    #previa{ width:min(100%, 44svh) }
-    .panel{ border-right:0; overflow:visible }
+    #previa{ width:min(100%, 42svh) }
+    .panel{ border-right:0; overflow:visible; padding-bottom:env(safe-area-inset-bottom) }
     .panel > header{ top:0 }
+
+    /* iOS hace zoom solo al tocar un campo cuya letra mide menos de 16px,
+       y después la página queda corrida. Con 16px no lo hace. */
+    input[type=text], input[type=number], input[type=password],
+    textarea, select{ font-size:16px }
+
+    /* objetivos de toque cómodos y sin el resaltado gris al tocar */
+    button{ min-height:40px }
+    .chips button{ min-height:34px }
+    *{ -webkit-tap-highlight-color:transparent }
+    .tira canvas{ width:56px; height:56px }
   }
 </style>
 </head>
