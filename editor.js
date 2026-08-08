@@ -297,14 +297,15 @@ function repintar(){
          El reproductor puede faltar si el navegador se quedó con un
          index.html viejo en la caché: ahí se dibuja el lienzo y ya. */
       const reproductor = $('#previa_video');
-      const conVideo = esReel && !!placa.video && !!reproductor;
+      const fuente = esReel ? fuenteDelReel() : '';
+      const conVideo = esReel && !!fuente && !!reproductor;
       const crudo = conVideo && !!placa.reel_crudo;
       // el lienzo nunca se esconde: es lo que le da tamaño al marco, y el
       // video va estirado por debajo
       if(reproductor){
         reproductor.hidden = !conVideo;
-        if(conVideo && !reproductor.src.endsWith(placa.video)){
-          reproductor.src = placa.video;
+        if(conVideo && !reproductor.src.endsWith(fuente)){
+          reproductor.src = fuente;
           reproductor.play().catch(() => {});
         }
         if(!conVideo && reproductor.src){ reproductor.pause(); reproductor.removeAttribute('src'); }
@@ -367,7 +368,7 @@ async function pintarTira(){
   const laminas = placa.laminas || [];
   const tira = $('#tira');
   if(placa.formato === 'reel'){
-    $('#rotulo_tira').textContent = placa.video ? 'Reel · un video vertical' : 'Reel · falta el video';
+    $('#rotulo_tira').textContent = fuenteDelReel() ? 'Reel · un video vertical' : 'Reel · falta el video';
     tira.innerHTML = '';
     const compartirR = $('#compartir');
     if(compartirR) compartirR.hidden = true;
@@ -500,8 +501,9 @@ function pintarChips(){
 
 async function pintarFotos(){
   if(placa.formato === 'reel'){
-    const miniatura = placa.video
-      ? `<video src="${esc(placa.video)}#t=0.5" muted playsinline preload="metadata"></video>`
+    const fuente = fuenteDelReel();
+    const miniatura = fuente
+      ? `<video src="${esc(fuente)}#t=0.5" muted playsinline preload="metadata"></video>`
       : '<img src="assets/marcador.jpg" alt="">';
     $('#fotos').innerHTML = `
       <div class="foto" data-reel>
@@ -509,7 +511,7 @@ async function pintarFotos(){
         <div class="cuerpo">
           <b>Video del reel</b>
           <button type="button" class="archivo"
-                  onclick="this.parentNode.querySelector('input').click()">${placa.video ? 'Cambiar video…' : 'Elegir video…'}</button>
+                  onclick="this.parentNode.querySelector('input').click()">${fuente ? 'Cambiar video…' : 'Elegir video…'}</button>
           <input type="file" accept="video/mp4,video/quicktime" data-reel-video>
           <p class="nota">
             Vertical, hasta 90 segundos. El titular entra animado en el primer
@@ -621,9 +623,20 @@ const nombrar = (titulo) =>
   String(titulo).split('\n').map((l) => l.trim()).find(Boolean)?.slice(0, 60) || 'Placa sin título';
 
 async function cargar(id){
+  // el archivo local y lo ya grabado son de la placa que se estaba editando:
+  // sin soltarlos, la siguiente mostraría el video de la anterior
+  if(videoLocal){ URL.revokeObjectURL(videoLocal); videoLocal = null; }
+  subiendoVideo = null;
+  ultimoQuemado = null;
+
   placa = await leerPlaca(id);
   localStorage.setItem('placa', id);
   document.body.dataset.formato = placa.formato;
+  const esReel = placa.formato === 'reel';
+  // en un reel no hay imágenes que bajar, hay un video
+  $('#bajar_reel').hidden = !esReel;
+  $('#bajar_carrusel').hidden = esReel;
+  document.querySelectorAll('[data-exportar]').forEach((b) => { b.hidden = esReel; });
   const urgente = placa.formato === 'urgente';
   $('#leg_titular').textContent = urgente ? 'Descripción' : 'Titular';
   $('#lab_titulo').textContent = urgente
@@ -764,7 +777,7 @@ $('#publicar').addEventListener('click', async (ev) => {
   // publicar puede llevar minutos; si la pantalla se apaga, se corta todo
   const despierto = await mantenerDespierto();
   try{
-    if(placa.formato === 'reel' && !placa.video){
+    if(placa.formato === 'reel' && !fuenteDelReel()){
       estado('Falta el video del reel.', true);
       ev.target.disabled = false;
       return;
@@ -901,6 +914,26 @@ $('#bajar_carrusel').addEventListener('click', async (ev) => {
     estado(`Listas ${n} imagen${n > 1 ? 'es' : ''} en JPEG 1080`);
   }catch(e){ estado(e.message, true); }
   finally{ cerrarTrabajo(); }
+  ev.target.disabled = false;
+});
+
+/* El reel terminado, para tenerlo en el teléfono o subirlo a mano. Si ya se
+   grabó para publicar y no cambió nada, se baja el mismo y es instantáneo. */
+$('#bajar_reel').addEventListener('click', async (ev) => {
+  ev.target.disabled = true;
+  const despierto = await mantenerDespierto();
+  try{
+    if(!placa.reel_crudo && placa.video){
+      // los de antes ya están hechos: se bajan del servidor y listo
+      const r = await fetch(placa.video);
+      bajar(await r.blob(), baseNombre() + '.mp4');
+    }else{
+      const { blob } = await grabarReel();
+      bajar(blob, baseNombre() + '.mp4');
+    }
+    estado('Video listo, se descargó');
+  }catch(e){ estado(e.message, true); }
+  finally{ cerrarTrabajo(); despierto?.release().catch(() => {}); }
   ev.target.disabled = false;
 });
 
@@ -1192,34 +1225,65 @@ async function quemarReel(fuente, avisar){
 
 /* El video se guarda tal cual llega. Antes se le quemaba el titular acá
    mismo, y entonces cambiar el texto no servía de nada: el video ya estaba
-   hecho. Ahora se quema recién al publicar. */
+   hecho. Ahora se quema recién al publicar.
+   El archivo elegido se ve al instante desde el propio teléfono y viaja al
+   servidor de fondo: no hay razón para mirar una barra sin poder escribir. */
+let videoLocal = null;      // el archivo de esta sesión, ya en el navegador
+let subiendoVideo = null;   // termina cuando el crudo llegó al servidor
+
+const fuenteDelReel = () => videoLocal || placa.video || '';
+
 async function agregarReel(archivo){
-  trabajo('Subiendo el video', null,
-    'Se guarda tal cual: el titular se le quema encima recién al publicar, así podés seguir cambiando el texto.');
-  try{
-    const sub = await guardarFoto(archivo);
-    placa.reel_crudo = 1;
-    placa.portada = '';
-    cambio('video', sub.ruta);
-    await pintarFotos();
-    estado('Video listo');
-  }finally{ cerrarTrabajo(); }
+  if(videoLocal) URL.revokeObjectURL(videoLocal);
+  videoLocal = URL.createObjectURL(archivo);
+  ultimoQuemado = null;
+  placa.reel_crudo = 1;
+  placa.portada = '';
+  repintar();
+  await pintarFotos();
+  estado('Ya se ve. Se está guardando de fondo: podés ir escribiendo el titular.');
+
+  subiendoVideo = guardarFoto(archivo)
+    .then(({ ruta }) => { cambio('video', ruta); estado('Video guardado'); return ruta; })
+    .catch((e) => { estado('No se pudo guardar el video: ' + e.message, true); throw e; });
+}
+
+/* Grabar es en tiempo real: no hay forma de hacerlo más rápido. Lo que sí se
+   puede es no hacerlo dos veces. Se guarda el resultado junto con la firma de
+   lo que se ve en pantalla; mientras no cambie nada, se reusa. */
+let ultimoQuemado = null;
+
+const firmaDelReel = () => JSON.stringify([
+  fuenteDelReel(), placa.titulo, placa.etiqueta, placa.color_fondo, placa.color_filete,
+]);
+
+async function grabarReel(){
+  const fuente = fuenteDelReel();
+  if(!fuente) throw new Error('Falta el video del reel');
+  const firma = firmaDelReel();
+  if(ultimoQuemado && ultimoQuemado.firma === firma) return ultimoQuemado;
+
+  const espera = 'Se le queman encima el titular, la etiqueta y el logo. '
+    + 'Tarda lo que dura el video: la grabación es en tiempo real.';
+  trabajo('Grabando el titular en el video', 0, espera);
+  // se graba desde el archivo del propio teléfono cuando está: no hay que
+  // bajarlo del servidor para volver a subirlo
+  const { video } = await quemarReel(fuente, (a) => {
+    trabajo('Grabando el titular en el video', a, espera);
+  });
+  trabajo('Subiendo el reel', null, 'Ya está listo: falta que llegue al servidor.');
+  const sub = await guardarFoto(new File([video], 'reel.mp4', { type: 'video/mp4' }));
+  ultimoQuemado = { firma, ruta: sub.ruta, blob: video };
+  return ultimoQuemado;
 }
 
 /* Lo que se manda a Instagram: acá sí se quema, con el texto que tenga la
    placa en este momento. Las de antes ya vienen quemadas del servidor. */
 async function reelParaPublicar(){
-  if(!placa.video) throw new Error('Falta el video del reel');
+  if(!fuenteDelReel()) throw new Error('Falta el video del reel');
   if(!placa.reel_crudo) return { tipo: 'reel', ruta: placa.video };
-
-  const espera = 'Se le queman encima el titular, la etiqueta y el logo. Tarda lo que dura el video.';
-  trabajo('Grabando el titular en el video', 0, espera);
-  const { video } = await quemarReel(placa.video, (a) => {
-    trabajo('Grabando el titular en el video', a, espera);
-  });
-  trabajo('Subiendo el reel', null, 'Ya está listo: falta que llegue al servidor.');
-  const sub = await guardarFoto(new File([video], 'reel.mp4', { type: 'video/mp4' }));
-  return { tipo: 'reel', ruta: sub.ruta };
+  const { ruta } = await grabarReel();
+  return { tipo: 'reel', ruta };
 }
 
 async function agregarVideo(archivo, indice){

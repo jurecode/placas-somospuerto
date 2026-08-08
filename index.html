@@ -321,18 +321,38 @@
       background:var(--bg); border-bottom:1px solid var(--linea);
       padding:10px 10px calc(10px + env(safe-area-inset-bottom));
     }
-    #previa, #previa_video{ max-height:38svh }
+    /* La franja de arriba compite con la barra del navegador y con el
+       teclado. Todo lo que hay acá está medido para que el formulario
+       empiece dentro de la pantalla, no debajo. */
+    .previa{ gap:8px }
+    #previa, #previa_video{ max-height:22svh }
     /* el reel es angosto: con la misma altura se veía diminuto */
     body[data-formato="reel"] #previa,
-    body[data-formato="reel"] #previa_video{ max-height:46svh }
+    body[data-formato="reel"] #previa_video{ max-height:30svh }
+
+    /* en el reel la tira no muestra nada: es un video solo */
+    body[data-formato="reel"] .carrusel-vista{ display:none }
+
+    /* la tira, en una línea: el rótulo largo se comía dos renglones */
+    .carrusel-vista{ padding:6px 9px; gap:4px; width:100% }
+    .carrusel-vista p{
+      font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      max-width:100%; justify-self:start;
+    }
+    .tira{ gap:7px }
+    .publicar{ padding:12px 18px; font-size:15px }
+    .pie-previa{ margin-top:-4px }
 
     /* Escribiendo, la vista previa se hace chica y se va todo lo que no sea
        mirar el titular. Con el teclado abierto y la vista entera no quedaba
        lugar para el campo que se estaba editando: no se podía escribir. */
+    /* flotando en una esquina: puesto en la columna se comía 38 px de alto
+       que hacen falta para el formulario */
     .encoger{
-      display:inline-flex; align-items:center; gap:6px; align-self:flex-end;
-      background:transparent; border:1px solid var(--linea); color:var(--suave);
-      font-size:12px; padding:4px 10px; border-radius:8px; min-height:30px;
+      position:absolute; top:8px; right:8px; z-index:6;
+      display:inline-flex; align-items:center;
+      background:#1c1e24cc; border:1px solid var(--linea); color:var(--suave);
+      font-size:11px; padding:0 9px; border-radius:99px; min-height:26px;
     }
     body.escribiendo .previa{ padding:6px 10px }
     body.escribiendo #previa, body.escribiendo #previa_video{ max-height:13svh }
@@ -359,7 +379,7 @@
     button{ min-height:40px }
     .chips button{ min-height:34px }
     *{ -webkit-tap-highlight-color:transparent }
-    .tira canvas{ width:64px; height:64px }
+    .tira canvas{ width:52px; height:52px }
   }
 </style>
 </head>
@@ -503,6 +523,7 @@
     </div>
     <div class="campo fila" style="margin-top:10px">
       <button class="descarga" id="bajar_carrusel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>Bajar imágenes</button>
+      <button class="descarga" id="bajar_reel" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>Bajar el video</button>
       <button class="descarga" id="compartir" hidden>Compartir al teléfono</button>
     </div>
     <p class="nota">
