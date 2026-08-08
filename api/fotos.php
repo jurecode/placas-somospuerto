@@ -17,13 +17,20 @@ if (!is_writable($dir)) {
 
 $binario = file_get_contents('php://input');
 if ($binario === false || strlen($binario) === 0) responder(['error' => 'Llegó vacío'], 400);
-if (strlen($binario) > 25 * 1024 * 1024) responder(['error' => 'Máximo 25 MB'], 413);
+if (strlen($binario) > 120 * 1024 * 1024) responder(['error' => 'Máximo 120 MB'], 413);
 
+// imagen o MP4: nada más entra
+$ext = null;
 $tipo = @getimagesizefromstring($binario);
-if ($tipo === false) responder(['error' => 'Eso no es una imagen'], 400);
-$ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp',
-        'image/gif' => 'gif'][$tipo['mime']] ?? null;
-if ($ext === null) responder(['error' => 'Formato no soportado: ' . $tipo['mime']], 400);
+if ($tipo !== false) {
+    $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp',
+            'image/gif' => 'gif'][$tipo['mime']] ?? null;
+    if ($ext === null) responder(['error' => 'Formato no soportado: ' . $tipo['mime']], 400);
+} elseif (substr($binario, 4, 4) === 'ftyp') {   // firma de los MP4
+    $ext = 'mp4';
+} else {
+    responder(['error' => 'Eso no es una imagen ni un video MP4'], 400);
+}
 
 try {
     $nombre = date('Ymd-His') . '-' . bin2hex(random_bytes(4)) . '.' . $ext;

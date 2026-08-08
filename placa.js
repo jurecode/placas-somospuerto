@@ -116,29 +116,35 @@ function repartir(ctx, texto, tipo, px, interletrado, maxAncho){
 /* Dibuja una foto dentro de un hueco.
    "completa": entra entera y lo que sobra se rellena con una copia
    difuminada de la misma foto. "cubrir": llena y recorta. */
-function dibujarFoto(ctx, img, x, y, ancho, alto, ajuste, posX, posY, u){
-  if(!img) return;
+function dibujarFoto(ctx, medio, x, y, ancho, alto, ajuste, posX, posY, u){
+  if(!medio) return;
+  // sirve igual para una imagen que para un <video>, que no expone width
+  // y height sino videoWidth y videoHeight
+  const anchoOrig = medio.videoWidth || medio.width;
+  const altoOrig  = medio.videoHeight || medio.height;
+  if(!anchoOrig || !altoOrig) return;
+
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, y, ancho, alto);
   ctx.clip();
 
   const encajar = (escala) => {
-    const w = img.width * escala, h = img.height * escala;
+    const w = anchoOrig * escala, h = altoOrig * escala;
     return [x + (ancho - w) * (posX / 100), y + (alto - h) * (posY / 100), w, h];
   };
 
   if(ajuste === 'completa'){
     // fondo difuminado
-    const cubre = Math.max(ancho / img.width, alto / img.height) * 1.18;
+    const cubre = Math.max(ancho / anchoOrig, alto / altoOrig) * 1.18;
     const [fx, fy, fw, fh] = encajar(cubre);
     ctx.filter = `blur(${26 * u}px) brightness(.72) saturate(1.15)`;
-    ctx.drawImage(img, fx - (fw - ancho) * .09, fy - (fh - alto) * .09, fw, fh);
+    ctx.drawImage(medio, fx - (fw - ancho) * .09, fy - (fh - alto) * .09, fw, fh);
     ctx.filter = 'none';
-    const entra = Math.min(ancho / img.width, alto / img.height);
-    ctx.drawImage(img, ...encajar(entra));
+    const entra = Math.min(ancho / anchoOrig, alto / altoOrig);
+    ctx.drawImage(medio, ...encajar(entra));
   }else{
-    ctx.drawImage(img, ...encajar(Math.max(ancho / img.width, alto / img.height)));
+    ctx.drawImage(medio, ...encajar(Math.max(ancho / anchoOrig, alto / altoOrig)));
   }
   ctx.restore();
 }

@@ -230,6 +230,34 @@ async function pintarTira(){
 }
 
 /* Genera las láminas como archivos JPEG en memoria. */
+/* Lo que se manda a publicar: la placa y las imágenes se generan acá, los
+   videos ya están en el servidor desde que se subieron. */
+async function itemsParaPublicar(){
+  const laminas = placa.laminas || [];
+  const lienzo = document.createElement('canvas');
+  lienzo.width = lienzo.height = 1080;
+  const ctx = lienzo.getContext('2d');
+  const logo = await cargarImagen('assets/logo.png');
+  const jpeg = () => new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.92));
+  const aDataUrl = (blob) => new Promise((r) => {
+    const l = new FileReader(); l.onload = () => r(l.result); l.readAsDataURL(blob);
+  });
+
+  const items = [];
+  dibujar(ctx, placa, await imagenesDe(placa), 1080);
+  items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
+
+  for(const lam of laminas){
+    if(lam.tipo === 'video'){
+      items.push({ tipo: 'video', ruta: lam.video });
+      continue;
+    }
+    dibujarLamina(ctx, placa, lam, await cargarImagen(lam.foto), logo, 1080);
+    items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
+  }
+  return items;
+}
+
 async function archivosDelCarrusel(){
   const laminas = placa.laminas || [];
   const lienzo = document.createElement('canvas');
@@ -335,13 +363,14 @@ async function pintarLaminas(){
     <div class="foto" data-lamina="${i}">
       <img alt="">
       <div class="cuerpo">
-        <b>Foto ${i + 2} del carrusel</b>
+        <b>${lam.tipo === 'video' ? 'Video' : 'Foto'} ${i + 2} del carrusel</b>
         <button type="button" class="archivo"
                 onclick="this.parentNode.querySelector('input').click()">Cambiar…</button>
         <button type="button" class="archivo" data-quitar="${i}">Quitar</button>
-        <input type="file" accept="image/*" data-lamina-foto="${i}">
-        <div class="ajuste">${AJUSTES.map(([id, n, ayuda]) =>
-          `<button data-lamina-ajuste="${i}:${id}" title="${ayuda}">${n}</button>`).join('')}</div>
+        <input type="file" accept="image/*,video/mp4,video/quicktime" data-lamina-foto="${i}">
+        ${lam.tipo === 'video' ? '<p class="nota">Ya quedó con el logo quemado.</p>' :
+          `<div class="ajuste">${AJUSTES.map(([id, n, ayuda]) =>
+            `<button data-lamina-ajuste="${i}:${id}" title="${ayuda}">${n}</button>`).join('')}</div>`}
       </div>
     </div>`).join('') || '<p class="nota">Solo la placa. Agregá fotos para armar un carrusel.</p>';
 
@@ -528,19 +557,14 @@ $('#publicar').addEventListener('click', async (ev) => {
   ev.target.disabled = true;
   estado('Generando imágenes…');
   try{
-    const archivos = await archivosDelCarrusel();
-    const imagenes = await Promise.all(archivos.map((a) => new Promise((listo) => {
-      const lector = new FileReader();
-      lector.onload = () => listo(lector.result);
-      lector.readAsDataURL(a);
-    })));
+    const items = await itemsParaPublicar();
 
-    estado('Subiendo a Instagram… puede tardar hasta un minuto');
+    estado('Subiendo a Instagram… puede tardar unos minutos si hay video');
     const res = await fetch('api/publicar.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        clave: clave(), imagenes,
+        clave: clave(), items,
         caption: armarCaption(),
         colaboradores: placa.colaboradores || '',
       }),
@@ -586,10 +610,12 @@ async function reemplazarFoto(campo, archivo){
 }
 
 async function reemplazarLamina(i, archivo){
+  if(esVideo(archivo)) return agregarVideo(archivo, i);
   const { ruta } = await guardarFoto(archivo);
   placa.laminas[i] = { foto: ruta, ajuste: 'completa', x: 50, y: 50 };
   cambio('laminas', placa.laminas);
   await pintarLaminas();
+  estado('Foto del carrusel actualizada');
 }
 
 document.addEventListener('change', async (ev) => {
@@ -611,10 +637,111 @@ document.addEventListener('change', async (ev) => {
 });
 
 /* ------------------------------------------------------------------ */
+/* video: quemar el degradado y el logo encima                          */
+/* ------------------------------------------------------------------ */
+
+const TIPO_MP4 = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
+const DURACION_MAX = 60;   // lo que acepta Instagram en un carrusel
+
+/* Se reproduce el video, se dibuja cada cuadro dentro de la moldura junto
+   con el logo, y se graba la salida. La grabación es en tiempo real: un
+   video de 30 segundos tarda 30 segundos. No hay forma de acelerarlo con
+   MediaRecorder, y a cambio el resultado sale en MP4/H.264, que es el
+   único formato que Instagram acepta. */
+async function quemarVideo(archivo, lamina, avisar){
+  if(!MediaRecorder.isTypeSupported(TIPO_MP4)){
+    throw new Error('Este navegador no puede generar MP4. Probá con Chrome o Safari.');
+  }
+
+  const video = document.createElement('video');
+  video.src = URL.createObjectURL(archivo);
+  video.muted = false;
+  video.playsInline = true;
+  await new Promise((listo, falla) => {
+    video.onloadedmetadata = listo;
+    video.onerror = () => falla(new Error('No se pudo leer el video'));
+  });
+  if(video.duration > DURACION_MAX + 0.5){
+    throw new Error(`El video dura ${Math.round(video.duration)}s y el máximo son ${DURACION_MAX}s`);
+  }
+
+  const lienzo = document.createElement('canvas');
+  lienzo.width = lienzo.height = 1080;
+  const ctx = lienzo.getContext('2d');
+  const logo = await cargarImagen('assets/logo.png');
+
+  const flujo = lienzo.captureStream(30);
+
+  // el audio del video se engancha aparte; sin esto la salida sale muda
+  let audio = null;
+  try{
+    audio = new AudioContext();
+    const fuente = audio.createMediaElementSource(video);
+    const destino = audio.createMediaStreamDestination();
+    fuente.connect(destino);
+    destino.stream.getAudioTracks().forEach((t) => flujo.addTrack(t));
+  }catch(e){ /* si el video no trae audio, sigue sin él */ }
+
+  const grabador = new MediaRecorder(flujo, {
+    mimeType: TIPO_MP4, videoBitsPerSecond: 6_000_000,
+  });
+  const trozos = [];
+  grabador.ondataavailable = (e) => { if(e.data.size) trozos.push(e.data); };
+
+  let dibujando = true;
+  const pintar = () => {
+    if(!dibujando) return;
+    dibujarLamina(ctx, placa, lamina, video, logo, 1080);
+    if(video.duration) avisar?.(video.currentTime / video.duration);
+    setTimeout(pintar, 33);   // ~30 cuadros por segundo
+  };
+
+  const listo = new Promise((r) => { grabador.onstop = r; });
+  grabador.start();
+  pintar();
+  await video.play();
+  await new Promise((r) => { video.onended = r; });
+  dibujando = false;
+  grabador.stop();
+  await listo;
+  audio?.close();
+
+  // una imagen del primer cuadro, para la vista previa y las miniaturas
+  video.currentTime = 0;
+  await new Promise((r) => { video.onseeked = r; setTimeout(r, 500); });
+  dibujarLamina(ctx, placa, lamina, video, logo, 1080);
+  const portada = await new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.9));
+
+  URL.revokeObjectURL(video.src);
+  return { video: new Blob(trozos, { type: 'video/mp4' }), portada };
+}
+
+async function agregarVideo(archivo, indice){
+  const lamina = { ajuste: 'cubrir', x: 50, y: 50 };
+  estado('Procesando el video… tarda lo que dura el video');
+  const { video, portada } = await quemarVideo(archivo, lamina, (avance) => {
+    estado(`Procesando el video… ${Math.round(avance * 100)}%`);
+  });
+
+  estado('Subiendo el video…');
+  const subido = await guardarFoto(new File([video], 'lamina.mp4', { type: 'video/mp4' }));
+  const conPortada = await guardarFoto(new File([portada], 'portada.jpg', { type: 'image/jpeg' }));
+
+  const nueva = { ...lamina, tipo: 'video', video: subido.ruta, foto: conPortada.ruta };
+  if(indice === undefined) placa.laminas = (placa.laminas || []).concat(nueva);
+  else placa.laminas[indice] = nueva;
+  cambio('laminas', placa.laminas);
+  await pintarLaminas();
+  estado('Video listo en el carrusel');
+}
+
+/* ------------------------------------------------------------------ */
 /* arrastrar y soltar fotos                                            */
 /* ------------------------------------------------------------------ */
 
-const imagenesDe_ = (dt) => [...(dt?.files || [])].filter((f) => f.type.startsWith('image/'));
+const esVideo = (f) => f.type.startsWith('video/');
+const mediosDe_ = (dt) => [...(dt?.files || [])]
+  .filter((f) => f.type.startsWith('image/') || esVideo(f));
 
 /* Dónde se puede soltar: cada hueco de foto, cada lámina, y la sección
    del carrusel entera (ahí se sueltan varias de una vez). */
@@ -646,7 +773,7 @@ document.addEventListener('drop', async (ev) => {
   ev.preventDefault();
   const zona = zonaDeSoltado(ev.target);
   marcar(null);
-  const archivos = imagenesDe_(ev.dataTransfer);
+  const archivos = mediosDe_(ev.dataTransfer);
   if(!zona || !archivos.length || !placa) return;
 
   try{
@@ -655,14 +782,14 @@ document.addEventListener('drop', async (ev) => {
       estado('Foto actualizada');
     }else if(zona.dataset.lamina !== undefined){
       await reemplazarLamina(Number(zona.dataset.lamina), archivos[0]);
-      estado('Foto del carrusel actualizada');
     }else{
       // en la zona del carrusel se agregan todas las que entren
       const lugar = MAX_LAMINAS - (placa.laminas || []).length;
       const entran = archivos.slice(0, lugar);
       if(!entran.length) return estado(`El carrusel ya tiene las ${MAX_LAMINAS + 1} imágenes`, true);
-      estado(`Subiendo ${entran.length} foto${entran.length > 1 ? 's' : ''}…`);
+      estado(`Subiendo ${entran.length}…`);
       for(const archivo of entran){
+        if(esVideo(archivo)){ await agregarVideo(archivo); continue; }
         const { ruta } = await guardarFoto(archivo);
         placa.laminas = (placa.laminas || []).concat({ foto: ruta, ajuste: 'completa', x: 50, y: 50 });
       }

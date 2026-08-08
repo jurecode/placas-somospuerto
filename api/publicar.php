@@ -27,9 +27,13 @@ if ($IG_USER_ID === '' || ajuste('ig_access_token') === '') {
     responder(['error' => 'Falta cargar la cuenta de Instagram en el panel privado'], 503);
 }
 
-$imagenes = $entrada['imagenes'] ?? [];
-if (!is_array($imagenes) || !count($imagenes)) responder(['error' => 'No llegó ninguna imagen'], 400);
-if (count($imagenes) > MAX_LAMINAS) {
+// compatibilidad: antes llegaba una lista de imágenes en base64
+$items = $entrada['items'] ?? null;
+if ($items === null && isset($entrada['imagenes'])) {
+    $items = array_map(static fn($d) => ['tipo' => 'imagen', 'dataUrl' => $d], $entrada['imagenes']);
+}
+if (!is_array($items) || !count($items)) responder(['error' => 'No llegó ninguna imagen'], 400);
+if (count($items) > MAX_LAMINAS) {
     responder(['error' => 'Instagram acepta hasta ' . MAX_LAMINAS . ' imágenes'], 400);
 }
 
@@ -53,10 +57,20 @@ $respuesta = null;
 $codigo = 200;
 
 try {
-    // 1. dejar las imágenes en una URL pública para que Instagram las lea
-    $urls = [];
-    foreach ($imagenes as $i => $dataUrl) {
-        $partes = explode(',', (string) $dataUrl, 2);
+    // 1. cada lámina necesita una URL pública para que Instagram la lea.
+    //    Las imágenes llegan en base64 y se dejan un rato; los videos ya
+    //    están subidos desde antes, así que solo se referencian.
+    $medios = [];
+    foreach ($items as $i => $item) {
+        if (($item['tipo'] ?? 'imagen') === 'video') {
+            $rel = ltrim(str_replace('\\', '/', (string) ($item['ruta'] ?? '')), '/');
+            if ($rel === '' || strpos($rel, '..') !== false || !is_file(dirname(__DIR__) . '/' . $rel)) {
+                throw new RuntimeException('No se encontró el video de una de las láminas');
+            }
+            $medios[] = ['tipo' => 'video', 'url' => base_url() . '/' . $rel];
+            continue;
+        }
+        $partes = explode(',', (string) ($item['dataUrl'] ?? ''), 2);
         $binario = base64_decode($partes[1] ?? '', true);
         if ($binario === false) throw new RuntimeException('Una de las imágenes llegó mal');
 
@@ -66,7 +80,7 @@ try {
             throw new RuntimeException('No se pudo guardar la imagen en el servidor');
         }
         $archivos[] = $ruta;
-        $urls[] = $urlBase . '/' . $nombre;
+        $medios[] = ['tipo' => 'imagen', 'url' => $urlBase . '/' . $nombre];
     }
 
     $cuentas = array_slice(array_values(array_filter(array_map(
@@ -74,17 +88,25 @@ try {
         preg_split('/[,\s]+/', $colaboradores) ?: []
     ))), 0, 3);
 
-    $varias = count($urls) > 1;
+    $varias = count($medios) > 1;
+    $hayVideo = false;
 
-    // 2. un contenedor por imagen
+    // 2. un contenedor por lámina
     $hijos = [];
-    foreach ($urls as $url) {
-        $cuerpo = ['image_url' => $url];
+    foreach ($medios as $medio) {
+        if ($medio['tipo'] === 'video') {
+            $hayVideo = true;
+            $cuerpo = ['media_type' => 'VIDEO', 'video_url' => $medio['url']];
+        } else {
+            $cuerpo = ['image_url' => $medio['url']];
+        }
         if ($varias) $cuerpo['is_carousel_item'] = 'true';
         else         $cuerpo['caption'] = $caption;
         $hijos[] = graph($IG_USER_ID . '/media', $cuerpo)['id'];
     }
-    foreach ($hijos as $id) esperar_contenedor((string) $id);
+    // Instagram tarda bastante más en procesar video que imagen
+    $espera = $hayVideo ? 150 : 20;
+    foreach ($hijos as $id) esperar_contenedor((string) $id, $espera);
 
     // 3. si son varias, el contenedor del carrusel
     $contenedor = (string) $hijos[0];
@@ -109,7 +131,7 @@ try {
             $contenedor = (string) $armar(false);
             $aviso = 'no se pudieron agregar los colaboradores (' . $e->getMessage() . ')';
         }
-        esperar_contenedor($contenedor);
+        esperar_contenedor($contenedor, $espera);
     }
 
     // 4. publicar
@@ -122,7 +144,7 @@ try {
     } catch (Throwable $e) { /* el post ya está publicado; el enlace es un extra */ }
 
     $respuesta = ['ok' => true, 'id' => $id, 'enlace' => $enlace,
-                  'laminas' => count($urls), 'aviso' => $aviso];
+                  'laminas' => count($medios), 'aviso' => $aviso];
 
 } catch (Throwable $e) {
     $respuesta = ['error' => $e->getMessage()];
