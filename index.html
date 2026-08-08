@@ -184,8 +184,30 @@
     font-weight:700; color:#fff; text-shadow:0 1px 3px #000;
   }
   .tira[hidden]{ display:none }
-  .previa .grande{ font-size:15px; padding:12px 22px }
+  /* La acción que publica no se puede confundir con las que descargan:
+     lleva el degradado de Instagram, flecha hacia arriba y es la única
+     de su tipo en toda la interfaz. */
+  .publicar{
+    display:inline-flex; align-items:center; gap:10px;
+    padding:13px 26px; border:0; border-radius:10px; cursor:pointer;
+    font:inherit; font-size:15px; font-weight:700; color:#fff;
+    background:linear-gradient(95deg,#f9ce34 0%,#ee2a7b 45%,#6228d7 100%);
+    box-shadow:0 6px 20px #ee2a7b40;
+  }
+  .publicar:hover{ filter:brightness(1.08) }
+  .publicar:disabled{ filter:grayscale(.7); cursor:default }
+  .publicar svg{ width:19px; height:19px; flex:none }
   .pie-previa{ font-size:12px; color:var(--suave); margin-top:-6px }
+
+  /* Las descargas son de contorno y con flecha hacia abajo: se leen de un
+     vistazo como lo contrario de publicar. */
+  .descarga{
+    display:inline-flex; align-items:center; gap:7px;
+    background:transparent; border:1px solid var(--linea); color:var(--suave);
+    font-size:13px; padding:8px 12px;
+  }
+  .descarga:hover{ background:#22242a; color:var(--texto) }
+  .descarga svg{ width:15px; height:15px; flex:none }
 
   /* En el celular la vista previa se queda arriba fija y los controles
      scrollean debajo, para no editar a ciegas. */
@@ -311,17 +333,17 @@
   <fieldset>
     <legend>Exportar</legend>
     <div class="campo fila">
-      <button class="principal" data-exportar="png" data-lado="1080">PNG 1080</button>
-      <button class="principal" data-exportar="png" data-lado="3000">PNG 3000</button>
+      <button class="descarga" data-exportar="png" data-lado="1080"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>PNG 1080</button>
+      <button class="descarga" data-exportar="png" data-lado="3000"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>PNG 3000</button>
     </div>
     <div class="campo fila" style="margin-top:10px">
-      <button id="bajar_carrusel">Bajar imágenes</button>
-      <button id="compartir" hidden>Compartir al teléfono</button>
+      <button class="descarga" id="bajar_carrusel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>Bajar imágenes</button>
+      <button class="descarga" id="compartir" hidden>Compartir al teléfono</button>
     </div>
     <p class="nota">
       Salidas manuales, por si querés subirlas vos: el carrusel sale en JPEG
-      1080 y los PNG son para archivo. Para publicar directo está el botón
-      naranjo al lado de la vista previa.
+      1080 y los PNG son para archivo. Para publicar directo está el botón de
+      colores al lado de la vista previa.
     </p>
   </fieldset>
 
@@ -344,7 +366,7 @@
 <div class="previa">
   <canvas id="previa" width="1080" height="1080" aria-label="Vista previa"></canvas>
   <div class="tira" id="tira" hidden></div>
-  <button class="principal grande" id="publicar">Publicar en Instagram</button>
+  <button class="publicar" id="publicar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg><span>Publicar en Instagram</span></button>
   <p class="pie-previa">Publica de verdad, en la cuenta real.</p>
 </div>
 
