@@ -53,15 +53,19 @@ jobs:
           path: placas-somospuerto.zip
           retention-days: 90
 
+      # El mensaje del commit es la nota de la versión: es lo que el panel
+      # muestra como "qué cambió", así que tiene que salir tal cual se escribió.
+      - name: Armar la nota de la versión
+        run: |
+          git log -1 --pretty=%B \
+            | sed '/^Co-Authored-By:/d' \
+            | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > notas.md
+          cat notas.md
+
       - name: Publicar la versión
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
           name: Versión ${{ github.run_number }}
-          body: |
-            Paquete listo para subir al hosting.
-            Commit `${{ github.sha }}`.
-
-            Descargá `placas-somospuerto.zip`, descomprimilo y subí el
-            contenido a la carpeta pública del dominio.
+          body_path: notas.md
           files: placas-somospuerto.zip

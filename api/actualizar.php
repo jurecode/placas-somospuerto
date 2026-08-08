@@ -57,16 +57,39 @@ function ultima_version(): array {
     return ['tag' => $d['tag_name'] ?? '?', 'publicada' => $d['published_at'] ?? null, 'zip' => $url];
 }
 
+/* Las últimas versiones con su nota, para poder ver qué cambió antes de
+ * actualizar y qué se instaló después. La nota es el mensaje del cambio. */
+function historial(int $cuantas = 8): array {
+    $repo = ajuste('gh_repo', REPO_POR_DEFECTO);
+    $r = github("https://api.github.com/repos/$repo/releases?per_page=$cuantas");
+    $d = json_decode($r['cuerpo'], true);
+    if (!is_array($d)) return [];
+
+    $lista = [];
+    foreach ($d as $v) {
+        $lista[] = [
+            'tag'       => $v['tag_name'] ?? '?',
+            'nombre'    => $v['name'] ?? ($v['tag_name'] ?? '?'),
+            'publicada' => $v['published_at'] ?? null,
+            'notas'     => trim((string) ($v['body'] ?? '')),
+        ];
+    }
+    return $lista;
+}
+
 try {
     if ($metodo === 'GET') {
         $v = ultima_version();
         $instalada = ajuste('version_instalada');
+        $lista = [];
+        try { $lista = historial(); } catch (Throwable $e) { /* sin historial se sigue igual */ }
         responder([
             'instalada' => $instalada !== '' ? $instalada : null,
             'ultima'    => $v['tag'],
             'publicada' => $v['publicada'],
             'hayNueva'  => $instalada === '' || $instalada !== $v['tag'],
             'repo'      => ajuste('gh_repo', REPO_POR_DEFECTO),
+            'versiones' => $lista,
         ]);
     }
 

@@ -54,6 +54,33 @@
   }
   a{ color:var(--ok) }
   .nota{ font-size:13px; color:var(--suave); margin-top:14px; line-height:1.5 }
+
+  /* qué cambió en cada versión */
+  .titulillo{
+    font-size:12px; text-transform:uppercase; letter-spacing:.09em;
+    color:var(--suave); margin:22px 0 10px; font-weight:600;
+  }
+  .novedad{ border-top:1px solid var(--linea); padding:10px 0 }
+  .novedad summary{
+    cursor:pointer; display:grid; grid-template-columns:auto auto 1fr; gap:4px 8px;
+    align-items:baseline; color:var(--texto); font-size:13px;
+  }
+  .novedad summary b{ font-weight:600 }
+  .novedad summary span{ color:var(--suave); font-size:12px; justify-self:end }
+  .novedad summary em{
+    grid-column:1 / -1; font-style:normal; color:var(--suave);
+    font-size:13px; line-height:1.45;
+  }
+  .novedad .puesta{
+    font-style:normal; font-size:10.5px; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--bg); background:var(--ok);
+    border-radius:99px; padding:2px 7px;
+  }
+  .novedad pre{
+    margin:10px 0 2px; white-space:pre-wrap; font-family:inherit;
+    font-size:13px; line-height:1.6; color:var(--suave);
+    border-left:2px solid var(--linea); padding-left:12px;
+  }
   .aviso{
     border-left:3px solid var(--acento); padding:10px 14px; background:#25181d;
     border-radius:0 8px 8px 0; font-size:13.5px; line-height:1.5;
@@ -135,6 +162,10 @@
     <div class="fila" style="margin-top:14px">
       <button class="principal" id="actualizar" disabled>Actualizar el sitio</button>
     </div>
+
+    <h3 class="titulillo">Qué cambió</h3>
+    <div id="novedades"><p class="nota">Revisando…</p></div>
+
     <details style="margin-top:16px">
       <summary>Token de GitHub</summary>
       <div class="campo" style="margin-top:12px">
@@ -302,11 +333,46 @@ async function revisarVersion(){
       : `Al día en la versión ${d.ultima}`;
     el.className = d.hayNueva ? 'fallo' : '';
     $('#actualizar').disabled = !d.hayNueva;
+    pintarNovedades(d.versiones || [], d.instalada);
   }catch(e){
     el.className = '';
     el.textContent = e.message;
     $('#actualizar').disabled = true;
   }
+}
+
+const esc = (s) => String(s).replace(/[&<>"]/g,
+  (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* Qué cambió en cada versión. La nota es el mensaje del cambio tal cual se
+   escribió: primera línea el titular, el resto la explicación. */
+function pintarNovedades(versiones, instalada){
+  const caja = $('#novedades');
+  if(!caja) return;
+  if(!versiones.length){
+    caja.innerHTML = '<p class="nota">No se pudo leer el historial de versiones.</p>';
+    return;
+  }
+  caja.innerHTML = versiones.map((v, i) => {
+    const lineas = (v.notas || '').split('\n');
+    const titular = lineas.shift() || 'Sin nota';
+    const resto = lineas.join('\n').trim();
+    const fecha = v.publicada
+      ? new Date(v.publicada).toLocaleString('es-CL',
+          { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '';
+    const puesta = v.tag === instalada;
+    return `
+      <details class="novedad" ${i === 0 ? 'open' : ''}>
+        <summary>
+          <b>${esc(v.nombre)}</b>
+          ${puesta ? '<i class="puesta">instalada</i>' : ''}
+          <span>${esc(fecha)}</span>
+          <em>${esc(titular)}</em>
+        </summary>
+        ${resto ? `<pre>${esc(resto)}</pre>` : ''}
+      </details>`;
+  }).join('');
 }
 
 $('#guardar_gh').addEventListener('click', async () => {
