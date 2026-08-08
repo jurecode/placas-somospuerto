@@ -23,6 +23,9 @@
   section{ background:var(--panel); border:1px solid var(--linea); border-radius:12px; padding:20px }
 
   .fila{ display:flex; gap:10px; align-items:center }
+  .campo{ margin-bottom:14px }
+  .campo label{ display:block; font-size:12.5px; color:var(--suave); margin-bottom:5px }
+  .campo input{ width:100% }
   input{
     flex:1; min-width:0; background:#14151a; color:var(--texto); font:inherit;
     border:1px solid var(--linea); border-radius:8px; padding:9px 11px;
@@ -80,6 +83,24 @@
   </section>
 
   <section>
+    <h2>Cuenta de Instagram</h2>
+    <div class="campo">
+      <label for="ig_user_id">Id de la cuenta</label>
+      <input type="text" id="ig_user_id" placeholder="17841400000000000" autocomplete="off">
+    </div>
+    <div class="campo">
+      <label for="ig_token">Token de larga duración</label>
+      <input type="password" id="ig_token" placeholder="Se guarda en la base, no se muestra nunca más" autocomplete="off">
+    </div>
+    <button class="principal" id="guardar">Guardar y probar</button>
+    <p class="nota">
+      Quedan en la base de datos, no en un archivo: cuando el token venza a
+      los 60 días lo cambiás acá y listo, sin entrar por FTP. El token no se
+      devuelve nunca: si el campo se ve vacío es porque ya está guardado.
+    </p>
+  </section>
+
+  <section>
     <h2>Estado</h2>
     <ul id="variables">
       <li><span>Escribí la clave y tocá Revisar.</span></li>
@@ -95,20 +116,23 @@
           creá una app, agregá el producto <b>Instagram</b> y generá un token de larga
           duración con los permisos <code>instagram_business_basic</code> e
           <code>instagram_business_content_publish</code>. Ahí mismo aparece el id de la cuenta.</li>
-      <li>En el hosting, copiá <code>api/config.ejemplo.php</code> como
-          <code>api/config.php</code> y completá <code>IG_USER_ID</code>,
-          <code>IG_ACCESS_TOKEN</code> y <code>PUBLICAR_CLAVE</code>.</li>
-      <li>Asegurate de que la carpeta <code>publicaciones/</code> exista y tenga
-          permiso de escritura (755). Ahí se dejan las imágenes el rato que
-          Instagram tarda en descargarlas, y se borran solas después.</li>
-      <li>Recargá esta página y revisá que quede todo en verde.</li>
+      <li>En cPanel creá una base MySQL y un usuario con permiso sobre ella.
+          Las tablas se crean solas la primera vez; después las podés mirar
+          desde phpMyAdmin.</li>
+      <li>Copiá <code>api/config.ejemplo.php</code> como <code>api/config.php</code>
+          y completá los datos de la base más <code>PUBLICAR_CLAVE</code>.</li>
+      <li>Dale permiso de escritura (755) a las carpetas <code>fotos/</code> y
+          <code>publicaciones/</code>.</li>
+      <li>Volvé acá, cargá el id y el token de Instagram, y revisá que quede
+          todo en verde.</li>
     </ol>
 
     <p class="aviso" style="margin-top:18px">
-      El token va escrito en <code>api/config.php</code>, en el servidor, y ese
-      archivo no está en GitHub ni se sirve por web. No se guarda desde esta
-      página a propósito: cualquier cosa que una web pueda escribir, otra puede
-      terminar leyéndola.
+      Lo único que se escribe a mano en el servidor son los datos de la base
+      y la clave, en <code>api/config.php</code> — archivo que no está en
+      GitHub ni se sirve por web. El token de Instagram sí se guarda desde
+      acá, porque vence cada 60 días y tenerlo en la base evita entrar por
+      FTP cada vez.
     </p>
 
     <p class="nota">
@@ -126,13 +150,17 @@ function pintar(datos){
   const nombres = {
     IG_USER_ID: 'Id de la cuenta de Instagram',
     IG_ACCESS_TOKEN: 'Token de acceso',
-    PUBLICAR_CLAVE: 'Clave para publicar',
-    CARPETA_IMAGENES: 'Carpeta publicaciones/ con permiso de escritura',
+    BD: 'Conexión a MySQL',
+    PUBLICAR_CLAVE: 'Clave de acceso',
+    IG_USER_ID: 'Id de la cuenta de Instagram',
+    IG_ACCESS_TOKEN: 'Token de acceso',
+    CARPETAS: 'Carpetas fotos/ y publicaciones/ con permiso de escritura',
   };
   const filas = Object.entries(datos.variables || {}).map(([k, ok]) => `
     <li><span class="marca ${ok ? 'si' : 'no'}">${ok ? '✓' : '✕'}</span>
         <b>${k}</b><span>${nombres[k] || ''}</span></li>`);
 
+  if(datos.cuenta && !$('#ig_user_id').value) $('#ig_user_id').value = datos.cuenta.id;
   if(datos.cuenta){
     filas.push(`<li><span class="marca si">✓</span><b>@${datos.cuenta.username}</b>
       <span>cuenta ${String(datos.cuenta.account_type || '').toLowerCase()} — el token funciona</span></li>`);
@@ -168,6 +196,26 @@ async function revisar(){
     res.className = 'error'; res.textContent = 'No se pudo consultar: ' + e.message;
   }
 }
+
+$('#guardar').addEventListener('click', async () => {
+  const res = $('#resultado');
+  res.className = ''; res.textContent = 'Guardando…';
+  try{
+    const r = await fetch('api/estado.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clave: $('#clave').value.trim(),
+        ig_user_id: $('#ig_user_id').value.trim(),
+        ig_access_token: $('#ig_token').value.trim(),
+      }),
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
+    $('#ig_token').value = '';
+    revisar();
+  }catch(e){ res.className = 'error'; res.textContent = e.message; }
+});
 
 $('#revisar').addEventListener('click', revisar);
 $('#clave').addEventListener('keydown', (e) => { if(e.key === 'Enter') revisar(); });

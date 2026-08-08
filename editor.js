@@ -76,42 +76,43 @@ const URGENTE = {
 };
 
 /* ------------------------------------------------------------------ */
-/* almacén                                                             */
+/* almacén: MySQL a través de api/                                     */
 /* ------------------------------------------------------------------ */
 
-const BD = 'placas-somospuerto';
-let bd = null;
-
-function abrirBd(){
-  return new Promise((listo, falla) => {
-    const pedido = indexedDB.open(BD, 1);
-    pedido.onupgradeneeded = () => {
-      const db = pedido.result;
-      if(!db.objectStoreNames.contains('placas'))
-        db.createObjectStore('placas', { keyPath: 'id', autoIncrement: true });
-      if(!db.objectStoreNames.contains('fotos'))
-        db.createObjectStore('fotos', { autoIncrement: true });
-    };
-    pedido.onsuccess = () => listo(pedido.result);
-    pedido.onerror = () => falla(pedido.error);
-  });
+/* La clave viaja en una cabecera y queda solo en este navegador. */
+function clave(){
+  let c = localStorage.getItem('clave_publicar');
+  if(!c){
+    c = prompt('Clave de acceso (la de api/config.php):');
+    if(c) localStorage.setItem('clave_publicar', c);
+  }
+  return c || '';
 }
 
-function tx(almacen, modo, fn){
-  return new Promise((listo, falla) => {
-    const t = bd.transaction(almacen, modo);
-    const pedido = fn(t.objectStore(almacen));
-    t.oncomplete = () => listo(pedido && pedido.result);
-    t.onerror = () => falla(t.error);
+async function api(ruta, opciones = {}){
+  const res = await fetch(ruta, {
+    ...opciones,
+    headers: { 'x-clave': clave(), ...(opciones.headers || {}) },
   });
+  const datos = await res.json().catch(() => ({}));
+  if(!res.ok){
+    if(res.status === 401) localStorage.removeItem('clave_publicar');
+    throw new Error(datos.error || `Error ${res.status}`);
+  }
+  return datos;
 }
 
-const listarPlacas = () => tx('placas', 'readonly', (s) => s.getAll());
-const leerPlaca = (id) => tx('placas', 'readonly', (s) => s.get(id));
-const escribirPlaca = (p) => tx('placas', 'readwrite', (s) => s.put(p));
-const borrarPlacaBd = (id) => tx('placas', 'readwrite', (s) => s.delete(id));
-const guardarFoto = (blob) => tx('fotos', 'readwrite', (s) => s.add(blob));
-const leerFoto = (id) => tx('fotos', 'readonly', (s) => s.get(id));
+const listarPlacas  = () => api('api/placas.php').then((d) => d.placas || []);
+const leerPlaca     = (id) => api('api/placas.php?id=' + id);
+const borrarPlacaBd = (id) => api('api/placas.php?id=' + id, { method: 'DELETE' });
+
+const escribirPlaca = (p) => api('api/placas.php', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ clave: clave(), placa: p }),
+});
+
+const guardarFoto = (archivo) => api('api/fotos.php', { method: 'POST', body: archivo });
 
 /* ------------------------------------------------------------------ */
 /* estado                                                              */
@@ -132,16 +133,11 @@ function estado(texto, esError){
   el.classList.toggle('error', !!esError);
 }
 
-/* Resuelve una referencia de foto ("assets/…" o "idb:12") a una imagen. */
+/* Las fotos son rutas del propio sitio ("assets/…" o "fotos/…"). */
 async function cargarImagen(ref){
   if(!ref) return null;
   if(cacheImg.has(ref)) return cacheImg.get(ref);
-  let url = ref;
-  if(ref.startsWith('idb:')){
-    const blob = await leerFoto(Number(ref.slice(4)));
-    if(!blob) return null;
-    url = URL.createObjectURL(blob);
-  }
+  const url = ref;
   const img = await new Promise((listo) => {
     const i = new Image();
     i.onload = () => listo(i);
@@ -383,7 +379,7 @@ async function volcarControles(){
 }
 
 async function pintarSelector(){
-  const lista = (await listarPlacas()).sort((a, b) => (b.actualizada || '').localeCompare(a.actualizada || ''));
+  const lista = await listarPlacas();
   $('#selector').innerHTML = lista.map((p) => {
     const fecha = String(p.actualizada || '').replace('T', ' ').slice(5, 16);
     return `<option value="${p.id}"${p.id === placa.id ? ' selected' : ''}>${esc(p.nombre)} — ${fecha}</option>`;
@@ -420,21 +416,20 @@ function cambio(campo, valor){
   marcarSeleccion();
   clearTimeout(guardando);
   guardando = setTimeout(async () => {
-    placa.nombre = nombrar(placa.titulo);
-    placa.actualizada = new Date().toISOString().slice(0, 19);
-    await escribirPlaca(placa);
-    await pintarSelector();
-    estado('Guardado ' + new Date().toLocaleTimeString('es-CL'));
+    try{
+      const r = await escribirPlaca(placa);
+      placa.id = r.id;
+      placa.nombre = r.nombre;
+      await pintarSelector();
+      estado('Guardado ' + new Date().toLocaleTimeString('es-CL'));
+    }catch(e){ estado('No se pudo guardar: ' + e.message, true); }
   }, 400);
 }
 
 async function crear(datos){
   const nueva = { ...datos };
   delete nueva.id;
-  nueva.nombre = nombrar(nueva.titulo);
-  nueva.actualizada = new Date().toISOString().slice(0, 19);
-  const id = await escribirPlaca(nueva);
-  return id;
+  return (await escribirPlaca(nueva)).id;
 }
 
 /* ------------------------------------------------------------------ */
@@ -524,23 +519,9 @@ $('#compartir').addEventListener('click', async (ev) => {
   ev.target.disabled = false;
 });
 
-/* La clave vive solo en este navegador; el token de Instagram nunca sale
-   del servidor. */
-function pedirClave(){
-  let clave = localStorage.getItem('clave_publicar');
-  if(!clave){
-    clave = prompt('Clave para publicar (la que definiste en Vercel como PUBLICAR_CLAVE):');
-    if(clave) localStorage.setItem('clave_publicar', clave);
-  }
-  return clave;
-}
-
 $('#publicar').addEventListener('click', async (ev) => {
   const laminas = (placa.laminas || []).length + 1;
   if(!confirm(`Se va a publicar en Instagram un carrusel de ${laminas} imagen${laminas > 1 ? 'es' : ''}. ¿Seguimos?`)) return;
-  const clave = pedirClave();
-  if(!clave) return;
-
   ev.target.disabled = true;
   estado('Generando imágenes…');
   try{
@@ -556,7 +537,7 @@ $('#publicar').addEventListener('click', async (ev) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        clave, imagenes,
+        clave: clave(), imagenes,
         caption: armarCaption(),
         colaboradores: placa.colaboradores || '',
       }),
@@ -595,8 +576,8 @@ document.addEventListener('change', async (ev) => {
 
   if(el.dataset.laminaFoto !== undefined && el.files && el.files[0]){
     const i = Number(el.dataset.laminaFoto);
-    const id = await guardarFoto(el.files[0]);
-    placa.laminas[i] = { foto: 'idb:' + id, ajuste: 'completa', x: 50, y: 50 };
+    const { ruta } = await guardarFoto(el.files[0]);
+    placa.laminas[i] = { foto: ruta, ajuste: 'completa', x: 50, y: 50 };
     cambio('laminas', placa.laminas);
     await pintarLaminas();
     el.value = '';
@@ -607,12 +588,12 @@ document.addEventListener('change', async (ev) => {
   const archivo = el.files[0];
   estado('Guardando ' + archivo.name + '…');
   try{
-    const id = await guardarFoto(archivo);
+    const { ruta } = await guardarFoto(archivo);
     const campo = el.dataset.foto;
     placa[campo + '_ajuste'] = 'completa';
     placa[campo + '_x'] = 50;
     placa[campo + '_y'] = 50;
-    cambio(campo, 'idb:' + id);
+    cambio(campo, ruta);
     await pintarFotos();
     estado('Foto actualizada');
   }catch(e){ estado(e.message, true); }
@@ -649,7 +630,7 @@ document.querySelectorAll('[data-exportar]').forEach((boton) => {
 /* ------------------------------------------------------------------ */
 
 async function ultimaPlaca(){
-  const lista = (await listarPlacas()).sort((a, b) => (b.actualizada || '').localeCompare(a.actualizada || ''));
+  const lista = await listarPlacas();
   const guardada = Number(localStorage.getItem('placa'));
   return lista.find((p) => p.id === guardada) || lista[0] || null;
 }
@@ -677,11 +658,15 @@ $('#portada').addEventListener('click', async (ev) => {
 /* ------------------------------------------------------------------ */
 
 (async () => {
-  bd = await abrirBd();
   await esperarTipografias();
   pintarDisenos();
   pintarPaleta();
   pintarChips();
-  if(!(await listarPlacas()).length) await crear(EJEMPLO);
-  abrirPortada();
+  try{
+    if(!(await listarPlacas()).length) await crear(EJEMPLO);
+    abrirPortada();
+  }catch(e){
+    estado('No se pudo conectar con el servidor: ' + e.message, true);
+    document.getElementById('portada').hidden = true;
+  }
 })();

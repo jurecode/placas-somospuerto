@@ -18,18 +18,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     responder(['error' => 'Solo POST'], 405);
 }
 
-if (!definida('IG_USER_ID') || !definida('IG_ACCESS_TOKEN')) {
-    responder(['error' => 'Falta configurar IG_USER_ID e IG_ACCESS_TOKEN en api/config.php'], 503);
-}
-if (!definida('PUBLICAR_CLAVE')) {
-    responder(['error' => 'Falta definir PUBLICAR_CLAVE en api/config.php: sin eso el endpoint queda abierto'], 503);
-}
-
 $entrada = json_decode(file_get_contents('php://input') ?: '', true);
 if (!is_array($entrada)) responder(['error' => 'No llegó el cuerpo de la petición'], 400);
+exigir_clave($entrada);
 
-if (!hash_equals(PUBLICAR_CLAVE, (string) ($entrada['clave'] ?? ''))) {
-    responder(['error' => 'Clave incorrecta'], 401);
+$IG_USER_ID = ajuste('ig_user_id');
+if ($IG_USER_ID === '' || ajuste('ig_access_token') === '') {
+    responder(['error' => 'Falta cargar la cuenta de Instagram en el panel privado'], 503);
 }
 
 $imagenes = $entrada['imagenes'] ?? [];
@@ -41,7 +36,7 @@ if (count($imagenes) > MAX_LAMINAS) {
 $caption      = (string) ($entrada['caption'] ?? '');
 $colaboradores = (string) ($entrada['colaboradores'] ?? '');
 
-[$dir, $urlBase] = carpeta_publica();
+[$dir, $urlBase] = carpeta('publicaciones');
 if (!is_dir($dir) || !is_writable($dir)) {
     responder(['error' => 'No se puede escribir en la carpeta publicaciones/. Revisá los permisos (755).'], 500);
 }
@@ -87,14 +82,14 @@ try {
         $cuerpo = ['image_url' => $url];
         if ($varias) $cuerpo['is_carousel_item'] = 'true';
         else         $cuerpo['caption'] = $caption;
-        $hijos[] = graph(IG_USER_ID . '/media', $cuerpo)['id'];
+        $hijos[] = graph($IG_USER_ID . '/media', $cuerpo)['id'];
     }
     foreach ($hijos as $id) esperar_contenedor((string) $id);
 
     // 3. si son varias, el contenedor del carrusel
     $contenedor = (string) $hijos[0];
     if ($varias) {
-        $armar = static function (bool $conColaboradores) use ($hijos, $caption, $cuentas) {
+        $armar = static function (bool $conColaboradores) use ($hijos, $caption, $cuentas, $IG_USER_ID) {
             $cuerpo = [
                 'media_type' => 'CAROUSEL',
                 'children'   => implode(',', $hijos),
@@ -103,7 +98,7 @@ try {
             if ($conColaboradores && $cuentas) {
                 $cuerpo['collaborators'] = json_encode($cuentas);
             }
-            return graph(IG_USER_ID . '/media', $cuerpo)['id'];
+            return graph($IG_USER_ID . '/media', $cuerpo)['id'];
         };
         try {
             $contenedor = (string) $armar(true);
@@ -118,11 +113,11 @@ try {
     }
 
     // 4. publicar
-    $id = graph(IG_USER_ID . '/media_publish', ['creation_id' => $contenedor])['id'];
+    $id = graph($IG_USER_ID . '/media_publish', ['creation_id' => $contenedor])['id'];
 
     $enlace = null;
     try {
-        $d = pedir(API_IG . '/' . $id . '?fields=permalink&access_token=' . urlencode(IG_ACCESS_TOKEN));
+        $d = pedir(API_IG . '/' . $id . '?fields=permalink&access_token=' . urlencode(ajuste('ig_access_token')));
         $enlace = $d['permalink'] ?? null;
     } catch (Throwable $e) { /* el post ya está publicado; el enlace es un extra */ }
 

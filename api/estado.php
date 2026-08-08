@@ -1,42 +1,71 @@
 <?php
-/* Diagnóstico de la configuración, para el panel privado.
- * Nunca devuelve el valor de una credencial: solo si está puesta o no. */
+/* Estado de la configuración y guardado de las credenciales de Instagram.
+ *
+ * El token se guarda en la base (no en un archivo) para poder renovarlo
+ * desde el panel cuando vence, sin entrar por FTP. Nunca se devuelve: solo
+ * se informa si está puesto y si funciona. */
 
 declare(strict_types=1);
 require_once __DIR__ . '/lib.php';
 cargar_config();
 
-[$dir] = carpeta_publica();
+$metodo = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-$variables = [
-    'IG_USER_ID'     => definida('IG_USER_ID'),
-    'IG_ACCESS_TOKEN'=> definida('IG_ACCESS_TOKEN'),
-    'PUBLICAR_CLAVE' => definida('PUBLICAR_CLAVE'),
-    'CARPETA_IMAGENES' => is_dir($dir) && is_writable($dir),
-];
-$faltan = array_keys(array_filter($variables, static fn($ok) => !$ok));
-
+// Sin clave definida no hay nada que proteger todavía: se informa qué falta
+// para poder arrancar la configuración, y nada más.
 if (!definida('PUBLICAR_CLAVE')) {
     responder([
-        'listo' => false, 'variables' => $variables, 'faltan' => $faltan,
-        'mensaje' => 'Todavía no hay clave definida. Publicar está bloqueado hasta que exista PUBLICAR_CLAVE.',
+        'listo' => false,
+        'variables' => ['BD' => false, 'PUBLICAR_CLAVE' => false,
+                        'IG_USER_ID' => false, 'IG_ACCESS_TOKEN' => false,
+                        'CARPETAS' => false],
+        'faltan' => ['PUBLICAR_CLAVE'],
+        'mensaje' => 'Falta crear api/config.php con los datos de la base y la clave.',
     ]);
 }
 
-$clave = $_SERVER['HTTP_X_CLAVE'] ?? ($_GET['clave'] ?? '');
-if (!hash_equals(PUBLICAR_CLAVE, (string) $clave)) {
-    responder(['error' => 'Clave incorrecta'], 401);
+$cuerpo = null;
+if ($metodo === 'POST') {
+    $cuerpo = json_decode(file_get_contents('php://input') ?: '', true);
+    if (!is_array($cuerpo)) responder(['error' => 'Cuerpo inválido'], 400);
+}
+exigir_clave($cuerpo);
+
+$bdOk = true; $bdError = null;
+try { bd(); } catch (Throwable $e) { $bdOk = false; $bdError = $e->getMessage(); }
+
+if ($metodo === 'POST') {
+    if (!$bdOk) responder(['error' => 'Sin base de datos no se puede guardar: ' . $bdError], 500);
+    foreach (['ig_user_id', 'ig_access_token'] as $c) {
+        if (isset($cuerpo[$c]) && trim((string) $cuerpo[$c]) !== '') {
+            guardar_ajuste($c, trim((string) $cuerpo[$c]));
+        }
+    }
+    responder(['ok' => true]);
 }
 
-if (!definida('IG_USER_ID') || !definida('IG_ACCESS_TOKEN')) {
-    responder(['listo' => false, 'variables' => $variables, 'faltan' => $faltan]);
-}
+[$dirFotos] = carpeta('fotos');
+[$dirPub]   = carpeta('publicaciones');
 
-$cuenta = null; $tokenError = null;
-try {
-    $cuenta = pedir(API_IG . '/' . IG_USER_ID
-        . '?fields=id,username,account_type&access_token=' . urlencode(IG_ACCESS_TOKEN));
-} catch (Throwable $e) { $tokenError = $e->getMessage(); }
+$igUser  = $bdOk ? ajuste('ig_user_id') : '';
+$igToken = $bdOk ? ajuste('ig_access_token') : '';
+
+$variables = [
+    'BD'              => $bdOk,
+    'PUBLICAR_CLAVE'  => true,
+    'IG_USER_ID'      => $igUser !== '',
+    'IG_ACCESS_TOKEN' => $igToken !== '',
+    'CARPETAS'        => is_writable($dirFotos) && is_writable($dirPub),
+];
+$faltan = array_keys(array_filter($variables, static fn($ok) => !$ok));
+
+$cuenta = null; $tokenError = $bdError;
+if ($igUser !== '' && $igToken !== '') {
+    try {
+        $cuenta = pedir(API_IG . '/' . $igUser
+            . '?fields=id,username,account_type&access_token=' . urlencode($igToken));
+    } catch (Throwable $e) { $tokenError = $e->getMessage(); }
+}
 
 responder([
     'listo' => $cuenta !== null && !$faltan,

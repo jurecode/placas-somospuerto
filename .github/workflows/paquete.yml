@@ -24,8 +24,9 @@ jobs:
           cp panel-*.html sitio/
           cp -r assets sitio/
           cp -r api sitio/
-          # carpeta donde la API deja las imágenes mientras Instagram las lee
-          mkdir -p sitio/publicaciones && touch sitio/publicaciones/.gitkeep
+          # carpetas que la API necesita poder escribir
+          mkdir -p sitio/publicaciones sitio/fotos
+          touch sitio/publicaciones/.gitkeep sitio/fotos/.gitkeep
           # lo que NO va: el editor viejo en Python y el arte original
           rm -f sitio/assets/subidas/* 2>/dev/null || true
           echo "Versión $(date -u '+%Y-%m-%d %H:%M UTC') · commit ${GITHUB_SHA::7}" > sitio/VERSION.txt

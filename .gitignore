@@ -16,3 +16,4 @@ node_modules/
 # credenciales del servidor
 api/config.php
 publicaciones/
+fotos/

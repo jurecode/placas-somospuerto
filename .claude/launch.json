@@ -1,6 +1,6 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "editor", "runtimeExecutable": "python3", "runtimeArgs": ["-m", "http.server", "4173"], "port": 4173 }
+    { "name": "editor", "runtimeExecutable": "php", "runtimeArgs": ["-S", "127.0.0.1:4173", "-t", "."], "port": 4173 }
   ]
 }
