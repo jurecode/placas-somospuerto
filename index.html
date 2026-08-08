@@ -137,6 +137,29 @@
   .tarjeta--urgente{ background:linear-gradient(180deg,#ff3d7f 0%,#ff0054 45%,#4a0019 100%) }
   .tarjeta--noticia{ background:linear-gradient(180deg,#3df0c1 0%,#0ae7ae 45%,#04503b 100%) }
 
+  /* pantalla de arranque fallido */
+  .portada .fallo{
+    background:#2a1418; border-left:3px solid var(--acento); border-radius:0 8px 8px 0;
+    padding:12px 16px; font-family:ui-monospace, monospace; font-size:13px;
+    max-width:52ch; line-height:1.5;
+  }
+  .portada .pista{ color:var(--suave); font-size:13.5px; max-width:52ch; line-height:1.6 }
+  .portada input{
+    background:#14151a; color:var(--texto); font:inherit; min-width:230px;
+    border:1px solid var(--linea); border-radius:8px; padding:10px 12px;
+  }
+  .portada input:focus{ outline:2px solid var(--acento); outline-offset:-1px }
+  .portada .pista code{
+    background:#14151a; border:1px solid var(--linea); border-radius:5px;
+    padding:1px 5px; font-size:12.5px;
+  }
+  .tarjeta-chica{
+    display:inline-block; padding:9px 14px; border-radius:8px; font:inherit; font-size:14px;
+    background:#282b33; border:1px solid var(--linea); color:var(--texto);
+    text-decoration:none; cursor:pointer;
+  }
+  .tarjeta-chica:hover{ background:#33373f }
+
   .portada__seguir{ background:none; border:0; color:var(--suave); font-size:13px; text-decoration:underline }
   .portada__seguir:hover{ background:none; color:var(--texto) }
   .portada__seguir[hidden]{ display:none }

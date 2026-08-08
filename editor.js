@@ -1,8 +1,8 @@
-/* Editor de placas — corre entero en el navegador.
+/* Editor de placas.
  *
- * Las placas y las fotos viven en IndexedDB, así que no hay servidor ni
- * base de datos que mantener. El PNG lo genera el mismo renderizador que
- * dibuja la vista previa (placa.js). */
+ * El dibujo y la exportación pasan enteros por el navegador (placa.js), y
+ * las placas y las fotos se guardan en MySQL a través de api/, así que son
+ * las mismas desde cualquier dispositivo. */
 
 import { dibujar, dibujarLamina, esperarTipografias, LIENZO } from './placa.js';
 
@@ -79,15 +79,10 @@ const URGENTE = {
 /* almacén: MySQL a través de api/                                     */
 /* ------------------------------------------------------------------ */
 
-/* La clave viaja en una cabecera y queda solo en este navegador. */
-function clave(){
-  let c = localStorage.getItem('clave_publicar');
-  if(!c){
-    c = prompt('Clave de acceso (la de api/config.php):');
-    if(c) localStorage.setItem('clave_publicar', c);
-  }
-  return c || '';
-}
+/* La clave viaja en una cabecera y queda solo en este navegador. Se pide en
+   una pantalla propia y no con prompt(), que bloquea la página y encima no
+   existe en todos los navegadores. */
+const clave = () => localStorage.getItem('clave_publicar') || '';
 
 async function api(ruta, opciones = {}){
   const res = await fetch(ruta, {
@@ -95,10 +90,17 @@ async function api(ruta, opciones = {}){
     headers: { 'x-clave': clave(), ...(opciones.headers || {}) },
   });
   const datos = await res.json().catch(() => ({}));
-  if(!res.ok){
-    if(res.status === 401) localStorage.removeItem('clave_publicar');
-    throw new Error(datos.error || `Error ${res.status}`);
+  if(res.status === 401){
+    localStorage.removeItem('clave_publicar');
+    pantallaClave('La clave no es la correcta.');
+    // se marca para que el arranque no tape la pantalla de la clave con
+    // la de error genérico
+    const e = new Error(datos.error || 'Clave incorrecta');
+    e.esClave = true;
+    throw e;
   }
+  if(!res.ok) throw new Error(datos.error || `Error ${res.status}`);
+  if(datos && datos.error) throw new Error(datos.error);
   return datos;
 }
 
@@ -635,6 +637,55 @@ async function ultimaPlaca(){
   return lista.find((p) => p.id === guardada) || lista[0] || null;
 }
 
+/* Si el editor no puede arrancar, hay que decirlo en la cara y no dejar
+   un lienzo negro: el mensaje del panel queda al fondo y no se ve. */
+function pantallaError(mensaje){
+  const portada = $('#portada');
+  portada.innerHTML = `
+    <h2>El editor no puede arrancar</h2>
+    <p class="fallo">${esc(mensaje)}</p>
+    <p class="pista">
+      Casi siempre falta crear <code>api/config.php</code> en el servidor,
+      copiando <code>api/config.ejemplo.php</code> y completando los datos
+      de la base MySQL y la clave.
+    </p>
+    <div class="fila">
+      <button class="tarjeta-chica" id="reintentar">Reintentar</button>
+      <a class="tarjeta-chica" href="panel-a7f3c9e21b.html">Abrir el panel de configuración</a>
+    </div>`;
+  portada.hidden = false;
+  $('#reintentar').addEventListener('click', () => location.reload());
+}
+
+/* Pantalla para escribir la clave. Al aceptar se recarga: así todo el
+   arranque vuelve a correr con la clave puesta, sin estados a medias. */
+function pantallaClave(mensaje){
+  const portada = $('#portada');
+  portada.innerHTML = `
+    <h2>Clave de acceso</h2>
+    ${mensaje ? `<p class="fallo">${esc(mensaje)}</p>` : ''}
+    <p class="pista">
+      Es la que está en <code>api/config.php</code>, en la línea
+      <code>PUBLICAR_CLAVE</code>. Queda guardada en este navegador y no se
+      vuelve a pedir.
+    </p>
+    <div class="fila">
+      <input type="password" id="clave_entrada" placeholder="Clave" autocomplete="current-password">
+      <button class="tarjeta-chica" id="entrar">Entrar</button>
+    </div>`;
+  portada.hidden = false;
+
+  const entrar = () => {
+    const v = $('#clave_entrada').value.trim();
+    if(!v) return;
+    localStorage.setItem('clave_publicar', v);
+    location.reload();
+  };
+  $('#entrar').addEventListener('click', entrar);
+  $('#clave_entrada').addEventListener('keydown', (e) => { if(e.key === 'Enter') entrar(); });
+  $('#clave_entrada').focus();
+}
+
 async function abrirPortada(){
   const ultima = await ultimaPlaca();
   const seguir = $('#seguir');
@@ -662,11 +713,11 @@ $('#portada').addEventListener('click', async (ev) => {
   pintarDisenos();
   pintarPaleta();
   pintarChips();
+  if(!clave()) return pantallaClave();
   try{
     if(!(await listarPlacas()).length) await crear(EJEMPLO);
     abrirPortada();
   }catch(e){
-    estado('No se pudo conectar con el servidor: ' + e.message, true);
-    document.getElementById('portada').hidden = true;
+    if(!e.esClave) pantallaError(e.message);
   }
 })();
