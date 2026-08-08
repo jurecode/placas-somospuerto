@@ -350,11 +350,12 @@ function pintarCron(){
 
 $('#revisar').addEventListener('click', () => { revisar(); revisarVersion(); pintarCron(); });
 $('#clave').addEventListener('keydown', (e) => { if(e.key === 'Enter') revisar(); });
+$('#clave').addEventListener('input', pintarCron);
 
 const guardada = localStorage.getItem('clave_publicar');
 if(guardada){ $('#clave').value = guardada; revisar(); revisarVersion(); }
-pintarCron();
 else revisar();   // sin clave igual informa qué falta, para poder arrancar
+pintarCron();
 </script>
 </body>
 </html>
