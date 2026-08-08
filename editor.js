@@ -149,8 +149,24 @@ const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s).replace(/[&<>"]/g,
   (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+/* El hosting servía el HTML con meses de caché, así que el navegador podía
+   quedarse con un index.html viejo y este editor.js nuevo. Esa mezcla rompía
+   todo: el código busca cosas que en ese HTML todavía no existen. Si falta
+   una pieza que este archivo da por hecha, se recarga una sola vez con la
+   dirección cambiada, que es lo único que saltea la copia guardada. */
+(function refrescarSiElHtmlEsViejo(){
+  if(document.getElementById('trabajando')){
+    sessionStorage.removeItem('html_refrescado');   // van juntos: nada que hacer
+    return;
+  }
+  if(sessionStorage.getItem('html_refrescado')) return;   // ya se intentó, no dar vueltas
+  sessionStorage.setItem('html_refrescado', '1');
+  location.replace(location.pathname + '?v=' + Date.now());
+})();
+
 function estado(texto, esError){
   const el = $('#estado');
+  if(!el) return;
   el.textContent = texto;
   el.classList.toggle('error', !!esError);
 }
@@ -161,6 +177,10 @@ function estado(texto, esError){
    Se cierra con cerrarTrabajo(), siempre desde un finally. */
 function trabajo(texto, avance, pista){
   const caja = $('#trabajando');
+  // si el HTML es viejo no hay dónde mostrarlo: se avisa abajo y se sigue
+  if(!caja){
+    return estado(texto + (typeof avance === 'number' ? ` ${Math.round(avance * 100)}%` : '…'));
+  }
   caja.hidden = false;
   $('#trabajando_que').textContent = texto;
   const medible = typeof avance === 'number' && isFinite(avance);
@@ -173,7 +193,10 @@ function trabajo(texto, avance, pista){
   if(pista !== undefined) $('#trabajando_pista').textContent = pista || '';
 }
 
-function cerrarTrabajo(){ $('#trabajando').hidden = true; }
+function cerrarTrabajo(){
+  const caja = $('#trabajando');
+  if(caja) caja.hidden = true;
+}
 
 /* Las fotos son rutas del propio sitio ("assets/…" o "fotos/…"). */
 async function cargarImagen(ref){
