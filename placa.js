@@ -16,7 +16,7 @@ export const MEDIDAS = {
   pie:      { x: 414, margenDerecho: 318, abajo: 479, separacion: 83 },
   filete:   { ancho: 28, respiro: 11.5 },
   // cinta: forma y colores fijos, es la etiqueta oficial del medio
-  etiqueta: { fuente: 74, padY: 22, padX: 96, sesgo: 44, separacion: 96,
+  etiqueta: { fuente: 74, padY: 22, padX: 96, sesgo: 44, separacion: 168,
               fondo: '#ffffff', texto: '#111111' },
   // El logo entra en una caja: manda la altura, para que el aire entre el
   // titular y el pie no cambie si el logo cambia de proporción, pero se
@@ -133,37 +133,44 @@ function textoSobre(hex){
 
 /* Dibuja una línea, con recuadro detrás de las palabras marcadas. Las
    marcadas seguidas comparten un solo recuadro, para que una frase entera
-   no quede como una fila de bloques sueltos. */
-function dibujarLinea(ctx, palabras, x, baseline, alto, tipo, px, inter, colores){
+   no quede como una fila de bloques sueltos.
+   Las posiciones se calculan una sola vez y recién después se dibuja: si el
+   recuadro y el texto avanzaran cada uno por su cuenta, se despegarían. */
+function dibujarLinea(ctx, palabras, x, baseline, caja, tipo, px, inter, colores){
+  const interMarcado = inter + caja.interExtra;
+  const anchoDePalabra = (p) => anchoDe(ctx, p.t, tipo, px, p.marcado ? interMarcado : inter);
   const espacio = anchoDe(ctx, ' ', tipo, px, inter);
-  const anchos = palabras.map((p) => anchoDe(ctx, p.t, tipo, px, inter));
 
-  // primero los recuadros, para que el texto quede encima
+  const posiciones = [];
+  const anchos = [];
   let cursor = x;
   for(let i = 0; i < palabras.length; i++){
-    if(palabras[i].marcado){
-      let fin = i, ancho = anchos[i];
-      while(fin + 1 < palabras.length && palabras[fin + 1].marcado){
-        ancho += espacio + anchos[fin + 1];
-        fin++;
-      }
-      ctx.fillStyle = colores.fondo;
-      ctx.fillRect(cursor - alto.padX, baseline - alto.mayuscula - alto.padY,
-                   ancho + alto.padX * 2, alto.mayuscula + alto.padY * 2);
-      for(let k = i; k <= fin; k++) cursor += anchos[k] + espacio;
-      i = fin;
-    }else{
-      cursor += anchos[i] + espacio;
-    }
+    // aire extra donde el resaltado empieza o termina, para que el recuadro
+    // no quede pegado a la palabra de al lado
+    if(i > 0 && palabras[i - 1].marcado !== palabras[i].marcado) cursor += caja.aire;
+    posiciones.push(cursor);
+    anchos.push(anchoDePalabra(palabras[i]));
+    cursor += anchos[i] + espacio;
   }
 
-  cursor = x;
-  ctx.font = fuente(tipo, px);
-  ctx.letterSpacing = `${inter}px`;
+  // los recuadros primero, para que el texto quede encima
+  ctx.fillStyle = colores.fondo;
   for(let i = 0; i < palabras.length; i++){
+    if(!palabras[i].marcado) continue;
+    let fin = i;
+    while(fin + 1 < palabras.length && palabras[fin + 1].marcado) fin++;
+    const desde = posiciones[i] - caja.padX;
+    const hasta = posiciones[fin] + anchos[fin] + caja.padX;
+    ctx.fillRect(desde, baseline - caja.mayuscula - caja.padY,
+                 hasta - desde, caja.mayuscula + caja.padY * 2);
+    i = fin;
+  }
+
+  ctx.font = fuente(tipo, px);
+  for(let i = 0; i < palabras.length; i++){
+    ctx.letterSpacing = `${palabras[i].marcado ? interMarcado : inter}px`;
     ctx.fillStyle = palabras[i].marcado ? colores.texto : colores.normal;
-    ctx.fillText(palabras[i].t, cursor, baseline);
-    cursor += anchos[i] + espacio;
+    ctx.fillText(palabras[i].t, posiciones[i], baseline);
   }
 }
 
@@ -331,7 +338,12 @@ function dibujarNoticia(ctx, datos, fotos, u){
     fondo: datos.color_filete,
     texto: textoSobre(datos.color_filete),
   };
-  const caja = { mayuscula: met.mayuscula, padX: 20 * u, padY: 16 * u };
+  const caja = {
+    mayuscula: met.mayuscula,
+    padX: 26 * u, padY: 16 * u,
+    aire: 30 * u,               // separación entre el recuadro y lo de al lado
+    interExtra: 0.022 * px,     // las destacadas van con las letras más sueltas
+  };
   lineas.forEach((linea, i) => {
     dibujarLinea(ctx, linea, equis,
       arribaTexto + i * interlinea + medioInterlineado + met.ascenso,
