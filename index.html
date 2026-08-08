@@ -180,23 +180,31 @@
   /* se descuenta lo que ocupan la tira, el botón y su pie: si no, la tira
      quedaba empujada fuera de la ventana en pantallas bajas */
   #previa{
-    width:min(100%, calc(100svh - 250px)); height:auto; aspect-ratio:1;
+    width:min(100%, calc(100svh - 300px)); height:auto; aspect-ratio:1;
     border-radius:10px; box-shadow:0 12px 40px #0008; background:#000;
   }
 
-  /* tira con todas las láminas del carrusel, como se van a ver en el feed */
-  .tira{ display:flex; gap:8px; overflow-x:auto; max-width:100%; padding:2px }
+  /* La tira muestra el post completo, en el orden en que va a salir. */
+  .carrusel-vista{
+    display:grid; gap:8px; justify-items:center; max-width:100%;
+    background:#1c1e24; border:1px solid var(--linea); border-radius:12px;
+    padding:12px 14px;
+  }
+  .carrusel-vista p{
+    font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--suave);
+  }
+  .tira{ display:flex; gap:10px; overflow-x:auto; max-width:100%; padding:2px }
   .tira button{
-    position:relative; flex:none; padding:0; border-radius:8px; overflow:hidden;
-    line-height:0; border:2px solid transparent; background:none;
+    position:relative; flex:none; padding:0; border-radius:9px; overflow:hidden;
+    line-height:0; border:2px solid #3a3e47; background:none; cursor:pointer;
   }
-  .tira button.activa{ border-color:var(--acento) }
-  .tira canvas{ width:64px; height:64px; display:block }
+  .tira button:hover{ border-color:#5a5f6b }
+  .tira button.activa{ border-color:var(--acento); box-shadow:0 0 0 3px #ff610033 }
+  .tira canvas{ width:80px; height:80px; display:block }
   .tira i{
-    position:absolute; left:3px; top:2px; font-style:normal; font-size:10px;
-    font-weight:700; color:#fff; text-shadow:0 1px 3px #000;
+    position:absolute; left:0; top:0; font-style:normal; font-size:10px;
+    font-weight:700; color:#fff; background:#000a; padding:2px 5px; border-radius:0 0 6px 0;
   }
-  .tira[hidden]{ display:none }
   /* La acción que publica no se puede confundir con las que descargan:
      lleva el degradado de Instagram, flecha hacia arriba y es la única
      de su tipo en toda la interfaz. */
@@ -231,7 +239,7 @@
       background:var(--bg); border-bottom:1px solid var(--linea);
       padding:10px 10px calc(10px + env(safe-area-inset-bottom));
     }
-    #previa{ width:min(100%, 42svh) }
+    #previa{ width:min(100%, 38svh) }
     .panel{ border-right:0; overflow:visible; padding-bottom:env(safe-area-inset-bottom) }
     .panel > header{ top:0 }
 
@@ -244,7 +252,7 @@
     button{ min-height:40px }
     .chips button{ min-height:34px }
     *{ -webkit-tap-highlight-color:transparent }
-    .tira canvas{ width:56px; height:56px }
+    .tira canvas{ width:64px; height:64px }
   }
 </style>
 </head>
@@ -402,7 +410,10 @@
 
 <div class="previa">
   <canvas id="previa" width="1080" height="1080" aria-label="Vista previa"></canvas>
-  <div class="tira" id="tira" hidden></div>
+  <div class="carrusel-vista">
+    <p id="rotulo_tira"></p>
+    <div class="tira" id="tira"></div>
+  </div>
   <button class="publicar" id="publicar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg><span>Publicar en Instagram</span></button>
   <p class="pie-previa">Publica de verdad, en la cuenta real.</p>
 </div>

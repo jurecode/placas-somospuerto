@@ -207,25 +207,29 @@ const baseNombre = () => (placa.nombre || 'placa').toLowerCase()
 async function pintarTira(){
   const laminas = placa.laminas || [];
   const tira = $('#tira');
-  tira.hidden = !laminas.length;
   const compartir = $('#compartir');
   if(compartir) compartir.hidden = !navigator.canShare;
-  if(!laminas.length){ tira.innerHTML = ''; return; }
+
+  // Se muestra siempre, aunque haya una sola lámina: es la vista del post
+  // completo, y escondiéndola no se entendía que el carrusel existe.
+  $('#rotulo_tira').textContent = laminas.length
+    ? `El carrusel · ${laminas.length + 1} de 10`
+    : 'Una sola imagen · agregá fotos o videos para armar un carrusel';
 
   if(tira.children.length !== laminas.length + 1){
     tira.innerHTML = Array.from({ length: laminas.length + 1 }, (_, i) =>
-      `<button data-vista="${i}" title="${i ? 'Foto ' + (i + 1) : 'La placa'}">
-         <canvas width="128" height="128"></canvas><i>${i + 1}</i>
+      `<button data-vista="${i}" title="${i ? 'Lámina ' + (i + 1) : 'La placa'}">
+         <canvas width="160" height="160"></canvas><i>${i + 1}</i>
        </button>`).join('');
   }
   const logo = await cargarImagen('assets/logo.png');
   const botones = [...tira.children];
   botones.forEach((b, i) => b.classList.toggle('activa', i === vista));
   const ctx0 = botones[0].querySelector('canvas').getContext('2d');
-  dibujar(ctx0, placa, await imagenesDe(placa), 128);
+  dibujar(ctx0, placa, await imagenesDe(placa), 160);
   for(let i = 0; i < laminas.length; i++){
     const ctx = botones[i + 1].querySelector('canvas').getContext('2d');
-    dibujarLamina(ctx, placa, laminas[i], await cargarImagen(laminas[i].foto), logo, 128);
+    dibujarLamina(ctx, placa, laminas[i], await cargarImagen(laminas[i].foto), logo, 160);
   }
 }
 
