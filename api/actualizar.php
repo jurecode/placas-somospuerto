@@ -18,6 +18,12 @@ const ARCHIVO_ZIP = 'placas-somospuerto.zip';
 // nunca se sobrescriben: son configuración o contenido, no código
 const INTOCABLES = ['api/config.php'];
 
+/* La carpeta de la marca —logo, cierre, colores, nombre— se crea la primera
+ * vez y después no se toca nunca más. Es lo que permite que dos medios
+ * distintos vivan del mismo repositorio: se actualizan juntos y cada uno
+ * conserva lo suyo. */
+const CARPETA_MARCA = 'marca/';
+
 require_once __DIR__ . '/actualizar_cache.php';
 
 $metodo = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -132,6 +138,13 @@ try {
         if (in_array($limpio, INTOCABLES, true)) { $omitidos[] = $limpio; continue; }
 
         $destino = $raiz . '/' . $limpio;
+
+        // la marca se instala si falta, y no se pisa si ya está
+        if (strpos($limpio, CARPETA_MARCA) === 0 && is_file($destino)) {
+            $omitidos[] = $limpio;
+            continue;
+        }
+
         $carpeta = dirname($destino);
         if (!is_dir($carpeta) && !@mkdir($carpeta, 0755, true)) { $omitidos[] = $limpio; continue; }
 

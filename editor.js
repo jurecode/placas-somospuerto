@@ -5,6 +5,7 @@
  * las mismas desde cualquier dispositivo. */
 
 import { dibujar, dibujarLamina, dibujarCierre, dibujarReel, esperarTipografias, LIENZO, REEL } from './placa.js';
+import { MARCA } from './marca/marca.js';
 
 /* ------------------------------------------------------------------ */
 /* catálogos                                                           */
@@ -21,26 +22,12 @@ const DISENOS = [
     svg: '<rect x="1" y="1" width="42" height="28" rx="3"/><circle cx="22" cy="15" r="9" fill="currentColor" stroke="none" opacity=".85"/>' },
 ];
 
-/* Las paletas del medio. El filete es siempre uno de los dos colores de
-   marca, así todo queda en familia aunque cambie el fondo. Los fondos se
-   eligieron con contraste suficiente para el titular blanco. */
-const PALETA = [
-  { nombre: 'Fucsia',   fondo: '#ff0054', filete: '#0ae7ae', original: true },
-  { nombre: 'Menta',    fondo: '#0ae7ae', filete: '#ff0054' },
-  { nombre: 'Rojo',     fondo: '#ee0008', filete: '#0ae7ae' },
-  { nombre: 'Naranjo',  fondo: '#ff6100', filete: '#0ae7ae' },
-  { nombre: 'Vino',     fondo: '#7a0b32', filete: '#0ae7ae' },
-  { nombre: 'Violeta',  fondo: '#6228d7', filete: '#0ae7ae' },
-  { nombre: 'Púrpura',  fondo: '#2d0a4e', filete: '#0ae7ae' },
-  { nombre: 'Azul',     fondo: '#0b3fd4', filete: '#0ae7ae' },
-  { nombre: 'Marino',   fondo: '#0a1f44', filete: '#0ae7ae' },
-  { nombre: 'Petróleo', fondo: '#0d4d4d', filete: '#ff0054' },
-  { nombre: 'Selva',    fondo: '#0b3d2c', filete: '#ff0054' },
-  { nombre: 'Negro',    fondo: '#101014', filete: '#0ae7ae' },
-];
-
-const ETIQUETAS = ['Farándula', 'Noticia', 'Contingencia', 'Policial',
-                   'Deportes', 'Política', 'Espectáculos', 'Comunidad'];
+/* Quién es el medio vive en marca/, que es lo único que cambia entre un
+   sitio y otro y lo único que el actualizador no toca. */
+const PALETA = MARCA.paleta;
+const ETIQUETAS = MARCA.etiquetas;
+const LOGO = MARCA.logo;
+const CIERRE = MARCA.cierre;
 
 const AJUSTES = [['completa', 'Completa', 'Entra entera, no se recorta'],
                  ['cubrir', 'Rellenar', 'Llena el hueco y recorta lo que sobra']];
@@ -74,7 +61,6 @@ const MAX_LAMINAS = 8;   // 8 + la placa + el cierre = las 10 que permite Instag
 /* Todo post que no sea un reel termina con la lámina de cierre: el color de
    la paleta y el arte de «síguenos y comparte». Va sola, no se agrega a mano,
    y por eso ocupa uno de los diez lugares de Instagram. */
-const CIERRE = 'assets/cierre.png';
 const llevaCierre = () => placa.formato !== 'reel';
 
 const EJEMPLO = {
@@ -310,7 +296,7 @@ function aviso(titulo, detalle){
    Las fotos subidas no lo llevan: cada una tiene su propio nombre y nunca
    cambia de contenido. */
 const VERSION = 'dev';   // el paquete la reemplaza por el número de la versión
-const recurso = (ruta) => (String(ruta).startsWith('assets/') ? `${ruta}?v=${VERSION}` : ruta);
+const recurso = (ruta) => (/^(assets|marca)\//.test(String(ruta)) ? `${ruta}?v=${VERSION}` : ruta);
 
 /* Las fotos son rutas del propio sitio ("assets/…" o "fotos/…"). */
 async function cargarImagen(ref){
@@ -330,7 +316,7 @@ async function cargarImagen(ref){
 async function imagenesDe(p){
   const [izq, der, cen, logo] = await Promise.all([
     cargarImagen(p.foto_izq), cargarImagen(p.foto_der),
-    cargarImagen(p.foto_cen), cargarImagen('assets/logo.png'),
+    cargarImagen(p.foto_cen), cargarImagen(LOGO),
   ]);
   return { izq, der, cen, logo };
 }
@@ -384,7 +370,7 @@ function repintar(){
       }
       if(esReel){
         if(crudo){
-          const logo = await cargarImagen('assets/logo.png');
+          const logo = await cargarImagen(LOGO);
           // solo se redibuja cuando el momento de la animación cambió: pasado
           // el primer segundo la capa queda quieta y no gasta nada
           let ultimo = -1;
@@ -400,7 +386,7 @@ function repintar(){
           ctx.clearRect(0, 0, lienzo.width, lienzo.height);   // ya viene quemado
         }else{
           dibujarReel(ctx, placa, await cargarImagen(placa.portada),
-            await cargarImagen('assets/logo.png'), REEL.ancho, REEL.alto, 1);
+            await cargarImagen(LOGO), REEL.ancho, REEL.alto, 1);
         }
         await pintarTira();
         return;
@@ -416,7 +402,7 @@ function repintar(){
       }else{
         const lam = laminas[vista - 1];
         dibujarLamina(ctx, placa, lam, await cargarImagen(lam.foto),
-          await cargarImagen('assets/logo.png'), lienzo.width);
+          await cargarImagen(LOGO), lienzo.width);
       }
       await pintarTira();
     }catch(e){
@@ -473,7 +459,7 @@ async function pintarTira(){
        </button>`;
     }).join('');
   }
-  const logo = await cargarImagen('assets/logo.png');
+  const logo = await cargarImagen(LOGO);
   const botones = [...tira.children];
   botones.forEach((b, i) => b.classList.toggle('activa', i === vista));
   const ctx0 = botones[0].querySelector('canvas').getContext('2d');
@@ -500,7 +486,7 @@ async function itemsParaPublicar(avisar){
   const lienzo = document.createElement('canvas');
   lienzo.width = lienzo.height = 1080;
   const ctx = lienzo.getContext('2d');
-  const logo = await cargarImagen('assets/logo.png');
+  const logo = await cargarImagen(LOGO);
   const jpeg = () => new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.92));
   const aDataUrl = (blob) => new Promise((r) => {
     const l = new FileReader(); l.onload = () => r(l.result); l.readAsDataURL(blob);
@@ -534,7 +520,7 @@ async function archivosDelCarrusel(){
   const lienzo = document.createElement('canvas');
   lienzo.width = lienzo.height = 1080;
   const ctx = lienzo.getContext('2d');
-  const logo = await cargarImagen('assets/logo.png');
+  const logo = await cargarImagen(LOGO);
   const jpeg = () => new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.92));
 
   const archivos = [];
@@ -1164,7 +1150,7 @@ async function quemarVideo(archivo, lamina, avisar){
   const lienzo = document.createElement('canvas');
   lienzo.width = lienzo.height = 1080;
   const ctx = lienzo.getContext('2d');
-  const logo = await cargarImagen('assets/logo.png');
+  const logo = await cargarImagen(LOGO);
 
   const flujo = lienzo.captureStream(30);
 
@@ -1257,7 +1243,7 @@ async function quemarReel(fuente, avisar){
   lienzo.width = REEL.ancho;
   lienzo.height = REEL.alto;
   const ctx = lienzo.getContext('2d');
-  const logo = await cargarImagen('assets/logo.png');
+  const logo = await cargarImagen(LOGO);
 
   const flujo = lienzo.captureStream(30);
   let audio = null;

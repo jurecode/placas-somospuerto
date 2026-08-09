@@ -23,6 +23,7 @@ jobs:
           cp index.html index.php editor.js placa.js robots.txt sitio/
           cp panel-*.html sitio/
           cp -r assets sitio/
+          cp -r marca sitio/
           cp -r api sitio/
           # carpetas que la API necesita poder escribir
           mkdir -p sitio/publicaciones sitio/fotos
