@@ -13,3 +13,8 @@ define('BD_CLAVE',   '');
 
 // La clave que te va a pedir el editor y el panel
 define('PUBLICAR_CLAVE', '');
+
+/* Cuál de los paquetes publicados le toca a este sitio. Cada versión trae uno
+ * por medio, con su marca ya adentro. Si se deja comentado, se usa el de
+ * Somos Puerto. */
+// define('PAQUETE', 'placas-eyey.zip');

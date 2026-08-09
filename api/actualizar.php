@@ -15,6 +15,15 @@ cargar_config();
 const REPO_POR_DEFECTO = 'jurecode/placas-somospuerto';
 const ARCHIVO_ZIP = 'placas-somospuerto.zip';
 
+/* Cada versión publica un paquete por medio, con su marca ya adentro. Cuál le
+ * toca a este sitio se dice en config.php, que es de cada instalación y no se
+ * sobrescribe nunca. Sin eso, el de siempre. */
+function paquete(): string {
+    $nombre = defined('PAQUETE') ? (string) PAQUETE : ARCHIVO_ZIP;
+    $nombre = basename(trim($nombre));                 // nada de rutas
+    return preg_match('/^placas-[a-z0-9-]+\.zip$/i', $nombre) ? $nombre : ARCHIVO_ZIP;
+}
+
 // nunca se sobrescriben: son configuración o contenido, no código
 const INTOCABLES = ['api/config.php'];
 
@@ -57,8 +66,9 @@ function ultima_version(): array {
     if (!is_array($d)) throw new RuntimeException('GitHub devolvió algo inesperado');
 
     $url = null;
+    $quiero = paquete();
     foreach ($d['assets'] ?? [] as $a) {
-        if (($a['name'] ?? '') === ARCHIVO_ZIP) { $url = $a['url']; break; }
+        if (($a['name'] ?? '') === $quiero) { $url = $a['url']; break; }
     }
     return ['tag' => $d['tag_name'] ?? '?', 'publicada' => $d['published_at'] ?? null, 'zip' => $url];
 }
@@ -116,7 +126,7 @@ try {
     }
 
     $v = ultima_version();
-    if ($v['zip'] === null) throw new RuntimeException('La versión no trae el archivo ' . ARCHIVO_ZIP);
+    if ($v['zip'] === null) throw new RuntimeException('La versión no trae el archivo ' . paquete());
 
     $raiz = dirname(__DIR__);
     if (!is_writable($raiz)) throw new RuntimeException('La carpeta del sitio no tiene permiso de escritura');

@@ -49,13 +49,24 @@ jobs:
           grep -q "placa.js?v=$V"  sitio/editor.js  || { echo "no se firmó editor.js";  exit 1; }
           grep -q "const VERSION = '$V'" sitio/editor.js || { echo "no se firmó VERSION"; exit 1; }
 
-      - name: Comprimir
-        run: cd sitio && zip -r ../placas-somospuerto.zip . && cd ..
+      # Un paquete por medio, cada uno con su marca ya puesta en marca/. Así
+      # el sitio se instala descomprimiendo y nada más: nadie tiene que mover
+      # carpetas a mano, que es donde se cuelan los errores.
+      - name: Comprimir un paquete por medio
+        run: |
+          cd sitio && zip -rq ../placas-somospuerto.zip . && cd ..
+          for medio in $(ls marcas); do
+            rm -rf sitio/marca
+            cp -r marcas/$medio sitio/marca
+            (cd sitio && zip -rq ../placas-$medio.zip .)
+            echo "armado placas-$medio.zip con la marca de $medio"
+          done
+          ls -la placas-*.zip
 
       - uses: actions/upload-artifact@v4
         with:
           name: sitio
-          path: placas-somospuerto.zip
+          path: placas-*.zip
           retention-days: 90
 
       # El mensaje del commit es la nota de la versión: es lo que el panel
@@ -73,4 +84,4 @@ jobs:
           tag_name: v${{ github.run_number }}
           name: Versión ${{ github.run_number }}
           body_path: notas.md
-          files: placas-somospuerto.zip
+          files: placas-*.zip
