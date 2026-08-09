@@ -1,7 +1,13 @@
 <?php
-/* Sube una foto y devuelve su URL pública.
+/* Sube una foto o un video y devuelve su URL pública.
  * El archivo va a la carpeta fotos/ y queda una fila en la tabla, para
- * poder listarlas y limpiarlas desde phpMyAdmin si hiciera falta. */
+ * poder listarlas y limpiarlas desde phpMyAdmin si hiciera falta.
+ *
+ * Los videos llegan de a pedazos. Un reel del teléfono pesa decenas de megas
+ * y de una sola vez chocaba contra el post_max_size del hosting —que no es
+ * nuestro y no siempre se puede subir—, o se cortaba a mitad de camino en una
+ * conexión móvil. En trozos de dos megas eso deja de importar, y además se
+ * puede ir contando cuánto falta. */
 
 declare(strict_types=1);
 require_once __DIR__ . '/lib.php';
@@ -10,48 +16,103 @@ exigir_clave();
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') responder(['error' => 'Solo POST'], 405);
 
+const TOPE = 120 * 1024 * 1024;
+
 [$dir, $url] = carpeta('fotos');
 if (!is_writable($dir)) {
     responder(['error' => 'No se puede escribir en fotos/. Revisá los permisos (755).'], 500);
 }
 
-$binario = file_get_contents('php://input');
-if ($binario === false || strlen($binario) === 0) {
-    /* PHP tira el cuerpo entero cuando pasa post_max_size y no avisa: sin
-       esto, un reel largo fallaba con un «llegó vacío» que no explicaba nada. */
+/* Lee el cuerpo, o explica por qué llegó vacío. PHP descarta la petición
+ * entera cuando pasa post_max_size y no avisa de ninguna forma. */
+function cuerpo_o_error(): string
+{
+    $datos = file_get_contents('php://input');
+    if ($datos !== false && $datos !== '') return $datos;
+
     $declarado = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
     if ($declarado > 0) {
         responder(['error' => sprintf(
-            'El servidor rechazó el archivo por tamaño: pesa %d MB y PHP acepta hasta %s '
-            . '(post_max_size). Subí ese límite en Site Tools → Devs → PHP Manager.',
+            'El servidor rechazó %d MB de una vez: PHP acepta hasta %s (post_max_size).',
             (int) round($declarado / 1048576), ini_get('post_max_size') ?: '?'
         )], 413);
     }
     responder(['error' => 'Llegó vacío'], 400);
 }
-if (strlen($binario) > 120 * 1024 * 1024) responder(['error' => 'Máximo 120 MB'], 413);
 
-// imagen o MP4: nada más entra
-$ext = null;
-$tipo = @getimagesizefromstring($binario);
-if ($tipo !== false) {
-    $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp',
-            'image/gif' => 'gif'][$tipo['mime']] ?? null;
-    if ($ext === null) responder(['error' => 'Formato no soportado: ' . $tipo['mime']], 400);
-} elseif (substr($binario, 4, 4) === 'ftyp') {   // firma de los MP4
-    $ext = 'mp4';
-} else {
-    responder(['error' => 'Eso no es una imagen ni un video MP4'], 400);
-}
+/* Guarda el archivo ya completo: revisa que sea lo que dice ser, le pone un
+ * nombre propio y lo anota. */
+function guardar(string $binario, string $dir): void
+{
+    if (strlen($binario) > TOPE) responder(['error' => 'Máximo 120 MB'], 413);
 
-try {
-    $nombre = date('Ymd-His') . '-' . bin2hex(random_bytes(4)) . '.' . $ext;
-    if (file_put_contents($dir . '/' . $nombre, $binario) === false) {
-        responder(['error' => 'No se pudo guardar'], 500);
+    // imagen o MP4: nada más entra
+    $ext = null;
+    $tipo = @getimagesizefromstring($binario);
+    if ($tipo !== false) {
+        $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp',
+                'image/gif' => 'gif'][$tipo['mime']] ?? null;
+        if ($ext === null) responder(['error' => 'Formato no soportado: ' . $tipo['mime']], 400);
+    } elseif (substr($binario, 4, 4) === 'ftyp') {   // firma de los MP4
+        $ext = 'mp4';
+    } else {
+        responder(['error' => 'Eso no es una imagen ni un video MP4'], 400);
     }
-    $st = bd()->prepare('INSERT INTO fotos (archivo, creada) VALUES (?, NOW())');
-    $st->execute([$nombre]);
-    responder(['ok' => true, 'id' => (int) bd()->lastInsertId(), 'ruta' => 'fotos/' . $nombre]);
-} catch (Throwable $e) {
-    responder(['error' => $e->getMessage()], 500);
+
+    try {
+        $nombre = date('Ymd-His') . '-' . bin2hex(random_bytes(4)) . '.' . $ext;
+        if (file_put_contents($dir . '/' . $nombre, $binario) === false) {
+            responder(['error' => 'No se pudo guardar'], 500);
+        }
+        $st = bd()->prepare('INSERT INTO fotos (archivo, creada) VALUES (?, NOW())');
+        $st->execute([$nombre]);
+        responder(['ok' => true, 'id' => (int) bd()->lastInsertId(), 'ruta' => 'fotos/' . $nombre]);
+    } catch (Throwable $e) {
+        responder(['error' => $e->getMessage()], 500);
+    }
 }
+
+/* ------------------------------------------------------------------ */
+/* de a pedazos                                                        */
+/* ------------------------------------------------------------------ */
+
+if (isset($_GET['trozo'])) {
+    // el nombre lo pone el navegador, así que se limpia antes de tocar el disco
+    $sesion = preg_replace('/[^a-zA-Z0-9]/', '', (string) ($_GET['sesion'] ?? ''));
+    if (strlen($sesion) < 8) responder(['error' => 'Falta identificar la subida'], 400);
+
+    $parciales = $dir . '/.parciales';
+    if (!is_dir($parciales) && !@mkdir($parciales, 0755, true)) {
+        responder(['error' => 'No se pudo preparar la carpeta de subidas'], 500);
+    }
+    // subidas que quedaron por la mitad hace rato
+    foreach (glob($parciales . '/*.part') ?: [] as $viejo) {
+        if (is_file($viejo) && filemtime($viejo) < time() - 7200) @unlink($viejo);
+    }
+
+    $parcial = $parciales . '/' . $sesion . '.part';
+    $pedazo = cuerpo_o_error();
+    $llevaba = is_file($parcial) ? (int) filesize($parcial) : 0;
+    if ($llevaba + strlen($pedazo) > TOPE) {
+        @unlink($parcial);
+        responder(['error' => 'Máximo 120 MB'], 413);
+    }
+    if (@file_put_contents($parcial, $pedazo, FILE_APPEND) === false) {
+        responder(['error' => 'No se pudo guardar el pedazo'], 500);
+    }
+
+    if (empty($_GET['fin'])) {
+        responder(['ok' => true, 'recibido' => (int) filesize($parcial)]);
+    }
+
+    $completo = file_get_contents($parcial);
+    @unlink($parcial);
+    if ($completo === false) responder(['error' => 'Se perdió lo subido'], 500);
+    guardar($completo, $dir);
+}
+
+/* ------------------------------------------------------------------ */
+/* de una sola vez, para lo chico                                      */
+/* ------------------------------------------------------------------ */
+
+guardar(cuerpo_o_error(), $dir);

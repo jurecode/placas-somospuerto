@@ -117,6 +117,10 @@
   body[data-formato="reel"] [data-sin-reel]{ display:none }
 
   .nota{ font-size:11px; color:var(--suave); margin-top:8px; line-height:1.45 }
+  /* el avance de la subida del video, donde se lo está mirando */
+  #estado_video{ color:var(--texto) }
+  #estado_video:empty{ display:none }
+  #estado_video.mal{ color:#ff8a7a }
   #estado{ font-size:11px; color:var(--suave); min-height:16px; padding:0 18px 16px }
   #estado.error{ color:#ff8a7a }
 

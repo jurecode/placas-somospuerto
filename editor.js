@@ -140,7 +140,50 @@ const escribirPlaca = (p) => api('api/placas.php', {
   body: JSON.stringify({ clave: clave(), placa: p }),
 });
 
-const guardarFoto = (archivo) => api('api/fotos.php', { method: 'POST', body: archivo });
+/* Los videos van de a pedazos: de una sola vez chocaban contra el límite del
+   hosting o se cortaban en una conexión móvil, y el editor se quedaba
+   esperando para siempre. Cada trozo lleva su propio plazo, así que una
+   conexión muerta falla en un minuto en vez de nunca. */
+const TROZO = 2 * 1024 * 1024;
+const ENTERO_HASTA = 4 * 1024 * 1024;
+const PLAZO_TROZO = 90_000;
+/* Sin esto PHP intenta leer el binario como si fuera un formulario y ensucia
+   la respuesta con avisos que rompen el JSON. */
+const BINARIO = { 'Content-Type': 'application/octet-stream' };
+
+async function conPlazo(ruta, opciones, ms){
+  const corte = new AbortController();
+  const reloj = setTimeout(() => corte.abort(), ms);
+  try{
+    return await api(ruta, { ...opciones, signal: corte.signal });
+  }catch(e){
+    if(e.name === 'AbortError'){
+      throw new Error('El servidor no contestó a tiempo. Puede ser la conexión: probá de nuevo.');
+    }
+    throw e;
+  }finally{ clearTimeout(reloj); }
+}
+
+async function guardarFoto(archivo, avisar){
+  if(archivo.size <= ENTERO_HASTA){
+    return conPlazo('api/fotos.php',
+      { method: 'POST', body: archivo, headers: BINARIO }, PLAZO_TROZO);
+  }
+  const sesion = (crypto.randomUUID?.() || Math.random().toString(36) + Date.now())
+    .replace(/[^a-zA-Z0-9]/g, '');
+  let enviado = 0;
+  for(let desde = 0; desde < archivo.size; desde += TROZO){
+    const pedazo = archivo.slice(desde, desde + TROZO);
+    const ultimo = desde + TROZO >= archivo.size;
+    const r = await conPlazo(
+      `api/fotos.php?trozo=1&sesion=${sesion}${ultimo ? '&fin=1' : ''}`,
+      { method: 'POST', body: pedazo, headers: BINARIO }, PLAZO_TROZO);
+    enviado += pedazo.size;
+    avisar?.(enviado / archivo.size);
+    if(ultimo) return r;
+  }
+  throw new Error('El archivo llegó vacío');
+}
 
 /* ------------------------------------------------------------------ */
 /* estado                                                              */
@@ -228,7 +271,11 @@ function trabajo(texto, avance, pista){
   if(!caja){
     return estado(texto + (typeof avance === 'number' ? ` ${Math.round(avance * 100)}%` : '…'));
   }
-  if(caja.hidden) pedidoCortar = false;   // arranca un trabajo nuevo
+  if(caja.hidden){
+    pedidoCortar = false;                 // arranca un trabajo nuevo
+    caja.querySelector('.trabajando__riel').hidden = false;
+    $('#cortar_trabajo').textContent = 'Cancelar';
+  }
   caja.hidden = false;
   $('#trabajando_que').textContent = texto;
   const medible = typeof avance === 'number' && isFinite(avance);
@@ -244,6 +291,16 @@ function trabajo(texto, avance, pista){
 function cerrarTrabajo(){
   const caja = $('#trabajando');
   if(caja) caja.hidden = true;
+}
+
+/* Un problema que hay que ver sí o sí. Sin esto, perder el video se avisaba
+   en una línea de 11 px al pie del panel, que en el teléfono ni se ve. */
+function aviso(titulo, detalle){
+  const caja = $('#trabajando');
+  if(!caja) return estado(titulo + ': ' + detalle, true);
+  trabajo(titulo, null, detalle);
+  caja.querySelector('.trabajando__riel').hidden = true;
+  $('#cortar_trabajo').textContent = 'Entendido';
 }
 
 /* El hosting sirve las imágenes con un año de caché y no hace caso al
@@ -557,6 +614,7 @@ async function pintarFotos(){
           <button type="button" class="archivo"
                   onclick="this.parentNode.querySelector('input').click()">${fuente ? 'Cambiar video…' : 'Elegir video…'}</button>
           <input type="file" accept="video/mp4,video/quicktime" data-reel-video>
+          <p class="nota" id="estado_video"></p>
           <p class="nota">
             Vertical, hasta 90 segundos. El titular entra animado en el primer
             segundo y se le graba encima al publicar, así que podés seguir
@@ -1285,11 +1343,35 @@ async function agregarReel(archivo){
   placa.portada = '';
   repintar();
   await pintarFotos();
-  estado('Ya se ve. Se está guardando de fondo: podés ir escribiendo el titular.');
 
-  subiendoVideo = guardarFoto(archivo)
-    .then(({ ruta }) => { cambio('video', ruta); estado('Video guardado'); return ruta; })
-    .catch((e) => { estado('No se pudo guardar el video: ' + e.message, true); throw e; });
+  // el aviso va en la tarjeta del video, que es donde se está mirando
+  const decir = (texto, mal) => {
+    const el = $('#estado_video');
+    if(el){ el.textContent = texto; el.classList.toggle('mal', !!mal); }
+    estado(texto, mal);
+  };
+  decir('Guardando el video… 0%. Podés ir escribiendo el titular.');
+
+  // si mientras sube se cambia de placa, lo subido es de la otra: no se toca
+  const suPlaca = placa;
+  subiendoVideo = guardarFoto(archivo, (a) => {
+    decir(`Guardando el video… ${Math.round(a * 100)}%. Podés ir escribiendo el titular.`);
+  })
+    .then(({ ruta }) => {
+      if(placa !== suPlaca) return ruta;
+      cambio('video', ruta);
+      decir('Video guardado.');
+      return ruta;
+    })
+    .catch((e) => {
+      if(placa === suPlaca){
+        decir('No se guardó: ' + e.message, true);
+        aviso('El video no llegó al servidor',
+          e.message + ' Se ve acá porque está en este teléfono, pero si cerrás la '
+          + 'página se pierde. Probá de nuevo, o con un video más corto.');
+      }
+      throw e;
+    });
 }
 
 /* Grabar es en tiempo real: no hay forma de hacerlo más rápido. Lo que sí se
@@ -1315,8 +1397,12 @@ async function grabarReel(){
   const { video } = await quemarReel(fuente, (a) => {
     trabajo('Grabando el titular en el video', a, espera);
   });
-  trabajo('Subiendo el reel', null, 'Ya está listo: falta que llegue al servidor.');
-  const sub = await guardarFoto(new File([video], 'reel.mp4', { type: 'video/mp4' }));
+  // primero termina de subir el crudo: dos videos grandes a la vez por la red
+  // del teléfono se pisan y ninguno avanza
+  await subiendoVideo?.catch(() => {});
+  trabajo('Subiendo el reel', 0, 'Ya está grabado: falta que llegue al servidor.');
+  const sub = await guardarFoto(new File([video], 'reel.mp4', { type: 'video/mp4' }),
+    (a) => trabajo('Subiendo el reel', a, 'Ya está grabado: falta que llegue al servidor.'));
   ultimoQuemado = { firma, ruta: sub.ruta, blob: video };
   return ultimoQuemado;
 }
@@ -1339,8 +1425,9 @@ async function agregarVideo(archivo, indice){
       trabajo('Procesando el video', avance, espera);
     });
 
-    trabajo('Subiendo el video', null, 'Ya está listo: falta que llegue al servidor.');
-    const subido = await guardarFoto(new File([video], 'lamina.mp4', { type: 'video/mp4' }));
+    trabajo('Subiendo el video', 0, 'Ya está listo: falta que llegue al servidor.');
+    const subido = await guardarFoto(new File([video], 'lamina.mp4', { type: 'video/mp4' }),
+      (a) => trabajo('Subiendo el video', a, 'Ya está listo: falta que llegue al servidor.'));
     const conPortada = await guardarFoto(new File([portada], 'portada.jpg', { type: 'image/jpeg' }));
 
     const nueva = { ...lamina, tipo: 'video', video: subido.ruta, foto: conPortada.ruta };
