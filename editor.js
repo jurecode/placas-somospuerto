@@ -4,8 +4,17 @@
  * las placas y las fotos se guardan en MySQL a través de api/, así que son
  * las mismas desde cualquier dispositivo. */
 
-import { dibujar, dibujarLamina, dibujarCierre, dibujarReel, esperarTipografias, LIENZO, REEL } from './placa.js';
+import { dibujarCierre, dibujarReel, esperarTipografias, LIENZO, REEL } from './placa.js';
+import * as somosPuerto from './placa.js';
+import * as eyey from './dibujo-eyey.js';
 import { MARCA } from './marca/marca.js';
+
+/* Cada medio tiene su dibujante y la marca dice cuál. Lo que se le pasa de
+   más —el nombre, el pie— lo ignora el que no lo necesita. */
+const DIBUJANTE = { 'eyey': eyey }[MARCA.dibujo] || somosPuerto;
+const dibujar = (ctx, datos, fotos, lado) => DIBUJANTE.dibujar(ctx, datos, fotos, lado, MARCA);
+const dibujarLamina = (ctx, datos, lamina, foto, logo, lado) =>
+  DIBUJANTE.dibujarLamina(ctx, datos, lamina, foto, logo, lado, MARCA);
 
 /* ------------------------------------------------------------------ */
 /* catálogos                                                           */
@@ -54,6 +63,8 @@ const BASE = {
   tam_titulo: 143,
   laminas: [],            // fotos extra del carrusel; la placa es la primera
   descripcion: '', hashtags: '', colaboradores: '', etiquetados: '',
+  // cada medio pisa lo que le corresponde: su cuerpo de letra, sus colores
+  ...(MARCA.predeterminados || {}),
 };
 
 const MAX_LAMINAS = 8;   // 8 + la placa + el cierre = las 10 que permite Instagram
@@ -61,7 +72,7 @@ const MAX_LAMINAS = 8;   // 8 + la placa + el cierre = las 10 que permite Instag
 /* Todo post que no sea un reel termina con la lámina de cierre: el color de
    la paleta y el arte de «síguenos y comparte». Va sola, no se agrega a mano,
    y por eso ocupa uno de los diez lugares de Instagram. */
-const llevaCierre = () => placa.formato !== 'reel';
+const llevaCierre = () => placa.formato !== 'reel' && !!CIERRE;
 
 const EJEMPLO = {
   ...BASE,
@@ -447,8 +458,9 @@ async function pintarTira(){
   // Se muestra siempre, aunque haya una sola lámina: es la vista del post
   // completo, y escondiéndola no se entendía que el carrusel existe.
   $('#rotulo_tira').textContent = laminas.length
-    ? `El carrusel · ${cuantas} de 10, con el cierre`
-    : 'La placa y el cierre · agregá fotos o videos para armar un carrusel';
+    ? `El carrusel · ${cuantas} de 10` + (cierre ? ', con el cierre' : '')
+    : (cierre ? 'La placa y el cierre' : 'Una sola imagen')
+      + ' · agregá fotos o videos para armar un carrusel';
 
   if(tira.children.length !== cuantas){
     tira.innerHTML = Array.from({ length: cuantas }, (_, i) => {
@@ -1603,6 +1615,17 @@ $('#portada').addEventListener('click', async (ev) => {
 /* ------------------------------------------------------------------ */
 
 (async () => {
+  document.title = 'Editor de placas — ' + MARCA.nombre;
+  $('#cual').textContent = MARCA.nombre;
+  // este medio usa una sola foto de fondo: el selector de armados sobra
+  if(MARCA.disenos === false) $('#disenos').closest('fieldset').hidden = true;
+  // los formatos que este medio todavía no tiene dibujados, no se ofrecen
+  if(Array.isArray(MARCA.formatos)){
+    document.querySelectorAll('[data-crear]').forEach((b) => {
+      b.hidden = !MARCA.formatos.includes(b.dataset.crear);
+    });
+  }
+
   await esperarTipografias();
   pintarDisenos();
   pintarPaleta();
