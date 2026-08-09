@@ -29,14 +29,14 @@ export const MEDIDAS = {
    arte original (173/143), así no hay que ajustarla a mano. */
 export const PROPORCION_INTERLINEA = 173 / 143;
 
-const TIPOS = {
+export const TIPOS = {
   titular:  '900 {px}px "Inter Tight", Arial, sans-serif',
   etiqueta: '500 {px}px "Inter Tight", Arial, sans-serif',
   urgenteBajada: '700 {px}px "Poppins", Arial, sans-serif',
   urgenteTexto:  '900 {px}px "Poppins", Arial, sans-serif',
 };
 
-const fuente = (plantilla, px) => plantilla.replace('{px}', px);
+export const fuente = (plantilla, px) => plantilla.replace('{px}', px);
 
 /* ------------------------------------------------------------------ */
 /* utilidades                                                          */
@@ -74,7 +74,7 @@ export function degradado(ctx, datos, x, y, ancho, alto, desde = DEG_INICIO){
 
 /* Métricas reales de la fuente ya cargada: así no hay constantes mágicas
    que se rompan si cambia la tipografía. */
-function metricas(ctx, tipo, px){
+export function metricas(ctx, tipo, px){
   ctx.font = fuente(tipo, px);
   const m = ctx.measureText('Hxg');
   return {
@@ -84,7 +84,7 @@ function metricas(ctx, tipo, px){
   };
 }
 
-function anchoDe(ctx, texto, tipo, px, interletrado){
+export function anchoDe(ctx, texto, tipo, px, interletrado){
   ctx.font = fuente(tipo, px);
   ctx.letterSpacing = `${interletrado}px`;
   return ctx.measureText(texto).width;
@@ -92,7 +92,7 @@ function anchoDe(ctx, texto, tipo, px, interletrado){
 
 /* Las palabras entre asteriscos van resaltadas con un recuadro detrás.
    Se devuelve cada palabra con su marca para poder dibujarlas distinto. */
-function enPalabras(parrafo){
+export function enPalabras(parrafo){
   const palabras = [];
   let marcado = false;
   for(const trozo of parrafo.split('*')){
@@ -105,7 +105,7 @@ function enPalabras(parrafo){
 }
 
 /* Corta cada línea del titular por ancho, como hacía el navegador. */
-function repartir(ctx, texto, tipo, px, interletrado, maxAncho){
+export function repartir(ctx, texto, tipo, px, interletrado, maxAncho){
   const lineas = [];
   for(const parrafo of String(texto).toUpperCase().split('\n')){
     let linea = [];
@@ -124,7 +124,7 @@ function repartir(ctx, texto, tipo, px, interletrado, maxAncho){
 }
 
 /* Blanco o casi negro según lo que se lea mejor sobre ese color. */
-function textoSobre(hex){
+export function textoSobre(hex){
   const canal = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
   const [r, g, b] = aRgb(hex);
   const lum = 0.2126 * canal(r) + 0.7152 * canal(g) + 0.0722 * canal(b);
@@ -136,7 +136,7 @@ function textoSobre(hex){
    no quede como una fila de bloques sueltos.
    Las posiciones se calculan una sola vez y recién después se dibuja: si el
    recuadro y el texto avanzaran cada uno por su cuenta, se despegarían. */
-function dibujarLinea(ctx, palabras, x, baseline, caja, tipo, px, inter, colores){
+export function dibujarLinea(ctx, palabras, x, baseline, caja, tipo, px, inter, colores){
   const interMarcado = inter + caja.interExtra;
   const anchoDePalabra = (p) => anchoDe(ctx, p.t, tipo, px, p.marcado ? interMarcado : inter);
   const espacio = anchoDe(ctx, ' ', tipo, px, inter);
@@ -181,7 +181,7 @@ function dibujarLinea(ctx, palabras, x, baseline, caja, tipo, px, inter, colores
 /* Dibuja una foto dentro de un hueco.
    "completa": entra entera y lo que sobra se rellena con una copia
    difuminada de la misma foto. "cubrir": llena y recorta. */
-function dibujarFoto(ctx, medio, x, y, ancho, alto, ajuste, posX, posY, u){
+export function dibujarFoto(ctx, medio, x, y, ancho, alto, ajuste, posX, posY, u){
   if(!medio) return;
   // sirve igual para una imagen que para un <video>, que no expone width
   // y height sino videoWidth y videoHeight
@@ -216,7 +216,7 @@ function dibujarFoto(ctx, medio, x, y, ancho, alto, ajuste, posX, posY, u){
 
 /* El logo se escala por altura y, si el resultado se pasa de ancho, se
    acota por ancho. Así entra cualquier proporción sin desbordar. */
-function medidaLogo(logo, u){
+export function medidaLogo(logo, u){
   const L = MEDIDAS.logo;
   const escala = Math.min(L.alto / logo.height, L.ancho / logo.width);
   return [logo.width * escala * u, logo.height * escala * u];

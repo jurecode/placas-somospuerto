@@ -20,7 +20,7 @@ jobs:
         run: |
           mkdir -p sitio
           # lo que va al hosting: el editor, el panel y los recursos
-          cp index.html index.php editor.js placa.js robots.txt sitio/
+          cp index.html index.php editor.js placa.js dibujo-eyey.js robots.txt sitio/
           cp panel-*.html sitio/
           cp -r assets sitio/
           cp -r marca sitio/
