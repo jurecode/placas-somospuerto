@@ -172,8 +172,9 @@ export function dibujar(ctx, datos, fotos, lado, marca = {}){
   ctx.letterSpacing = '0px';
   ctx.textBaseline = 'alphabetic';
 
-  // la foto llena el cuadro
-  dibujarFoto(ctx, fotos.foto_izq, 0, 0, lado, lado,
+  // la foto llena el cuadro. Las imágenes llegan con las claves cortas
+  // —izq, der, cen— y no con el nombre del campo de la placa.
+  dibujarFoto(ctx, fotos.izq, 0, 0, lado, lado,
     datos.foto_izq_ajuste || 'cubrir', datos.foto_izq_x ?? 50, datos.foto_izq_y ?? 50, u);
 
   ctx.fillStyle = degradadoNegro(ctx, lado);
