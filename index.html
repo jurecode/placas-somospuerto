@@ -124,6 +124,50 @@
   #estado{ font-size:11px; color:var(--suave); min-height:16px; padding:0 18px 16px }
   #estado.error{ color:#ff8a7a }
 
+
+  /* ---------- barra de secciones (solo en el teléfono) ---------- */
+  .barra{ display:none }
+  @media (max-width:900px){
+    .barra{
+      position:fixed; left:0; right:0; bottom:0; z-index:20;
+      display:grid; grid-auto-flow:column; grid-auto-columns:1fr;
+      background:#191b21; border-top:1px solid var(--linea);
+      padding-bottom:env(safe-area-inset-bottom);
+    }
+    .barra[hidden]{ display:none }
+    .barra button{
+      background:none; border:0; border-radius:0; color:var(--suave);
+      display:grid; justify-items:center; gap:3px; padding:8px 2px 7px;
+      min-height:0; position:relative;
+    }
+    .barra button:hover{ background:none }
+    .barra svg{ width:21px; height:21px }
+    .barra i{ font-style:normal; font-size:9.5px; letter-spacing:.02em }
+    .barra button.activa{ color:var(--acento) }
+    /* un punto en la sección que tiene algo sin llenar */
+    .barra button.falta::after{
+      content:''; position:absolute; top:6px; right:calc(50% - 18px);
+      width:7px; height:7px; border-radius:50%; background:#ff8a7a;
+    }
+    .barra button[hidden]{ display:none }
+
+    /* se muestra una sección por vez */
+    body[data-seccion] fieldset[data-seccion]{ display:none }
+    body[data-seccion="titular"]  fieldset[data-seccion="titular"],
+    body[data-seccion="fotos"]    fieldset[data-seccion="fotos"],
+    body[data-seccion="etiqueta"] fieldset[data-seccion="etiqueta"],
+    body[data-seccion="color"]    fieldset[data-seccion="color"],
+    body[data-seccion="carrusel"] fieldset[data-seccion="carrusel"],
+    body[data-seccion="texto"]    fieldset[data-seccion="texto"],
+    body[data-seccion="mas"]      fieldset[data-seccion="mas"]{ display:block }
+    /* lo que el formato esconde manda por encima de la sección elegida */
+    body[data-formato="urgente"] [data-solo="noticia"],
+    body[data-formato="reel"] [data-sin-reel]{ display:none }
+
+    /* la barra tapa el final del formulario si no se le hace lugar */
+    .panel{ padding-bottom:calc(64px + env(safe-area-inset-bottom)) }
+  }
+
   /* ---------- trabajando: lo que tarda se ve en grande ---------- */
   /* Quemar un video tarda lo que dura el video. Con el aviso chiquito abajo
      del panel parecía que el editor se había colgado. */
@@ -422,7 +466,7 @@
     </div>
   </header>
 
-  <fieldset>
+  <fieldset data-seccion="titular">
     <legend id="leg_titular">Titular</legend>
     <div class="campo">
       <label for="titulo" id="lab_titulo">Un salto de línea = una línea en la placa</label>
@@ -438,12 +482,12 @@
     </p>
     <p class="nota" data-solo="noticia">Medida del lienzo original de 3000 px. El original usa 143. La interlínea se ajusta sola.</p>
   </fieldset>
-  <fieldset data-solo="noticia" data-sin-reel>
+  <fieldset data-seccion="fotos" data-solo="noticia" data-sin-reel>
     <legend>Diseño de la foto</legend>
     <div class="disenos" id="disenos"></div>
   </fieldset>
 
-  <fieldset data-solo="noticia">
+  <fieldset data-seccion="fotos" data-solo="noticia">
     <legend>Fotos</legend>
     <div id="fotos"></div>
     <p class="nota">
@@ -453,7 +497,7 @@
     </p>
   </fieldset>
 
-  <fieldset data-solo="noticia">
+  <fieldset data-seccion="etiqueta" data-solo="noticia">
     <legend id="leg_etiqueta">Etiqueta</legend>
     <div class="campo">
       <input type="text" id="etiqueta" data-campo="etiqueta" placeholder="Farándula, noticia, contingencia…">
@@ -463,7 +507,7 @@
   </fieldset>
 
 
-  <fieldset data-solo="noticia">
+  <fieldset data-seccion="color" data-solo="noticia">
     <legend>Color</legend>
     <div class="campo">
       <label>Paletas del medio · la estrella es la oficial</label>
@@ -476,7 +520,7 @@
   </fieldset>
 
 
-  <fieldset data-sin-reel>
+  <fieldset data-seccion="carrusel" data-sin-reel>
     <legend>Carrusel</legend>
     <div id="zona_carrusel">
       <div id="laminas"></div>
@@ -493,7 +537,7 @@
     </div>
   </fieldset>
 
-  <fieldset>
+  <fieldset data-seccion="texto">
     <legend>Texto para Instagram</legend>
     <div class="campo">
       <label for="descripcion">Descripción <b style="color:var(--acento)">·  obligatoria</b></label>
@@ -519,7 +563,7 @@
     </p>
   </fieldset>
 
-  <fieldset>
+  <fieldset data-seccion="mas">
     <legend>Exportar</legend>
     <div class="campo fila">
       <button class="descarga" data-exportar="png" data-lado="1080"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>PNG 1080</button>
@@ -537,7 +581,7 @@
     </p>
   </fieldset>
 
-  <fieldset>
+  <fieldset data-seccion="mas">
     <legend>Placas guardadas</legend>
     <div class="campo fila">
       <select id="selector"></select>
@@ -552,6 +596,33 @@
 
   <p id="estado"></p>
 </div>
+
+
+<!-- En el teléfono el formulario entero era un scroll interminable. Se parte
+     en secciones y se navega por la barra de abajo, con el pulgar. -->
+<nav class="barra" id="barra" hidden>
+  <button data-ir="titular" aria-label="Titular">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7V5h16v2"/><path d="M12 5v14"/><path d="M9 19h6"/></svg>
+    <i>Titular</i></button>
+  <button data-ir="fotos" aria-label="Fotos">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.8"/><path d="m4 17 5-5 4 4 3-2 4 4"/></svg>
+    <i>Fotos</i></button>
+  <button data-ir="etiqueta" aria-label="Etiqueta">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h13l4 4-4 4H3z"/></svg>
+    <i>Etiqueta</i></button>
+  <button data-ir="color" aria-label="Color">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18"/><circle cx="15" cy="9" r="1.4" fill="currentColor"/><circle cx="16" cy="14" r="1.4" fill="currentColor"/></svg>
+    <i>Color</i></button>
+  <button data-ir="carrusel" aria-label="Carrusel">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="5" width="10" height="14" rx="2"/><path d="M4 8v8M20 8v8"/></svg>
+    <i>Carrusel</i></button>
+  <button data-ir="texto" aria-label="Texto">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 11h16M4 16h9"/></svg>
+    <i>Texto</i></button>
+  <button data-ir="mas" aria-label="Más">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>
+    <i>Más</i></button>
+</nav>
 
 <div class="trabajando" id="trabajando" hidden role="status" aria-live="polite">
   <div class="trabajando__caja">

@@ -234,6 +234,65 @@ document.addEventListener('focusout', (ev) => {
   }, 120);
 });
 
+/* ------------------------------------------------------------------ */
+/* secciones, en el teléfono                                           */
+/* ------------------------------------------------------------------ */
+
+/* Qué falta para poder publicar, por sección. La descripción es obligatoria
+   —un post vacío no se puede editar después sin borrarlo— y el reel no es
+   reel sin video. Lo que falta se marca en su sección y bloquea el botón. */
+function loQueFalta(){
+  if(!placa) return [];
+  const falta = [];
+  if(!String(placa.descripcion || '').trim()){
+    falta.push({ seccion: 'texto', que: 'Falta la descripción: es lo que va debajo de la publicación.' });
+  }
+  if(placa.formato === 'reel' && !fuenteDelReel()){
+    falta.push({ seccion: 'fotos', que: 'Falta el video del reel.' });
+  }
+  if(!String(placa.titulo || '').trim()){
+    falta.push({ seccion: 'titular', que: 'Falta el titular.' });
+  }
+  return falta;
+}
+
+function irA(seccion){
+  document.body.dataset.seccion = seccion;
+  document.querySelectorAll('[data-ir]').forEach((b) => {
+    b.classList.toggle('activa', b.dataset.ir === seccion);
+  });
+  // al cambiar de sección se vuelve arriba: si no, se entra a la mitad
+  document.querySelector('.panel')?.scrollTo({ top: 0 });
+  localStorage.setItem('seccion', seccion);
+}
+
+/* La barra muestra solo las secciones que este formato usa, y marca las que
+   tienen algo sin llenar. */
+function pintarBarra(){
+  const barra = $('#barra');
+  if(!barra || !placa) return;
+  barra.hidden = false;
+  const falta = loQueFalta();
+  const urgente = placa.formato === 'urgente';
+  const reel = placa.formato === 'reel';
+  const sobra = { fotos: urgente, etiqueta: urgente, color: urgente,
+                  carrusel: reel, titular: false, texto: false, mas: false };
+
+  barra.querySelectorAll('[data-ir]').forEach((b) => {
+    b.hidden = !!sobra[b.dataset.ir];
+    b.classList.toggle('falta', falta.some((f) => f.seccion === b.dataset.ir));
+  });
+
+  // si la sección abierta no existe en este formato, se vuelve al titular
+  const actual = document.body.dataset.seccion;
+  if(!actual || sobra[actual]) irA('titular');
+}
+
+$('#barra')?.addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-ir]');
+  if(b) irA(b.dataset.ir);
+});
+
 function verVista(mostrar){
   document.body.classList.toggle('sin_vista', !mostrar);
   localStorage.setItem('sin_vista', mostrar ? '' : '1');
@@ -743,6 +802,8 @@ async function cargar(id){
     ? 'Lo único editable: se estira sola hasta llenar el ancho'
     : 'Un salto de línea = una línea en la placa';
   await volcarControles();
+  irA(localStorage.getItem('seccion') || 'titular');
+  pintarBarra();
   await pintarSelector();
   $('#portada').hidden = true;
   repintar();
@@ -753,6 +814,7 @@ async function cargar(id){
 function cambio(campo, valor){
   placa[campo] = valor;
   repintar();
+  pintarBarra();
   marcarSeleccion();
   clearTimeout(guardando);
   guardando = setTimeout(async () => {
@@ -864,11 +926,14 @@ $('#compartir').addEventListener('click', async (ev) => {
 $('#publicar').addEventListener('click', async (ev) => {
   // sin descripción no se publica: un post vacío no se puede editar después
   // sin borrarlo y volver a subirlo
-  if(!String(placa.descripcion || '').trim()){
-    estado('Falta la descripción: es lo que va debajo de la publicación.', true);
-    const campo = $('#descripcion');
-    campo.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    campo.focus();
+  // no se avanza con algo obligatorio sin llenar: se lleva a su sección
+  const falta = loQueFalta();
+  if(falta.length){
+    estado(falta[0].que, true);
+    irA(falta[0].seccion);
+    pintarBarra();
+    const campo = $('#' + (falta[0].seccion === 'texto' ? 'descripcion' : 'titulo'));
+    campo?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     return;
   }
   const laminas = (placa.laminas || []).length + 1;
