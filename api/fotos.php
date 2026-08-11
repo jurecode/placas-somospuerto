@@ -16,7 +16,9 @@ exigir_clave();
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') responder(['error' => 'Solo POST'], 405);
 
-const TOPE = 120 * 1024 * 1024;
+/* 300 MB es lo que acepta Instagram en un reel; con la subida por pedazos el
+ * límite del hosting ya no manda. */
+const TOPE = 300 * 1024 * 1024;
 
 [$dir, $url] = carpeta('fotos');
 if (!is_writable($dir)) {
@@ -44,7 +46,7 @@ function cuerpo_o_error(): string
  * nombre propio y lo anota. */
 function guardar(string $binario, string $dir): void
 {
-    if (strlen($binario) > TOPE) responder(['error' => 'Máximo 120 MB'], 413);
+    if (strlen($binario) > TOPE) responder(['error' => 'Máximo 300 MB'], 413);
 
     // imagen o MP4: nada más entra
     $ext = null;
@@ -95,7 +97,7 @@ if (isset($_GET['trozo'])) {
     $llevaba = is_file($parcial) ? (int) filesize($parcial) : 0;
     if ($llevaba + strlen($pedazo) > TOPE) {
         @unlink($parcial);
-        responder(['error' => 'Máximo 120 MB'], 413);
+        responder(['error' => 'Máximo 300 MB'], 413);
     }
     if (@file_put_contents($parcial, $pedazo, FILE_APPEND) === false) {
         responder(['error' => 'No se pudo guardar el pedazo'], 500);

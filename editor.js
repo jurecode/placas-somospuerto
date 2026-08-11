@@ -614,7 +614,7 @@ async function pintarFotos(){
           <input type="file" accept="video/mp4,video/quicktime" data-reel-video>
           <p class="nota" id="estado_video"></p>
           <p class="nota">
-            Vertical, hasta 90 segundos. El titular entra animado en el primer
+            Vertical, hasta 15 minutos. El titular entra animado en el primer
             segundo y se le graba encima al publicar, así que podés seguir
             cambiando el texto hasta el final.
           </p>
@@ -1088,7 +1088,17 @@ document.addEventListener('change', async (ev) => {
 /* ------------------------------------------------------------------ */
 
 const TIPO_MP4 = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
-const DURACION_MAX = 60;   // lo que acepta Instagram en un carrusel
+/* Los topes de Instagram, según su documentación: el reel llega a 15 minutos
+   y 300 MB. Para el video del carrusel no publican un número, así que se deja
+   en 3 minutos: da de sobra para una nota y mantiene la grabación dentro de
+   algo tolerable, porque es en tiempo real. */
+const DURACION_MAX = 180;
+const DURACION_REEL = 900;
+
+const enMinutos = (s) => {
+  const m = Math.floor(s / 60), r = Math.round(s % 60);
+  return m ? `${m}:${String(r).padStart(2, '0')}` : `${r}s`;
+};
 
 /* Safari nombra el códec distinto según la versión, y con el nombre largo
    contesta que no puede. Se prueban de más preciso a más general; todos son
@@ -1174,7 +1184,8 @@ async function quemarVideo(archivo, lamina, avisar){
     video.onerror = () => falla(new Error('No se pudo leer el video'));
   });
   if(video.duration > DURACION_MAX + 0.5){
-    throw new Error(`El video dura ${Math.round(video.duration)}s y el máximo son ${DURACION_MAX}s`);
+    throw new Error(`El video dura ${enMinutos(video.duration)} y el máximo son `
+      + `${enMinutos(DURACION_MAX)}. Recortalo y volvé a elegirlo.`);
   }
 
   const lienzo = document.createElement('canvas');
@@ -1269,7 +1280,10 @@ async function quemarReel(fuente, avisar){
     video.onloadedmetadata = listo;
     video.onerror = () => falla(new Error('No se pudo leer el video'));
   });
-  if(video.duration > 90.5) throw new Error(`El reel dura ${Math.round(video.duration)}s y el máximo son 90s`);
+  if(video.duration > DURACION_REEL + 0.5){
+    throw new Error(`El reel dura ${enMinutos(video.duration)} y el máximo que acepta `
+      + `Instagram son ${enMinutos(DURACION_REEL)}. Recortalo y volvé a elegirlo.`);
+  }
 
   const lienzo = document.createElement('canvas');
   lienzo.width = REEL.ancho;
@@ -1409,7 +1423,8 @@ async function grabarReel(){
   if(ultimoQuemado && ultimoQuemado.firma === firma) return ultimoQuemado;
 
   const espera = 'Se le queman encima el titular, la etiqueta y el logo. '
-    + 'Tarda lo que dura el video: la grabación es en tiempo real.';
+    + 'La grabación es en tiempo real, así que tarda lo que dura el video. '
+    + 'Dejá esta pantalla a la vista.';
   trabajo('Grabando el titular en el video', 0, espera);
   // se graba desde el archivo del propio teléfono cuando está: no hay que
   // bajarlo del servidor para volver a subirlo
@@ -1450,7 +1465,8 @@ async function cuadroDelVideo(archivo){
       video.onerror = () => falla(new Error('No se pudo leer el video'));
     });
     if(video.duration > DURACION_MAX + 0.5){
-      throw new Error(`El video dura ${Math.round(video.duration)}s y el máximo son ${DURACION_MAX}s`);
+      throw new Error(`El video dura ${enMinutos(video.duration)} y el máximo son `
+      + `${enMinutos(DURACION_MAX)}. Recortalo y volvé a elegirlo.`);
     }
     video.currentTime = Math.min(1, video.duration / 2);
     await new Promise((r) => { video.onseeked = r; setTimeout(r, 1500); });
@@ -1469,7 +1485,10 @@ async function cuadroDelVideo(archivo){
 async function agregarVideo(archivo, indice){
   trabajo('Preparando el video', null, 'Se guarda tal cual: el degradado y el logo se le graban al publicar.');
   try{
-    const { jpg } = await cuadroDelVideo(archivo);
+    const { jpg, duracion } = await cuadroDelVideo(archivo);
+    if(duracion > 45){
+      estado(`Ojo: dura ${enMinutos(duracion)}. Al publicar, grabarlo va a tardar lo mismo.`);
+    }
 
     trabajo('Subiendo el video', 0, 'Se guarda tal cual, sin procesar.');
     const subido = await guardarFoto(archivo,
@@ -1499,7 +1518,8 @@ async function videoDeLamina(lam, i){
   const guardado = quemados.get(lam.crudo);
   if(guardado && guardado.firma === firma) return { tipo: 'video', ruta: guardado.ruta };
 
-  const espera = 'Se le graban encima el degradado y el logo. Tarda lo que dura el video.';
+  const espera = 'Se le graban encima el degradado y el logo. La grabación es en '
+    + 'tiempo real: tarda lo que dura el video. Dejá esta pantalla a la vista.';
   const rotulo = `Grabando el video ${i + 1}`;
   trabajo(rotulo, 0, espera);
   const { video } = await quemarVideo(lam.crudo, lam, (a) => trabajo(rotulo, a, espera));
