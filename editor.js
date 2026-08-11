@@ -4,7 +4,7 @@
  * las placas y las fotos se guardan en MySQL a través de api/, así que son
  * las mismas desde cualquier dispositivo. */
 
-import { dibujarCierre, dibujarReel, esperarTipografias, LIENZO, REEL } from './placa.js';
+import { dibujarCierre, dibujarReel, dibujarFoto, esperarTipografias, LIENZO, REEL } from './placa.js';
 import * as somosPuerto from './placa.js';
 import * as eyey from './dibujo-eyey.js';
 import { MARCA } from './marca/marca.js';
@@ -509,9 +509,9 @@ async function itemsParaPublicar(avisar){
   items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
   avisar?.(1 / total);
 
-  for(const lam of laminas){
+  for(const [i, lam] of laminas.entries()){
     if(lam.tipo === 'video'){
-      items.push({ tipo: 'video', ruta: lam.video });
+      items.push(await videoDeLamina(lam, i));
     }else{
       dibujarLamina(ctx, placa, lam, await cargarImagen(lam.foto), logo, 1080);
       items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
@@ -1109,6 +1109,21 @@ async function mantenerDespierto(){
    evita que se atore, y la diferencia no se nota en un video de Instagram. */
 const tasaDeVideo = () => (innerWidth < 900 ? 5_000_000 : 8_000_000);
 
+/* iOS no reproduce un <video> que no está colgado de la página: se queda en
+   el primer cuadro y la grabación no avanza nunca —el porcentaje se clava y
+   parece colgado—. Se lo pone fuera de la vista mientras dura el trabajo.
+   Ni display:none ni opacity:0 sirven: con eso deja de decodificar. */
+function enEscena(video){
+  video.playsInline = true;
+  video.setAttribute('playsinline', '');
+  Object.assign(video.style, {
+    position: 'fixed', left: '0', top: '0', width: '2px', height: '2px',
+    opacity: '0.01', pointerEvents: 'none', zIndex: '-1',
+  });
+  document.body.appendChild(video);
+  return () => video.remove();
+}
+
 /* Reproduce hasta el final, pero no espera para siempre. Si el video deja de
    avanzar —pestaña dormida, memoria, un archivo cortado— corta con un motivo
    en vez de dejar el botón girando. */
@@ -1148,9 +1163,12 @@ async function quemarVideo(archivo, lamina, avisar){
   }
 
   const video = document.createElement('video');
-  video.src = URL.createObjectURL(archivo);
+  // sirve tanto un archivo recién elegido como uno ya guardado en el servidor
+  const propia = typeof archivo !== 'string';
+  video.src = propia ? URL.createObjectURL(archivo) : archivo;
   video.muted = false;
-  video.playsInline = true;
+  const sacarDeEscena = enEscena(video);
+  try{
   await new Promise((listo, falla) => {
     video.onloadedmetadata = listo;
     video.onerror = () => falla(new Error('No se pudo leer el video'));
@@ -1226,8 +1244,9 @@ async function quemarVideo(archivo, lamina, avisar){
   dibujarLamina(ctx, placa, lamina, video, logo, 1080);
   const portada = await new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.9));
 
-  URL.revokeObjectURL(video.src);
+  if(propia) URL.revokeObjectURL(video.src);
   return { video: new Blob(trozos, { type: 'video/mp4' }), portada };
+  }finally{ sacarDeEscena(); }
 }
 
 const ANIMACION = 1.2;   // segundos que tarda en entrar el titular
@@ -1244,7 +1263,8 @@ async function quemarReel(fuente, avisar){
   // sirve tanto un archivo recién elegido como uno ya guardado en el servidor
   const propia = typeof fuente !== 'string';
   video.src = propia ? URL.createObjectURL(fuente) : fuente;
-  video.playsInline = true;
+  const sacarDeEscena = enEscena(video);
+  try{
   await new Promise((listo, falla) => {
     video.onloadedmetadata = listo;
     video.onerror = () => falla(new Error('No se pudo leer el video'));
@@ -1321,6 +1341,7 @@ async function quemarReel(fuente, avisar){
 
   if(propia) URL.revokeObjectURL(video.src);
   return { video: new Blob(trozos, { type: 'video/mp4' }), portada };
+  }finally{ sacarDeEscena(); }
 }
 
 /* El video se guarda tal cual llega. Antes se le quemaba el titular acá
@@ -1414,27 +1435,79 @@ async function reelParaPublicar(){
   return { tipo: 'reel', ruta };
 }
 
-async function agregarVideo(archivo, indice){
-  const lamina = { ajuste: 'cubrir', x: 50, y: 50 };
-  const espera = 'Se le queman encima el degradado y el logo. Tarda lo que dura el video.';
-  trabajo('Procesando el video', 0, espera);
+/* Un cuadro del video, sin nada encima. Es rápido: se salta al segundo que
+   se pida y se dibuja, sin reproducir nada. Sirve de portada en la tira, y
+   como no lleva el degradado quemado, la miniatura toma siempre el color que
+   la placa tenga en ese momento. */
+async function cuadroDelVideo(archivo){
+  const video = document.createElement('video');
+  video.src = URL.createObjectURL(archivo);
+  video.muted = true;
+  const sacar = enEscena(video);
   try{
-    const { video, portada } = await quemarVideo(archivo, lamina, (avance) => {
-      trabajo('Procesando el video', avance, espera);
+    await new Promise((listo, falla) => {
+      video.onloadedmetadata = listo;
+      video.onerror = () => falla(new Error('No se pudo leer el video'));
     });
+    if(video.duration > DURACION_MAX + 0.5){
+      throw new Error(`El video dura ${Math.round(video.duration)}s y el máximo son ${DURACION_MAX}s`);
+    }
+    video.currentTime = Math.min(1, video.duration / 2);
+    await new Promise((r) => { video.onseeked = r; setTimeout(r, 1500); });
 
-    trabajo('Subiendo el video', 0, 'Ya está listo: falta que llegue al servidor.');
-    const subido = await guardarFoto(new File([video], 'lamina.mp4', { type: 'video/mp4' }),
-      (a) => trabajo('Subiendo el video', a, 'Ya está listo: falta que llegue al servidor.'));
-    const conPortada = await guardarFoto(new File([portada], 'portada.jpg', { type: 'image/jpeg' }));
+    const lienzo = document.createElement('canvas');
+    lienzo.width = lienzo.height = 1080;
+    dibujarFoto(lienzo.getContext('2d'), video, 0, 0, 1080, 1080, 'cubrir', 50, 50, 1080 / LIENZO);
+    const jpg = await new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.9));
+    return { jpg, duracion: video.duration };
+  }finally{ sacar(); URL.revokeObjectURL(video.src); }
+}
 
-    const nueva = { ...lamina, tipo: 'video', video: subido.ruta, foto: conPortada.ruta };
+/* El video se guarda crudo, igual que el del reel. Antes se le quemaba el
+   degradado al subirlo y quedaba con el color de ese momento: si después se
+   cambiaba la paleta, la placa cambiaba y el video del carrusel no. */
+async function agregarVideo(archivo, indice){
+  trabajo('Preparando el video', null, 'Se guarda tal cual: el degradado y el logo se le graban al publicar.');
+  try{
+    const { jpg } = await cuadroDelVideo(archivo);
+
+    trabajo('Subiendo el video', 0, 'Se guarda tal cual, sin procesar.');
+    const subido = await guardarFoto(archivo,
+      (a) => trabajo('Subiendo el video', a, 'Se guarda tal cual, sin procesar.'));
+    const conPortada = await guardarFoto(new File([jpg], 'portada.jpg', { type: 'image/jpeg' }));
+
+    const nueva = { ajuste: 'cubrir', x: 50, y: 50, tipo: 'video',
+                    crudo: subido.ruta, foto: conPortada.ruta };
     if(indice === undefined) placa.laminas = (placa.laminas || []).concat(nueva);
     else placa.laminas[indice] = nueva;
     cambio('laminas', placa.laminas);
     await pintarLaminas();
     estado('Video listo en el carrusel');
   }finally{ cerrarTrabajo(); }
+}
+
+/* Lo que se manda a publicar de una lámina de video: se le graban el
+   degradado y el logo recién acá, con el color que la placa tenga ahora.
+   Se guarda lo grabado junto con la firma de lo que se ve, así publicar dos
+   veces seguidas no vuelve a grabar nada. */
+const quemados = new Map();
+
+async function videoDeLamina(lam, i){
+  if(!lam.crudo) return { tipo: 'video', ruta: lam.video };   // de antes: ya venía quemado
+
+  const firma = JSON.stringify([lam.crudo, lam.ajuste, lam.x, lam.y, placa.color_fondo]);
+  const guardado = quemados.get(lam.crudo);
+  if(guardado && guardado.firma === firma) return { tipo: 'video', ruta: guardado.ruta };
+
+  const espera = 'Se le graban encima el degradado y el logo. Tarda lo que dura el video.';
+  const rotulo = `Grabando el video ${i + 1}`;
+  trabajo(rotulo, 0, espera);
+  const { video } = await quemarVideo(lam.crudo, lam, (a) => trabajo(rotulo, a, espera));
+  trabajo('Subiendo el video', 0, 'Ya está grabado: falta que llegue al servidor.');
+  const sub = await guardarFoto(new File([video], 'lamina.mp4', { type: 'video/mp4' }),
+    (a) => trabajo('Subiendo el video', a, 'Ya está grabado: falta que llegue al servidor.'));
+  quemados.set(lam.crudo, { firma, ruta: sub.ruta });
+  return { tipo: 'video', ruta: sub.ruta };
 }
 
 /* ------------------------------------------------------------------ */
