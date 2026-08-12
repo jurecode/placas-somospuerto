@@ -1510,6 +1510,56 @@ const firmaDelReel = () => JSON.stringify([
   fuenteDelReel(), placa.titulo, placa.etiqueta, placa.color_fondo, placa.color_filete,
 ]);
 
+/* Elige el momento de la portada. La de fábrica salía negra: muchos videos
+   arrancan con un fundido, y el cuadro fijo del segundo y medio caía justo
+   ahí. Se prueban varios momentos, se mide cuánta imagen tiene cada uno
+   —brillo medio y cuánto varía— y gana el que más tenga. */
+async function momentoDePortada(fuente){
+  const video = document.createElement('video');
+  const propia = typeof fuente !== 'string';
+  video.src = propia ? URL.createObjectURL(fuente) : fuente;
+  video.muted = true;
+  const sacar = enEscena(video);
+  try{
+    await new Promise((listo, falla) => {
+      video.onloadedmetadata = listo;
+      video.onerror = () => falla(new Error('No se pudo leer el video'));
+    });
+    const dura = video.duration || 0;
+    if(!dura) return 1.5;
+
+    // el primer segundo se saltea: casi siempre es el fundido de entrada
+    const momentos = [1, 2, 3, 5, 8, 12].filter((t) => t < dura - 0.2);
+    if(!momentos.length) momentos.push(Math.min(0.5, dura / 2));
+
+    const lienzo = document.createElement('canvas');
+    lienzo.width = lienzo.height = 96;   // alcanza para medir, y es instantáneo
+    const ctx = lienzo.getContext('2d', { willReadFrequently: true });
+
+    let mejor = momentos[0], mejorPuntaje = -1;
+    for(const t of momentos){
+      video.currentTime = t;
+      await new Promise((r) => { video.onseeked = r; setTimeout(r, 900); });
+      ctx.drawImage(video, 0, 0, 96, 96);
+      const d = ctx.getImageData(0, 0, 96, 96).data;
+      let suma = 0, suma2 = 0, n = 0;
+      for(let i = 0; i < d.length; i += 16){   // uno de cada cuatro píxeles
+        const v = (d[i] + d[i + 1] + d[i + 2]) / 3;
+        suma += v; suma2 += v * v; n++;
+      }
+      const media = suma / n;
+      const contraste = Math.sqrt(Math.max(0, suma2 / n - media * media));
+      // un cuadro negro tiene media y contraste casi cero; uno con imagen,
+      // los dos altos. Se premia el contraste, que es lo que se ve.
+      const puntaje = media * 0.6 + contraste * 1.4;
+      if(puntaje > mejorPuntaje){ mejorPuntaje = puntaje; mejor = t; }
+    }
+    return mejor;
+  }catch(e){
+    return 1.5;   // ante la duda, lo de antes
+  }finally{ sacar(); if(propia) URL.revokeObjectURL(video.src); }
+}
+
 async function grabarReel(){
   const fuente = fuenteDelReel();
   if(!fuente) throw new Error('Falta el video del reel');
@@ -1528,10 +1578,13 @@ async function grabarReel(){
   // primero termina de subir el crudo: dos videos grandes a la vez por la red
   // del teléfono se pisan y ninguno avanza
   await subiendoVideo?.catch(() => {});
+  trabajo('Eligiendo la portada', null, 'Se busca el cuadro con más imagen, para que no salga en negro.');
+  const portadaEn = await momentoDePortada(fuente);
+
   trabajo('Subiendo el reel', 0, 'Ya está grabado: falta que llegue al servidor.');
   const sub = await guardarFoto(new File([video], 'reel.mp4', { type: 'video/mp4' }),
     (a) => trabajo('Subiendo el reel', a, 'Ya está grabado: falta que llegue al servidor.'));
-  ultimoQuemado = { firma, ruta: sub.ruta, blob: video };
+  ultimoQuemado = { firma, ruta: sub.ruta, blob: video, portadaEn };
   return ultimoQuemado;
 }
 
@@ -1540,8 +1593,8 @@ async function grabarReel(){
 async function reelParaPublicar(){
   if(!fuenteDelReel()) throw new Error('Falta el video del reel');
   if(!placa.reel_crudo) return { tipo: 'reel', ruta: placa.video };
-  const { ruta } = await grabarReel();
-  return { tipo: 'reel', ruta };
+  const { ruta, portadaEn } = await grabarReel();
+  return { tipo: 'reel', ruta, portadaEn };
 }
 
 /* Un cuadro del video, sin nada encima. Es rápido: se salta al segundo que

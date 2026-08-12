@@ -74,7 +74,8 @@ function publicar_ahora(array $carga): array {
         foreach ($items as $i => $item) {
             $tipo = $item['tipo'] ?? 'imagen';
             if (isset($item['ruta']) && $item['ruta'] !== '') {
-                $medios[] = ['tipo' => $tipo, 'url' => ruta_publica((string) $item['ruta'])];
+                $medios[] = ['tipo' => $tipo, 'url' => ruta_publica((string) $item['ruta']),
+                             'portadaEn' => $item['portadaEn'] ?? null];
                 continue;
             }
             $partes = explode(',', (string) ($item['dataUrl'] ?? ''), 2);
@@ -98,12 +99,15 @@ function publicar_ahora(array $carga): array {
         foreach ($medios as $i => $medio) {
             if ($medio['tipo'] === 'reel') {
                 $hayVideo = true;
-                /* thumb_offset: la portada del reel. Sin esto Instagram toma
-                   el primer cuadro, que es el video antes de que entre el
-                   titular; a segundo y medio ya está el titular puesto y en
-                   la grilla del perfil se lee de qué se trata. */
+                /* thumb_offset: la portada del reel, en milisegundos. Sin esto
+                   Instagram toma el primer cuadro, que en la mayoría de los
+                   videos es el fundido de entrada y sale negro. El navegador
+                   ya midió cuál de varios momentos tiene más imagen y manda
+                   ese; si no vino ninguno, se usa segundo y medio. */
+                $enSegundos = (float) ($medio['portadaEn'] ?? 1.5);
                 $cuerpo = ['media_type' => 'REELS', 'video_url' => $medio['url'],
-                           'caption' => $caption, 'thumb_offset' => 1500];
+                           'caption' => $caption,
+                           'thumb_offset' => (int) round(max(0, $enSegundos) * 1000)];
             } elseif ($medio['tipo'] === 'video') {
                 $hayVideo = true;
                 $cuerpo = ['media_type' => 'VIDEO', 'video_url' => $medio['url']];

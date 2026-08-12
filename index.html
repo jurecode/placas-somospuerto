@@ -126,7 +126,7 @@
     border-radius:10px; transition:outline-color .12s, background .12s;
     outline:2px dashed transparent; outline-offset:4px;
   }
-  .soltar{ outline-color:var(--acento); background:var(--activo)33 }
+  .soltar{ outline-color:var(--acento); background:#43184f66 }
   #zona_carrusel{ padding:2px }
   .archivo{ font-size:12px; padding:5px 10px }
 
@@ -471,10 +471,18 @@
     .panel{ border-right:0; overflow:visible; padding-bottom:env(safe-area-inset-bottom) }
     .panel > header{ top:0 }
 
-    /* iOS hace zoom solo al tocar un campo cuya letra mide menos de 16px,
-       y después la página queda corrida. Con 16px no lo hace. */
-    input[type=text], input[type=number], input[type=password],
-    textarea, select{ font-size:16px }
+    /* iOS hace zoom al tocar cualquier campo cuya letra mida menos de 16px,
+       y después la página queda corrida y más ancha que la pantalla. Se
+       cubren todos los tipos de campo, no solo los tres que había: alcanza
+       con que uno se escape para que el zoom se dispare. */
+    input, textarea, select{ font-size:16px }
+
+    /* Y por si algo igual se pasa de ancho, que no arrastre la página: en
+       una grilla los hijos no se achican solos, hay que decírselo. */
+    html, body{ max-width:100%; overflow-x:hidden }
+    .panel, .previa{ min-width:0 }
+    fieldset, .campo, .fila{ min-width:0; max-width:100% }
+    textarea, input{ max-width:100% }
 
     /* objetivos de toque cómodos y sin el resaltado gris al tocar */
     button{ min-height:40px }
