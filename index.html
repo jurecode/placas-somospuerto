@@ -332,19 +332,41 @@
   .publicar:disabled{ filter:grayscale(.7); cursor:default }
   .publicar svg{ width:19px; height:19px; flex:none }
   .pie-previa{ font-size:12px; color:var(--suave); margin-top:-6px }
-  .programar{ font-size:13px; color:var(--suave); max-width:min(100%, 420px); width:100% }
-  .programar summary{ cursor:pointer; text-align:center }
-  .programar input{
-    flex:1; min-width:0; background:#14151a; color:var(--texto); font:inherit; font-size:13px;
-    border:1px solid var(--linea); border-radius:8px; padding:8px 10px;
+  /* ---------- programar ---------- */
+  .programar .cuando{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:stretch }
+  /* color-scheme oscuro: sin esto el calendario que abre el sistema sale
+     blanco y encandila en medio de un editor oscuro */
+  #cuando{
+    color-scheme:dark; width:100%; background:#14151a; color:var(--texto);
+    font:inherit; border:1px solid var(--linea); border-radius:8px;
+    padding:9px 11px; min-height:42px;
   }
-  .programar ul{ list-style:none; display:grid; gap:6px; margin-top:12px }
-  .programar li{ display:flex; gap:8px; align-items:center; font-size:12px }
-  .programar li b{ font-weight:600; color:var(--texto) }
-  .programar li .quitar{ margin-left:auto; padding:3px 8px; font-size:11px }
-  .programar .pendiente{ color:var(--suave) }
-  .programar .publicada{ color:#0ae7ae }
-  .programar .error{ color:#ff8a7a }
+  #cuando:focus{ outline:2px solid var(--acento); outline-offset:-1px }
+  /* el ícono del calendario venía casi negro sobre fondo negro */
+  #cuando::-webkit-calendar-picker-indicator{
+    filter:invert(1) opacity(.65); cursor:pointer; padding:2px; margin-left:4px;
+  }
+  #cuando::-webkit-calendar-picker-indicator:hover{ filter:invert(1) opacity(1) }
+  .programar #programar{ white-space:nowrap }
+
+  .programar ul{ list-style:none; display:grid; gap:6px; margin-top:14px }
+  .programar li{
+    display:flex; gap:9px; align-items:center; font-size:12.5px;
+    background:#14151a; border:1px solid var(--linea); border-radius:8px;
+    padding:8px 10px;
+  }
+  .programar li b{ font-weight:600; color:var(--texto); font-variant-numeric:tabular-nums }
+  .programar li span{ color:var(--suave); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .programar li .quitar{ margin-left:auto; padding:4px 9px; font-size:11px; flex:none }
+  /* un punto de color al costado dice en qué está cada una */
+  .programar li::before{
+    content:''; width:7px; height:7px; border-radius:50%; flex:none; background:var(--suave);
+  }
+  .programar li.pendiente::before{ background:#f9c449 }
+  .programar li.publicando::before{ background:#7a4ff0 }
+  .programar li.publicada::before{ background:#0ae7ae }
+  .programar li.error::before{ background:#ff8a7a }
+  .programar li.error{ color:#ff8a7a }
 
   /* Las descargas son de contorno y con flecha hacia abajo: se leen de un
      vistazo como lo contrario de publicar. */
@@ -409,7 +431,6 @@
     body.escribiendo .carrusel-vista,
     body.escribiendo .publicar,
     body.escribiendo .pie-previa,
-    body.escribiendo .programar,
     body.escribiendo #estado{ display:none }
 
     /* y si además la esconde a mano, no queda nada arriba */
@@ -563,6 +584,20 @@
     </p>
   </fieldset>
 
+  <fieldset data-seccion="mas" class="programar">
+    <legend>Programar</legend>
+    <p class="nota" style="margin-top:0">
+      Se publica sola a la hora que elijas. Las imágenes se generan y suben
+      ahora: cuando llegue el momento no va a haber ningún navegador que las
+      dibuje.
+    </p>
+    <div class="cuando">
+      <input type="datetime-local" id="cuando" aria-label="Fecha y hora">
+      <button class="principal" id="programar">Programar</button>
+    </div>
+    <ul id="cola"></ul>
+  </fieldset>
+
   <fieldset data-seccion="mas">
     <legend>Exportar</legend>
     <div class="campo fila">
@@ -651,14 +686,6 @@
   </div>
   <button class="publicar" id="publicar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg><span>Publicar en Instagram</span></button>
   <p class="pie-previa">Publica de verdad, en la cuenta real.</p>
-  <details class="programar">
-    <summary>o programarlo para más tarde</summary>
-    <div class="fila" style="margin-top:12px">
-      <input type="datetime-local" id="cuando">
-      <button class="descarga" id="programar">Programar</button>
-    </div>
-    <ul id="cola"></ul>
-  </details>
 </div>
 
 <script type="module" src="editor.js"></script>
