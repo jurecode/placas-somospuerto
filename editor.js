@@ -8,6 +8,7 @@ import { dibujarCierre, dibujarReel, dibujarFoto, esperarTipografias, LIENZO, RE
 import * as somosPuerto from './placa.js';
 import * as eyey from './dibujo-eyey.js';
 import { MARCA } from './marca/marca.js';
+import { armarMp4, leerMp4, RELOJ } from './mp4.js';
 
 /* Cada medio tiene su dibujante y la marca dice cuál. Lo que se le pasa de
    más —el nombre, el pie— lo ignora el que no lo necesita. */
@@ -1213,6 +1214,156 @@ function tasaDeVideo(){
     : (innerWidth < 900 ? 5_000_000 : 8_000_000);
 }
 
+
+/* ------------------------------------------------------------------ */
+/* grabar sin depender del reloj                                       */
+/* ------------------------------------------------------------------ */
+
+/* El camino viejo reproduce el video y graba lo que se ve: tarda lo que dura
+   el video, y si el aparato no llega a componer 30 cuadros por segundo, los
+   que faltan se pierden —el tirón— y el final puede quedar corto.
+   Este camino no reproduce nada. Abre el archivo, saca los cuadros
+   comprimidos, los descomprime uno por uno, les dibuja lo que va encima y los
+   vuelve a comprimir. Va tan rápido como pueda el aparato, no pierde ninguno,
+   y si se cambia de pestaña solo va más lento.
+   El audio se copia tal cual, sin volver a comprimirlo. */
+
+/* El camino rápido está terminado a medias: descomprime, dibuja y comprime
+   bien —comprobado cuadro por cuadro—, pero el archivo que arma todavía no se
+   puede recorrer: abre, dura lo que tiene que durar, y al saltar a cualquier
+   segundo devuelve siempre el primer cuadro. El error está en la tabla de
+   tiempos del contenedor.
+   Queda apagado hasta que eso esté resuelto: un reel que no se puede
+   reproducir es peor que uno que tarda. Se enciende poniendo
+   codecs_rapido = 1 en el almacenamiento del navegador, para poder seguir
+   probándolo sin tocar el código. */
+const hayCodecs = () =>
+  localStorage.getItem('codecs_rapido') === '1' &&
+  typeof VideoEncoder === 'function' && typeof VideoDecoder === 'function';
+
+async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
+  const buffer = typeof fuente === 'string'
+    ? await (await fetch(fuente)).arrayBuffer()
+    : await fuente.arrayBuffer();
+
+  const { video, audio } = leerMp4(buffer);
+  if(!video || !video.muestras.length) throw new Error('no se pudo leer el índice del video');
+  if(!video.descripcion) throw new Error('el video no viene en H.264');
+
+  /* Un lienzo normal y no uno fuera de pantalla: el de fuera de pantalla no
+     siempre trae todo lo del dibujo —el espaciado entre letras, por ejemplo—
+     y ahí el titular no llegaba a dibujarse. */
+  const lienzo = document.createElement('canvas');
+  lienzo.width = ancho; lienzo.height = alto;
+  const ctx = lienzo.getContext('2d');
+
+  const muestras = [];
+  let descripcion = null, falla = null, cerrado = false;
+  const enc = new VideoEncoder({
+    output: (trozo, meta) => {
+      if(cerrado) return;
+      if(meta?.decoderConfig?.description && !descripcion){
+        descripcion = new Uint8Array(meta.decoderConfig.description);
+      }
+      const datos = new Uint8Array(trozo.byteLength);
+      trozo.copyTo(datos);
+      muestras.push({ datos, clave: trozo.type === 'key', tiempo: trozo.timestamp });
+    },
+    error: (e) => { falla = e; },
+  });
+  /* Por software a propósito. El codificador por hardware cambia su propia
+     descripción a mitad del trabajo —el controlador se reinicia— y un MP4 no
+     admite que eso cambie: el archivo queda inservible. Por software es
+     estable, y como decodificar va rapidísimo, sigue saliendo mucho más
+     rápido que reproducir el video entero. */
+  /* El nivel del códec va en las dos últimas cifras del nombre. El 1f es el
+     nivel 3.1, que topa en 921.600 píxeles: un reel de 1080x1920 necesita más
+     del doble y el codificador lo rechaza. El 2a es el nivel 4.2, que llega a
+     2.228.224 y cubre de sobra cualquier formato de Instagram. */
+  enc.configure({
+    codec: 'avc1.42002a', width: ancho, height: alto,
+    bitrate: tasaDeVideo(), framerate: 30, avc: { format: 'avc' },
+    hardwareAcceleration: 'prefer-software', latencyMode: 'quality',
+  });
+
+  const total = video.muestras.length;
+  let hechos = 0;
+  const dec = new VideoDecoder({
+    output: (cuadro) => {
+      if(cerrado){ cuadro.close(); return; }
+      try{
+        pintar(ctx, cuadro, cuadro.timestamp / 1e6);
+        const salida = new VideoFrame(lienzo, {
+          timestamp: cuadro.timestamp, duration: cuadro.duration || 33333,
+        });
+        // una clave cada dos segundos, para que se pueda saltar dentro del video
+        enc.encode(salida, { keyFrame: hechos % 60 === 0 });
+        salida.close();
+      }finally{
+        cuadro.close();
+        hechos++;
+        if(hechos % 5 === 0) avisar?.(hechos / total);
+      }
+    },
+    error: (e) => { falla = e; },
+  });
+  dec.configure({
+    codec: video.codec, description: video.descripcion,
+    codedWidth: video.ancho, codedHeight: video.alto,
+  });
+
+  const cerrarTodo = () => {
+    cerrado = true;
+    try{ if(dec.state !== 'closed') dec.close(); }catch(e){}
+    try{ if(enc.state !== 'closed') enc.close(); }catch(e){}
+  };
+
+  try{
+  for(const m of video.muestras){
+    if(falla) throw falla;
+    if(cortaron()) throw new Error('Cancelado');
+    dec.decode(new EncodedVideoChunk({
+      type: m.clave ? 'key' : 'delta',
+      timestamp: Math.round(m.tiempo * 1e6 / video.reloj),
+      duration: Math.round(m.duracion * 1e6 / video.reloj),
+      data: m.datos,
+    }));
+    // sin esto la cola crece sin límite y el aparato se queda sin memoria
+    while(dec.decodeQueueSize > 20 || enc.encodeQueueSize > 20){
+      await new Promise((r) => setTimeout(r, 6));
+      if(falla) throw falla;
+    }
+  }
+  await dec.flush(); dec.close();
+  await enc.flush(); enc.close();
+  cerrado = true;
+  }catch(e){ cerrarTodo(); throw e; }
+  if(falla) throw falla;
+  if(!muestras.length) throw new Error('no salió ningún cuadro');
+
+  // las duraciones salen de la distancia entre cuadros, en el reloj del archivo
+  muestras.sort((a, b) => a.tiempo - b.tiempo);
+  const pistaVideo = {
+    tipo: 'video', reloj: RELOJ, ancho, alto, descripcion,
+    muestras: muestras.map((m, i) => {
+      const sig = muestras[i + 1];
+      const dura = sig ? (sig.tiempo - m.tiempo) : (RELOJ / 30) * 1e6 / RELOJ;
+      return { datos: m.datos, clave: m.clave,
+               duracion: Math.max(1, Math.round(dura * RELOJ / 1e6)) };
+    }),
+  };
+
+  const pistas = [pistaVideo];
+  if(audio && audio.descripcion && audio.muestras.length){
+    pistas.push({
+      tipo: 'audio', reloj: audio.reloj, canales: audio.canales || 2,
+      muestreo: audio.muestreo || audio.reloj, descripcion: audio.descripcion,
+      muestras: audio.muestras.map((m) => ({ datos: m.datos, duracion: m.duracion })),
+    });
+  }
+  return armarMp4(pistas);
+}
+
 /* iOS no reproduce un <video> que no está colgado de la página: se queda en
    el primer cuadro y la grabación no avanza nunca —el porcentaje se clava y
    parece colgado—. Se lo pone fuera de la vista mientras dura el trabajo.
@@ -1566,15 +1717,35 @@ async function grabarReel(){
   const firma = firmaDelReel();
   if(ultimoQuemado && ultimoQuemado.firma === firma) return ultimoQuemado;
 
-  const espera = 'Se le queman encima el titular, la etiqueta y el logo. '
-    + 'La grabación es en tiempo real, así que tarda lo que dura el video. '
-    + 'Dejá esta pantalla a la vista.';
-  trabajo('Grabando el titular en el video', 0, espera);
+  const rotulo = 'Grabando el titular en el video';
+  const espera = 'Se le queman encima el titular, la etiqueta y el logo.';
+  const lento = espera + ' La grabación es en tiempo real, así que tarda lo que '
+    + 'dura el video. Dejá esta pantalla a la vista.';
+  trabajo(rotulo, 0, espera);
+
   // se graba desde el archivo del propio teléfono cuando está: no hay que
   // bajarlo del servidor para volver a subirlo
-  const { video } = await quemarReel(fuente, (a) => {
-    trabajo('Grabando el titular en el video', a, espera);
-  });
+  let video = null;
+  if(hayCodecs()){
+    try{
+      const logo = await cargarImagen(LOGO);
+      video = await quemarConCodecs(fuente,
+        (ctx, cuadro, segundos) => {
+          dibujarReel(ctx, placa, cuadro, logo, REEL.ancho, REEL.alto,
+            Math.min(1, segundos / ANIMACION));
+        },
+        (a) => trabajo(rotulo, a, espera),
+        REEL.ancho, REEL.alto);
+    }catch(e){
+      if(String(e.message) === 'Cancelado') throw e;
+      console.warn('el camino rápido no pudo, se graba a la antigua:', e.message);
+      video = null;
+    }
+  }
+  if(!video){
+    trabajo(rotulo, 0, lento);
+    ({ video } = await quemarReel(fuente, (a) => trabajo(rotulo, a, lento)));
+  }
   // primero termina de subir el crudo: dos videos grandes a la vez por la red
   // del teléfono se pisan y ninguno avanza
   await subiendoVideo?.catch(() => {});
@@ -1665,11 +1836,29 @@ async function videoDeLamina(lam, i){
   const guardado = quemados.get(lam.crudo);
   if(guardado && guardado.firma === firma) return { tipo: 'video', ruta: guardado.ruta };
 
-  const espera = 'Se le graban encima el degradado y el logo. La grabación es en '
-    + 'tiempo real: tarda lo que dura el video. Dejá esta pantalla a la vista.';
+  const espera = 'Se le graban encima el degradado y el logo.';
+  const lento = espera + ' La grabación es en tiempo real: tarda lo que dura '
+    + 'el video. Dejá esta pantalla a la vista.';
   const rotulo = `Grabando el video ${i + 1}`;
   trabajo(rotulo, 0, espera);
-  const { video } = await quemarVideo(lam.crudo, lam, (a) => trabajo(rotulo, a, espera));
+
+  let video = null;
+  if(hayCodecs()){
+    try{
+      const logo = await cargarImagen(LOGO);
+      video = await quemarConCodecs(lam.crudo,
+        (ctx, cuadro) => dibujarLamina(ctx, placa, lam, cuadro, logo, 1080),
+        (a) => trabajo(rotulo, a, espera), 1080, 1080);
+    }catch(e){
+      if(String(e.message) === 'Cancelado') throw e;
+      console.warn('el camino rápido no pudo, se graba a la antigua:', e.message);
+      video = null;
+    }
+  }
+  if(!video){
+    trabajo(rotulo, 0, lento);
+    ({ video } = await quemarVideo(lam.crudo, lam, (a) => trabajo(rotulo, a, lento)));
+  }
   trabajo('Subiendo el video', 0, 'Ya está grabado: falta que llegue al servidor.');
   const sub = await guardarFoto(new File([video], 'lamina.mp4', { type: 'video/mp4' }),
     (a) => trabajo('Subiendo el video', a, 'Ya está grabado: falta que llegue al servidor.'));

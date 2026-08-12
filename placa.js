@@ -183,10 +183,12 @@ export function dibujarLinea(ctx, palabras, x, baseline, caja, tipo, px, inter, 
    difuminada de la misma foto. "cubrir": llena y recorta. */
 export function dibujarFoto(ctx, medio, x, y, ancho, alto, ajuste, posX, posY, u){
   if(!medio) return;
-  // sirve igual para una imagen que para un <video>, que no expone width
-  // y height sino videoWidth y videoHeight
-  const anchoOrig = medio.videoWidth || medio.width;
-  const altoOrig  = medio.videoHeight || medio.height;
+  /* Sirve para tres cosas distintas que miden su tamaño de tres maneras: una
+     imagen usa width, un <video> usa videoWidth, y un cuadro suelto salido
+     del decodificador usa displayWidth. Sin la tercera, el cuadro se
+     descartaba en silencio y el video salía negro. */
+  const anchoOrig = medio.displayWidth || medio.videoWidth || medio.width;
+  const altoOrig  = medio.displayHeight || medio.videoHeight || medio.height;
   if(!anchoOrig || !altoOrig) return;
 
   ctx.save();
