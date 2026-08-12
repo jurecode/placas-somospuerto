@@ -9,8 +9,24 @@
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@500;900&family=Poppins:ital,wght@0,700;0,900;1,800&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#15161a; --panel:#1e2026; --linea:#2e3138; --texto:#e7e9ee;
-    --suave:#9aa0ad; --acento:#ff6100;
+    /* Paleta del editor. Los cuatro colores de marca son el morado claro y
+       oscuro y el durazno claro y oscuro; el resto son escalones entre el
+       fondo y el texto, para que nada quede a ojo. */
+    --marca-morado:#804A8A; --marca-morado-hondo:#3A0353;
+    --marca-durazno:#F8D299; --marca-naranja:#F59E51;
+
+    --bg:#1B0328;          /* el fondo de la página */
+    --panel:#26073A;       /* la superficie del formulario */
+    --hueco:#150220;       /* lo hundido: campos de texto */
+    --boton:#3A1152;       /* botones normales */
+    --boton-claro:#4B1C68; /* y su estado al pasar por encima */
+    --linea:#452060;
+    --texto:#F4EAF8;
+    --suave:#B79BC6;
+    --acento:var(--marca-naranja);
+    --activo:#43184F;      /* lo elegido: fondo, con el borde en el acento */
+    --mal:#FF9B8A;
+    --ok:#3DE0B4;
   }
   *{ box-sizing:border-box; margin:0 }
   body{
@@ -42,14 +58,14 @@
   .campo:last-child{ margin-bottom:0 }
 
   input[type=text], input[type=number], textarea, select{
-    width:100%; background:#14151a; color:var(--texto); font:inherit;
+    width:100%; background:var(--hueco); color:var(--texto); font:inherit;
     border:1px solid var(--linea); border-radius:7px; padding:8px 10px;
   }
   input:focus, textarea:focus, select:focus{ outline:2px solid var(--acento); outline-offset:-1px }
   textarea{ resize:vertical; min-height:120px; line-height:1.45 }
   input[type=range]{ width:100%; accent-color:var(--acento) }
   input[type=color]{
-    width:44px; height:34px; padding:2px; background:#14151a;
+    width:44px; height:34px; padding:2px; background:var(--hueco);
     border:1px solid var(--linea); border-radius:7px; flex:none;
   }
 
@@ -58,17 +74,19 @@
   .mitades{ display:grid; grid-template-columns:1fr 1fr; gap:10px }
 
   button{
-    font:inherit; color:var(--texto); background:#282b33; cursor:pointer;
+    font:inherit; color:var(--texto); background:var(--boton); cursor:pointer;
     border:1px solid var(--linea); border-radius:7px; padding:8px 12px;
   }
-  button:hover{ background:#33373f }
-  button.principal{ background:var(--acento); border-color:var(--acento); color:#fff; font-weight:600 }
+  button:hover{ background:var(--boton-claro) }
+    /* el texto va oscuro: blanco sobre este naranja da 2,1 de contraste y no
+     se lee; oscuro da 9,3 */
+  button.principal{ background:var(--acento); border-color:var(--acento); color:var(--bg); font-weight:700 }
   button.principal:hover{ filter:brightness(1.1) }
 
   /* diseños de foto */
   .disenos{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px }
   .disenos button{ display:grid; gap:6px; justify-items:center; padding:10px 6px; font-size:11px; line-height:1.25; text-align:center }
-  .disenos button.activo{ border-color:var(--acento); background:#2c2019 }
+  .disenos button.activo{ border-color:var(--acento); background:var(--activo) }
   .disenos svg{ width:44px; height:30px }
 
   /* paleta */
@@ -77,18 +95,18 @@
   .muestra .par{ display:flex; width:100%; height:22px; border-radius:6px; overflow:hidden }
   .muestra .par i{ flex:1 }
   .muestra .par i:last-child{ flex:0 0 28% }
-  .muestra.activa{ border-color:var(--acento); background:#2c2019 }
+  .muestra.activa{ border-color:var(--acento); background:var(--activo) }
   .muestra.original span::after{ content:" ★" }
 
   /* etiquetas rápidas */
   .chips{ display:flex; flex-wrap:wrap; gap:6px }
   .chips button{ padding:5px 10px; font-size:12px; border-radius:20px }
-  .chips button.activo{ border-color:var(--acento); background:#2c2019 }
+  .chips button.activo{ border-color:var(--acento); background:var(--activo) }
 
   /* ajuste de foto */
   .ajuste{ display:flex; gap:6px; margin-top:8px }
   .ajuste button{ flex:1; font-size:11px; padding:4px 6px }
-  .ajuste button.activo{ border-color:var(--acento); background:#2c2019 }
+  .ajuste button.activo{ border-color:var(--acento); background:var(--activo) }
 
   .foto{ display:flex; gap:12px; align-items:flex-start; margin-bottom:16px }
   .foto:last-child{ margin-bottom:0 }
@@ -108,7 +126,7 @@
     border-radius:10px; transition:outline-color .12s, background .12s;
     outline:2px dashed transparent; outline-offset:4px;
   }
-  .soltar{ outline-color:var(--acento); background:#2c201933 }
+  .soltar{ outline-color:var(--acento); background:var(--activo)33 }
   #zona_carrusel{ padding:2px }
   .archivo{ font-size:12px; padding:5px 10px }
 
@@ -120,9 +138,9 @@
   /* el avance de la subida del video, donde se lo está mirando */
   #estado_video{ color:var(--texto) }
   #estado_video:empty{ display:none }
-  #estado_video.mal{ color:#ff8a7a }
+  #estado_video.mal{ color:var(--mal) }
   #estado{ font-size:11px; color:var(--suave); min-height:16px; padding:0 18px 16px }
-  #estado.error{ color:#ff8a7a }
+  #estado.error{ color:var(--mal) }
 
 
   /* ---------- barra de secciones (solo en el teléfono) ---------- */
@@ -131,7 +149,7 @@
     .barra{
       position:fixed; left:0; right:0; bottom:0; z-index:20;
       display:grid; grid-auto-flow:column; grid-auto-columns:1fr;
-      background:#191b21; border-top:1px solid var(--linea);
+      background:#20052F; border-top:1px solid var(--linea);
       padding-bottom:env(safe-area-inset-bottom);
     }
     .barra[hidden]{ display:none }
@@ -147,7 +165,7 @@
     /* un punto en la sección que tiene algo sin llenar */
     .barra button.falta::after{
       content:''; position:absolute; top:6px; right:calc(50% - 18px);
-      width:7px; height:7px; border-radius:50%; background:#ff8a7a;
+      width:7px; height:7px; border-radius:50%; background:var(--mal);
     }
     .barra button[hidden]{ display:none }
 
@@ -173,13 +191,13 @@
      del panel parecía que el editor se había colgado. */
   .trabajando{
     position:fixed; inset:0; z-index:50; display:grid; place-items:center;
-    background:#0b0b0dcc; backdrop-filter:blur(3px);
+    background:#12021Ccc; backdrop-filter:blur(3px);
     padding:24px; text-align:center;
   }
   .trabajando[hidden]{ display:none }
   .trabajando__caja{
     width:min(100%, 460px); display:grid; gap:14px; justify-items:center;
-    background:#16181d; border:1px solid var(--linea); border-radius:18px;
+    background:var(--panel); border:1px solid var(--linea); border-radius:18px;
     padding:34px 30px; box-shadow:0 24px 70px #000a;
   }
   .trabajando__que{ font-size:19px; font-weight:600; line-height:1.35 }
@@ -190,11 +208,11 @@
   .trabajando__pct[hidden]{ display:none }
   .trabajando__riel{
     width:100%; height:10px; border-radius:99px; overflow:hidden;
-    background:#2a2d34;
+    background:var(--boton);
   }
   .trabajando__riel i{
     display:block; height:100%; width:0; border-radius:99px;
-    background:linear-gradient(90deg, #f9c449, #e0399a, #7a4ff0);
+    background:linear-gradient(90deg, var(--marca-durazno), var(--marca-naranja), var(--marca-morado));
     transition:width .25s ease;
   }
   /* sin porcentaje que mostrar, la barra va y viene para que se note que
@@ -218,7 +236,7 @@
 
   /* ---------- portada: qué vas a publicar ---------- */
   .portada{
-    position:fixed; inset:0; z-index:50; background:#0f1013;
+    position:fixed; inset:0; z-index:50; background:var(--hueco);
     display:grid; align-content:center; justify-items:center; gap:28px;
     padding:32px; overflow-y:auto;   /* si no entra, que se pueda scrollear */
   }
@@ -246,26 +264,26 @@
 
   /* pantalla de arranque fallido */
   .portada .fallo{
-    background:#2a1418; border-left:3px solid var(--acento); border-radius:0 8px 8px 0;
+    background:#3A1B2E; border-left:3px solid var(--acento); border-radius:0 8px 8px 0;
     padding:12px 16px; font-family:ui-monospace, monospace; font-size:13px;
     max-width:52ch; line-height:1.5;
   }
   .portada .pista{ color:var(--suave); font-size:13.5px; max-width:52ch; line-height:1.6 }
   .portada input{
-    background:#14151a; color:var(--texto); font:inherit; min-width:230px;
+    background:var(--hueco); color:var(--texto); font:inherit; min-width:230px;
     border:1px solid var(--linea); border-radius:8px; padding:10px 12px;
   }
   .portada input:focus{ outline:2px solid var(--acento); outline-offset:-1px }
   .portada .pista code{
-    background:#14151a; border:1px solid var(--linea); border-radius:5px;
+    background:var(--hueco); border:1px solid var(--linea); border-radius:5px;
     padding:1px 5px; font-size:12.5px;
   }
   .tarjeta-chica{
     display:inline-block; padding:9px 14px; border-radius:8px; font:inherit; font-size:14px;
-    background:#282b33; border:1px solid var(--linea); color:var(--texto);
+    background:var(--boton); border:1px solid var(--linea); color:var(--texto);
     text-decoration:none; cursor:pointer;
   }
-  .tarjeta-chica:hover{ background:#33373f }
+  .tarjeta-chica:hover{ background:var(--boton-claro) }
 
   .portada__seguir{ background:none; border:0; color:var(--suave); font-size:13px; text-decoration:underline }
   .portada__seguir:hover{ background:none; color:var(--texto) }
@@ -308,10 +326,10 @@
   .tira{ display:flex; gap:10px; overflow-x:auto; max-width:100%; padding:2px }
   .tira button{
     position:relative; flex:none; padding:0; border-radius:9px; overflow:hidden;
-    line-height:0; border:2px solid #3a3e47; background:none; cursor:pointer;
+    line-height:0; border:2px solid var(--linea); background:none; cursor:pointer;
   }
-  .tira button:hover{ border-color:#5a5f6b }
-  .tira button.activa{ border-color:var(--acento); box-shadow:0 0 0 3px #ff610033 }
+  .tira button:hover{ border-color:var(--marca-morado) }
+  .tira button.activa{ border-color:var(--acento); box-shadow:0 0 0 3px #f59e5133 }
   .tira canvas{ width:80px; height:80px; display:block }
   .tira i{
     position:absolute; left:0; top:0; font-style:normal; font-size:10px;
@@ -336,7 +354,7 @@
   /* color-scheme oscuro: sin esto el calendario que abre el sistema sale
      blanco y encandila en medio de un editor oscuro */
   #cuando{
-    color-scheme:dark; width:100%; background:#14151a; color:var(--texto);
+    color-scheme:dark; width:100%; background:var(--hueco); color:var(--texto);
     font:inherit; border:1px solid var(--linea); border-radius:8px;
     padding:9px 11px; min-height:42px;
   }
@@ -351,7 +369,7 @@
   .programar ul{ list-style:none; display:grid; gap:6px; margin-top:14px }
   .programar li{
     display:flex; gap:9px; align-items:center; font-size:12.5px;
-    background:#14151a; border:1px solid var(--linea); border-radius:8px;
+    background:var(--hueco); border:1px solid var(--linea); border-radius:8px;
     padding:8px 10px;
   }
   .programar li b{ font-weight:600; color:var(--texto); font-variant-numeric:tabular-nums }
@@ -361,11 +379,11 @@
   .programar li::before{
     content:''; width:7px; height:7px; border-radius:50%; flex:none; background:var(--suave);
   }
-  .programar li.pendiente::before{ background:#f9c449 }
-  .programar li.publicando::before{ background:#7a4ff0 }
-  .programar li.publicada::before{ background:#0ae7ae }
-  .programar li.error::before{ background:#ff8a7a }
-  .programar li.error{ color:#ff8a7a }
+  .programar li.pendiente::before{ background:var(--marca-durazno) }
+  .programar li.publicando::before{ background:var(--marca-morado) }
+  .programar li.publicada::before{ background:var(--ok) }
+  .programar li.error::before{ background:var(--mal) }
+  .programar li.error{ color:var(--mal) }
 
   /* Las descargas son de contorno y con flecha hacia abajo: se leen de un
      vistazo como lo contrario de publicar. */
@@ -374,7 +392,7 @@
     background:transparent; border:1px solid var(--linea); color:var(--suave);
     font-size:13px; padding:8px 12px;
   }
-  .descarga:hover{ background:#22242a; color:var(--texto) }
+  .descarga:hover{ background:var(--boton-claro); color:var(--texto) }
   .descarga svg{ width:15px; height:15px; flex:none }
 
   /* solo tienen sentido en el teléfono, donde la vista previa compite por la
@@ -435,7 +453,7 @@
     .encoger{
       position:absolute; top:6px; left:8px; z-index:6;
       display:inline-flex; align-items:center;
-      background:#1c1e24cc; border:1px solid var(--linea); color:var(--suave);
+      background:#26073Acc; border:1px solid var(--linea); color:var(--suave);
       font-size:11px; padding:0 9px; border-radius:99px; min-height:26px;
     }
     body.escribiendo .previa{ padding:6px 10px }
