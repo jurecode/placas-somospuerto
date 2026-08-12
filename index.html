@@ -300,8 +300,7 @@
   /* La tira muestra el post completo, en el orden en que va a salir. */
   .carrusel-vista{
     display:grid; gap:8px; justify-items:center; max-width:100%;
-    background:#1c1e24; border:1px solid var(--linea); border-radius:12px;
-    padding:12px 14px;
+    padding:0;
   }
   .carrusel-vista p{
     font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--suave);
@@ -403,23 +402,18 @@
     /* en el reel la tira no muestra nada: es un video solo */
     body[data-formato="reel"] .carrusel-vista{ display:none }
 
-    /* La tira va al costado izquierdo del lienzo y no debajo: en vertical
-       ocupa el alto que ya usa la placa, y esos ~90 px que antes se comía
-       abajo quedan para el formulario. */
-    .previa{
-      grid-template-columns:auto 1fr;
-      grid-template-areas:
-        "tira marco"
-        "boton boton"
-        "pie pie";
-      align-items:center; justify-items:center;
+    /* La tira flota sobre el margen izquierdo, fuera del flujo: así el
+       lienzo queda centrado en la pantalla y no corrido por ella. */
+    .carrusel-vista{
+      position:absolute; left:6px; top:50%; transform:translateY(-50%);
+      width:auto; padding:0; gap:0; z-index:4;
     }
-    .marco{ grid-area:marco }
-    .carrusel-vista{ grid-area:tira; justify-self:start }
-    .publicar{ grid-area:boton }
-    .pie-previa{ grid-area:pie }
-
-    .carrusel-vista{ padding:6px; gap:0; width:auto }
+    /* Se le reserva el margen para que la tira nunca lo pise. Va en el
+       marco y no en el lienzo: el marco se mide contra la franja, que tiene
+       ancho de verdad, mientras que el lienzo se mide contra el marco, que
+       es del tamaño del lienzo. Puesto ahí, el porcentaje se muerde la cola
+       y el lienzo se achica hasta nada. */
+    .marco{ max-width:calc(100% - 150px) }
     /* el rótulo no entra en una columna angosta, y con las miniaturas
        numeradas al lado tampoco hace falta */
     .carrusel-vista p{ display:none }
@@ -699,7 +693,7 @@
            aria-label="Vista previa del reel" hidden></video>
     <canvas id="previa" width="1080" height="1080" aria-label="Vista previa"></canvas>
   </div>
-  <button class="encoger" id="encoger" type="button">Ocultar la vista</button>
+  <button class="encoger" id="encoger" type="button">Ocultar</button>
   <div class="carrusel-vista">
     <p id="rotulo_tira"></p>
     <div class="tira" id="tira"></div>
