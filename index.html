@@ -349,6 +349,23 @@
   .publicar:disabled{ filter:grayscale(.7); cursor:default }
   .publicar svg{ width:19px; height:19px; flex:none }
   .pie-previa{ font-size:12px; color:var(--suave); margin-top:-6px }
+  /* ---------- bitácora ---------- */
+  .bitacora ul{ list-style:none; display:grid; gap:5px; max-height:340px; overflow-y:auto }
+  .bitacora li{
+    display:flex; gap:8px; align-items:baseline; font-size:11.5px; line-height:1.45;
+    background:var(--hueco); border:1px solid var(--linea); border-radius:7px;
+    padding:6px 9px;
+  }
+  .bitacora li b{
+    font-weight:600; font-variant-numeric:tabular-nums; color:var(--suave); flex:none;
+  }
+  .bitacora li span{ min-width:0; overflow-wrap:anywhere }
+  .bitacora li i{ font-style:normal; font-weight:600; color:var(--texto) }
+  /* el color dice de un vistazo si eso estuvo bien */
+  .bitacora li.mal{ border-color:#7a2a2a }
+  .bitacora li.mal i{ color:var(--mal) }
+  .bitacora li.aviso i{ color:var(--marca-durazno) }
+
   /* ---------- programar ---------- */
   .programar .cuando{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:stretch }
   /* color-scheme oscuro: sin esto el calendario que abre el sistema sale
@@ -636,6 +653,20 @@
       contra el reloj. Instagram recomprime todo igual, así que la diferencia
       apenas se ve.
     </p>
+  </fieldset>
+
+  <fieldset data-seccion="mas" class="bitacora">
+    <legend>Qué pasó</legend>
+    <p class="nota" style="margin-top:0">
+      Lo que ocurre al preparar y subir queda anotado acá: cuánto pesaba el
+      video, cuántos cuadros se lograron dibujar de los que hacían falta, a qué
+      velocidad subió y en qué paso se cortó si algo falló.
+    </p>
+    <ul id="bitacora"></ul>
+    <div class="fila" style="margin-top:12px">
+      <button class="descarga" id="copiar_bitacora">Copiar</button>
+      <button class="descarga" id="limpiar_bitacora">Borrar</button>
+    </div>
   </fieldset>
 
   <fieldset data-seccion="mas" class="programar">

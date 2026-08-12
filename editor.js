@@ -163,10 +163,25 @@ async function conPlazo(ruta, opciones, ms){
 }
 
 async function guardarFoto(archivo, avisar){
+  const arranque = Date.now();
+  const contar = (r) => {
+    const ms = Date.now() - arranque;
+    anotar('subida', { peso: mb(archivo.size), tardo: seg(ms),
+      velocidad: (archivo.size / 1048576 / (ms / 1000)).toFixed(2) + ' MB/s' });
+    return r;
+  };
+  const fallo = (e) => {
+    anotar('subida cortada', { peso: mb(archivo.size), tardo: seg(Date.now() - arranque),
+      porque: String(e.message).slice(0, 120), nivel: 'mal' });
+    throw e;
+  };
+
   if(archivo.size <= ENTERO_HASTA){
     return conPlazo('api/fotos.php',
-      { method: 'POST', body: archivo, headers: BINARIO }, PLAZO_TROZO);
+      { method: 'POST', body: archivo, headers: BINARIO }, PLAZO_TROZO)
+      .then(contar, fallo);
   }
+  try{
   const sesion = (crypto.randomUUID?.() || Math.random().toString(36) + Date.now())
     .replace(/[^a-zA-Z0-9]/g, '');
   let enviado = 0;
@@ -178,9 +193,10 @@ async function guardarFoto(archivo, avisar){
       { method: 'POST', body: pedazo, headers: BINARIO }, PLAZO_TROZO);
     enviado += pedazo.size;
     avisar?.(enviado / archivo.size);
-    if(ultimo) return r;
+    if(ultimo) return contar(r);
   }
   throw new Error('El archivo llegó vacío');
+  }catch(e){ return fallo(e); }
 }
 
 /* ------------------------------------------------------------------ */
@@ -234,6 +250,58 @@ document.addEventListener('focusout', (ev) => {
     if(!esCampo(document.activeElement)) document.body.classList.remove('escribiendo');
   }, 120);
 });
+
+
+/* ------------------------------------------------------------------ */
+/* bitácora                                                            */
+/* ------------------------------------------------------------------ */
+
+/* Anota lo que pasa al preparar y subir, para poder mirar después por qué
+   algo falló o por qué un video salió a tirones. Vive en el navegador, no en
+   el servidor: lo que interesa —cuántos cuadros se perdieron, a qué velocidad
+   subió, en qué paso se cortó— pasa todo de este lado.
+   Se guarda entre visitas porque la falla suele verse cuando ya se recargó. */
+const BITACORA = 'bitacora';
+const TOPE_BITACORA = 300;
+
+function anotar(evento, datos = {}){
+  try{
+    const linea = { t: Date.now(), evento, ...datos };
+    const libro = leerBitacora();
+    libro.push(linea);
+    localStorage.setItem(BITACORA, JSON.stringify(libro.slice(-TOPE_BITACORA)));
+    if(document.getElementById('bitacora')) pintarBitacora();
+  }catch(e){ /* si no hay lugar, se sigue sin anotar */ }
+}
+
+function leerBitacora(){
+  try{ return JSON.parse(localStorage.getItem(BITACORA) || '[]'); }
+  catch(e){ return []; }
+}
+
+const mb = (bytes) => (bytes / 1048576).toFixed(2) + ' MB';
+const seg = (ms) => (ms / 1000).toFixed(1) + 's';
+
+/* Lo que se muestra: una línea por evento, la más nueva arriba. */
+function pintarBitacora(){
+  const caja = document.getElementById('bitacora');
+  if(!caja) return;
+  const libro = leerBitacora();
+  if(!libro.length){
+    caja.innerHTML = '<p class="nota">Todavía no hay nada anotado. Se llena sola al subir o publicar.</p>';
+    return;
+  }
+  const hora = (t) => new Date(t).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  caja.innerHTML = libro.slice().reverse().map((l) => {
+    const { t, evento, nivel, ...resto } = l;
+    const detalle = Object.entries(resto)
+      .map(([k, v]) => `${k}: ${v}`).join(' · ');
+    return `<li class="${esc(nivel || 'ok')}">
+      <b>${esc(hora(t))}</b>
+      <span><i>${esc(evento)}</i>${detalle ? ' — ' + esc(detalle) : ''}</span>
+    </li>`;
+  }).join('');
+}
 
 /* ------------------------------------------------------------------ */
 /* secciones, en el teléfono                                           */
@@ -316,11 +384,33 @@ $('#calidad')?.addEventListener('click', (ev) => {
 });
 pintarCalidad();
 
+/* Copiar sirve para mandármela: lo que se copia es texto plano, una línea
+   por evento, que se pega en cualquier lado. */
+$('#copiar_bitacora')?.addEventListener('click', async () => {
+  const libro = leerBitacora();
+  const texto = libro.map((l) => {
+    const { t, evento, nivel, ...resto } = l;
+    const detalle = Object.entries(resto).map(([k, v]) => `${k}=${v}`).join(' ');
+    return `${new Date(t).toLocaleString('es-CL')}  ${evento}${detalle ? '  ' + detalle : ''}`;
+  }).join('\n');
+  try{
+    await navigator.clipboard.writeText(texto || 'sin nada anotado');
+    estado(`Copiadas ${libro.length} líneas`);
+  }catch(e){ estado('No se pudo copiar: ' + e.message, true); }
+});
+
+$('#limpiar_bitacora')?.addEventListener('click', () => {
+  localStorage.removeItem(BITACORA);
+  pintarBitacora();
+  estado('Bitácora borrada');
+});
+
 $('#encoger')?.addEventListener('click', () => verVista(false));
 $('#mostrar_vista')?.addEventListener('click', () => verVista(true));
 if(localStorage.getItem('sin_vista')) verVista(false);
 
 function estado(texto, esError){
+  if(esError && texto) anotar('error', { que: String(texto).slice(0, 160), nivel: 'mal' });
   const el = $('#estado');
   if(!el) return;
   el.textContent = texto;
@@ -823,6 +913,7 @@ async function cargar(id){
   await volcarControles();
   irA(localStorage.getItem('seccion') || 'titular');
   pintarBarra();
+  pintarBitacora();
   await pintarSelector();
   $('#portada').hidden = true;
   repintar();
@@ -974,6 +1065,9 @@ $('#publicar').addEventListener('click', async (ev) => {
       items = await itemsParaPublicar((a) => trabajo('Generando las imágenes', a));
     }
 
+    anotar('publicando', { piezas: items.length,
+      tipos: items.map((x) => x.tipo).join(', ') });
+    const arranquePublicar = Date.now();
     trabajo('Publicando en Instagram', null,
       'Instagram tiene que recibir y procesar cada pieza. Con video puede tardar unos minutos. No cierres esta ventana.');
     const res = await fetch('api/publicar.php', {
@@ -991,6 +1085,8 @@ $('#publicar').addEventListener('click', async (ev) => {
       if(res.status === 401) localStorage.removeItem('clave_publicar');
       throw new Error(datos.error || `Error ${res.status}`);
     }
+    anotar('publicado', { tardo: seg(Date.now() - arranquePublicar),
+      aviso: datos.aviso ? String(datos.aviso).slice(0, 80) : 'sin avisos' });
     estado('Publicado' + (datos.aviso ? ' — ' + datos.aviso : ''));
     if(datos.enlace) window.open(datos.enlace, '_blank');
   }catch(e){ estado(e.message, true); }
@@ -1460,10 +1556,11 @@ async function quemarVideo(archivo, lamina, avisar){
   let falloGrabador = null;
   grabador.onerror = (e) => { falloGrabador = e.error || new Error('falló la grabación'); };
 
-  let dibujando = true;
+  let dibujando = true, cuadros = 0;
   const pintar = () => {
     if(!dibujando) return;
     dibujarLamina(ctx, placa, lamina, video, logo, 1080);
+    cuadros++;
     if(video.duration) avisar?.(video.currentTime / video.duration);
     setTimeout(pintar, 33);   // ~30 cuadros por segundo
   };
@@ -1491,6 +1588,20 @@ async function quemarVideo(archivo, lamina, avisar){
   }
   await listo;
   audio?.close();
+
+  /* Acá se ve el tirón con números. La grabación va contra el reloj, así que
+     si el aparato no llega a dibujar 30 cuadros por segundo, los que faltan
+     no existen en el archivo: eso es lo que se ve como saltos. */
+  const esperados = Math.round((video.duration || 0) * 30);
+  const logrados = cuadros;
+  const porciento = esperados ? Math.round(logrados / esperados * 100) : 100;
+  anotar('grabado', {
+    dura: seg((video.duration || 0) * 1000),
+    cuadros: `${logrados} de ${esperados}`,
+    fluidez: porciento + '%',
+    nivel: porciento < 80 ? 'mal' : (porciento < 95 ? 'aviso' : 'ok'),
+  });
+
   if(falloGrabador) throw falloGrabador;
   if(!trozos.length) throw new Error('La grabación salió vacía. Probá con un video más corto.');
 
@@ -1554,11 +1665,12 @@ async function quemarReel(fuente, avisar){
   let falloGrabador = null;
   grabador.onerror = (e) => { falloGrabador = e.error || new Error('falló la grabación'); };
 
-  let dibujando = true;
+  let dibujando = true, cuadros = 0;
   const pintar = () => {
     if(!dibujando) return;
     dibujarReel(ctx, placa, video, logo, REEL.ancho, REEL.alto,
       Math.min(1, video.currentTime / ANIMACION));
+    cuadros++;
     if(video.duration) avisar?.(video.currentTime / video.duration);
     setTimeout(pintar, 33);
   };
@@ -1589,6 +1701,20 @@ async function quemarReel(fuente, avisar){
   }
   await listo;
   audio?.close();
+
+  /* Acá se ve el tirón con números. La grabación va contra el reloj, así que
+     si el aparato no llega a dibujar 30 cuadros por segundo, los que faltan
+     no existen en el archivo: eso es lo que se ve como saltos. */
+  const esperados = Math.round((video.duration || 0) * 30);
+  const logrados = cuadros;
+  const porciento = esperados ? Math.round(logrados / esperados * 100) : 100;
+  anotar('grabado', {
+    dura: seg((video.duration || 0) * 1000),
+    cuadros: `${logrados} de ${esperados}`,
+    fluidez: porciento + '%',
+    nivel: porciento < 80 ? 'mal' : (porciento < 95 ? 'aviso' : 'ok'),
+  });
+
   if(falloGrabador) throw falloGrabador;
   if(!trozos.length) throw new Error('La grabación salió vacía. Probá con un video más corto.');
 
@@ -1614,6 +1740,7 @@ let subiendoVideo = null;   // termina cuando el crudo llegó al servidor
 const fuenteDelReel = () => videoLocal || placa.video || '';
 
 async function agregarReel(archivo){
+  anotar('video elegido', { para: 'reel', peso: mb(archivo.size) });
   if(videoLocal) URL.revokeObjectURL(videoLocal);
   videoLocal = URL.createObjectURL(archivo);
   ultimoQuemado = null;
@@ -1793,7 +1920,7 @@ async function cuadroDelVideo(archivo){
     lienzo.width = lienzo.height = 1080;
     dibujarFoto(lienzo.getContext('2d'), video, 0, 0, 1080, 1080, 'cubrir', 50, 50, 1080 / LIENZO);
     const jpg = await new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.9));
-    return { jpg, duracion: video.duration };
+    return { jpg, duracion: video.duration, ancho: video.videoWidth, alto: video.videoHeight };
   }finally{ sacar(); URL.revokeObjectURL(video.src); }
 }
 
@@ -1803,7 +1930,9 @@ async function cuadroDelVideo(archivo){
 async function agregarVideo(archivo, indice){
   trabajo('Preparando el video', null, 'Se guarda tal cual: el degradado y el logo se le graban al publicar.');
   try{
-    const { jpg, duracion } = await cuadroDelVideo(archivo);
+    const { jpg, duracion, ancho, alto } = await cuadroDelVideo(archivo);
+    anotar('video elegido', { para: 'carrusel', peso: mb(archivo.size),
+      dura: seg(duracion * 1000), tamano: `${ancho}x${alto}` });
     if(duracion > 45){
       estado(`Ojo: dura ${enMinutos(duracion)}. Al publicar, grabarlo va a tardar lo mismo.`);
     }
