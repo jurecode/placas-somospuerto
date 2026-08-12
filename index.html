@@ -395,21 +395,39 @@
        teclado. Todo lo que hay acá está medido para que el formulario
        empiece dentro de la pantalla, no debajo. */
     .previa{ gap:8px }
-    #previa, #previa_video{ max-height:22svh }
+    #previa, #previa_video{ max-height:30svh }
     /* el reel es angosto: con la misma altura se veía diminuto */
     body[data-formato="reel"] #previa,
-    body[data-formato="reel"] #previa_video{ max-height:30svh }
+    body[data-formato="reel"] #previa_video{ max-height:38svh }
 
     /* en el reel la tira no muestra nada: es un video solo */
     body[data-formato="reel"] .carrusel-vista{ display:none }
 
-    /* la tira, en una línea: el rótulo largo se comía dos renglones */
-    .carrusel-vista{ padding:6px 9px; gap:4px; width:100% }
-    .carrusel-vista p{
-      font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-      max-width:100%; justify-self:start;
+    /* La tira va al costado izquierdo del lienzo y no debajo: en vertical
+       ocupa el alto que ya usa la placa, y esos ~90 px que antes se comía
+       abajo quedan para el formulario. */
+    .previa{
+      grid-template-columns:auto 1fr;
+      grid-template-areas:
+        "tira marco"
+        "boton boton"
+        "pie pie";
+      align-items:center; justify-items:center;
     }
-    .tira{ gap:7px }
+    .marco{ grid-area:marco }
+    .carrusel-vista{ grid-area:tira; justify-self:start }
+    .publicar{ grid-area:boton }
+    .pie-previa{ grid-area:pie }
+
+    .carrusel-vista{ padding:6px; gap:0; width:auto }
+    /* el rótulo no entra en una columna angosta, y con las miniaturas
+       numeradas al lado tampoco hace falta */
+    .carrusel-vista p{ display:none }
+    .tira{
+      flex-direction:column; gap:6px; overflow-y:auto; overflow-x:hidden;
+      max-height:34svh;
+    }
+    body[data-formato="reel"] .tira{ max-height:42svh }
     .publicar{ padding:12px 18px; font-size:15px }
     .pie-previa{ margin-top:-4px }
 
@@ -418,8 +436,10 @@
        lugar para el campo que se estaba editando: no se podía escribir. */
     /* flotando en una esquina: puesto en la columna se comía 38 px de alto
        que hacen falta para el formulario */
+    /* arriba a la izquierda: con la tira al costado, el lienzo se corrió a
+       la derecha y en la esquina de ese lado el botón tapaba la placa */
     .encoger{
-      position:absolute; top:8px; right:8px; z-index:6;
+      position:absolute; top:6px; left:8px; z-index:6;
       display:inline-flex; align-items:center;
       background:#1c1e24cc; border:1px solid var(--linea); color:var(--suave);
       font-size:11px; padding:0 9px; border-radius:99px; min-height:26px;
