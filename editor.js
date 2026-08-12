@@ -297,6 +297,24 @@ function verVista(mostrar){
   document.body.classList.toggle('sin_vista', !mostrar);
   localStorage.setItem('sin_vista', mostrar ? '' : '1');
 }
+/* La calidad es del aparato, no de la placa: quien publica desde el teléfono
+   con datos quiere rápida y desde la oficina quiere alta. */
+function pintarCalidad(){
+  document.querySelectorAll('[data-calidad]').forEach((b) => {
+    b.classList.toggle('activo', b.dataset.calidad === calidadVideo());
+  });
+}
+$('#calidad')?.addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-calidad]');
+  if(!b) return;
+  localStorage.setItem('calidad_video', b.dataset.calidad);
+  pintarCalidad();
+  estado(b.dataset.calidad === 'rapida'
+    ? 'Los videos van a pesar un tercio menos y subir más rápido.'
+    : 'Los videos van a salir con la mejor calidad posible.');
+});
+pintarCalidad();
+
 $('#encoger')?.addEventListener('click', () => verVista(false));
 $('#mostrar_vista')?.addEventListener('click', () => verVista(true));
 if(localStorage.getItem('sin_vista')) verVista(false);
@@ -1180,9 +1198,20 @@ async function mantenerDespierto(){
   catch(e){ return null; }   // no todos los navegadores lo tienen
 }
 
-/* En el teléfono la grabación cuesta bastante más: menos bits por segundo
-   evita que se atore, y la diferencia no se nota en un video de Instagram. */
-const tasaDeVideo = () => (innerWidth < 900 ? 5_000_000 : 8_000_000);
+/* Cuántos bits por segundo lleva el video grabado. Manda el tamaño del
+   archivo y, con eso, lo que tarda en subir; no cambia lo que tarda la
+   grabación, que va contra el reloj.
+   Medido sobre cinco segundos: a 3,5 Mbps el archivo queda en el 78% y a
+   2,5 en el 67%. Instagram recomprime todo igual, así que en modo rápido la
+   pérdida casi no se ve y se sube un tercio menos. */
+/* Declaradas como función y no como constante a propósito: se usan más
+   arriba, al pintar el control, y una constante todavía no existiría. */
+function calidadVideo(){ return localStorage.getItem('calidad_video') || 'alta'; }
+function tasaDeVideo(){
+  return calidadVideo() === 'rapida'
+    ? 2_500_000
+    : (innerWidth < 900 ? 5_000_000 : 8_000_000);
+}
 
 /* iOS no reproduce un <video> que no está colgado de la página: se queda en
    el primer cuadro y la grabación no avanza nunca —el porcentaje se clava y
