@@ -12,7 +12,7 @@ export const MARCA = {
   logo:   'marca/logo.png',
   /* Todavía no hay lámina de cierre para este medio: vacío quiere decir que
      el post termina en la última foto, sin firma al final. */
-  cierre: '',
+  cierre: 'marca/cierre.png',
 
   /* Lo que va en la huincha de abajo, a la izquierda de las flechas. */
   pie: 'SIGUENOS EYEY.CL',
