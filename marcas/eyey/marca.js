@@ -36,7 +36,6 @@ export const MARCA = {
 
   /* Con qué arranca una placa nueva de este medio. */
   predeterminados: {
-    tam_titulo: 260,
     color_fondo: '#ff0000',
     color_filete: '#ff0000',
     etiqueta: 'Musica',

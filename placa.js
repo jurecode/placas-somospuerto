@@ -22,7 +22,11 @@ export const MEDIDAS = {
   // titular y el pie no cambie si el logo cambia de proporción, pero se
   // acota el ancho por si el lockup es muy apaisado.
   logo:     { alto: 280, ancho: 1560, abajo: 117 },
-  urgente:  { arriba: 790, margen: 180, bajada: 190, separacion: 166 },
+  /* El cuerpo del titular es parte del diseño y no se toca: es la medida del
+     arte original. Si un titular es tan largo que se saldría por arriba, se
+     achica solo lo justo para que entre. */
+  titular:  { fuente: 143, arriba: 120 },
+  urgente:  { arriba: 790, margen: 180, bajada: 190, separacion: 166, fuente: 900 },
 };
 
 /* La interlínea acompaña al tamaño de letra en la misma proporción que el
@@ -319,16 +323,25 @@ function dibujarNoticia(ctx, datos, fotos, u){
   ctx.restore();
 
   // titular, anclado por abajo
-  const px = Number(datos.tam_titulo) * u;
-  const interlinea = px * PROPORCION_INTERLINEA;
-  const inter = 0.008 * px;
   const maxAncho = (LIENZO - MEDIDAS.media.x - MEDIDAS.pie.x - MEDIDAS.pie.separacion) * u;
-  const lineas = repartir(ctx, datos.titulo, TIPOS.titular, px, inter, maxAncho);
-  const met = metricas(ctx, TIPOS.titular, px);
-
   const respiro = MEDIDAS.filete.respiro * u;
   const abajoCaja = (LIENZO - MEDIDAS.pie.abajo) * u - respiro;
-  const arribaTexto = abajoCaja - lineas.length * interlinea;
+  const tope = MEDIDAS.titular.arriba * u;
+
+  /* Se prueba con el cuerpo del arte y, si el bloque se saldría por arriba,
+     se baja de a poco hasta que entre. Sin esto un titular muy largo se corta
+     contra el borde y no hay forma de darse cuenta hasta verlo publicado. */
+  let px = MEDIDAS.titular.fuente * u;
+  let interlinea, inter, lineas, met, arribaTexto;
+  for(let intento = 0; intento < 12; intento++){
+    interlinea = px * PROPORCION_INTERLINEA;
+    inter = 0.008 * px;
+    lineas = repartir(ctx, datos.titulo, TIPOS.titular, px, inter, maxAncho);
+    met = metricas(ctx, TIPOS.titular, px);
+    arribaTexto = abajoCaja - lineas.length * interlinea;
+    if(arribaTexto >= tope) break;
+    px *= 0.92;
+  }
   const medioInterlineado = (interlinea - (met.ascenso + met.descenso)) / 2;
 
   ctx.save();
@@ -391,7 +404,7 @@ function dibujarUrgente(ctx, datos, fotos, u, lado){
   // la palabra grande se estira hasta llenar el ancho
   const disponible = lado - U.margen * u * 2;
   const lineas = String(datos.titulo).toUpperCase().split('\n').filter((l) => l.trim());
-  let px = Number(datos.tam_titulo) * u;
+  let px = MEDIDAS.urgente.fuente * u;
   const anchoCon = (tam) => Math.max(...lineas.map(
     (l) => anchoDe(ctx, l, TIPOS.urgenteTexto, tam, -0.1 * tam)));
   const medido = anchoCon(px);

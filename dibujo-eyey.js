@@ -191,15 +191,23 @@ export function dibujar(ctx, datos, fotos, lado, marca = {}){
   dibujarEtiqueta(ctx, datos, u, lado);
 
   // el titular, apoyado sobre la huincha
-  const px = (datos.tam_titulo || MEDIDAS.titular.fuente) * u;
-  const interlinea = px * MEDIDAS.titular.interlinea;
   const izquierda = MEDIDAS.margen * u;
   const maxAncho = lado - izquierda * 2;
-  const lineas = repartir(ctx, datos.titulo, TIPOS.titular, px, 0, maxAncho);
-  const met = metricas(ctx, TIPOS.titular, px);
-
   const abajo = lado - MEDIDAS.huincha.alto * u - MEDIDAS.titular.abajo * u;
-  const arriba = abajo - lineas.length * interlinea;
+  const tope = MEDIDAS.etiqueta.arriba * u + 260 * u;   // debajo de la etiqueta
+
+  /* El cuerpo es el del arte y no se toca. Si el titular es tan largo que se
+     saldría por arriba, se achica solo lo justo para que entre. */
+  let px = MEDIDAS.titular.fuente * u;
+  let interlinea, lineas, met, arriba;
+  for(let intento = 0; intento < 12; intento++){
+    interlinea = px * MEDIDAS.titular.interlinea;
+    lineas = repartir(ctx, datos.titulo, TIPOS.titular, px, 0, maxAncho);
+    met = metricas(ctx, TIPOS.titular, px);
+    arriba = abajo - lineas.length * interlinea;
+    if(arriba >= tope) break;
+    px *= 0.92;
+  }
   const medioInterlineado = (interlinea - (met.ascenso + met.descenso)) / 2;
 
   const M = MEDIDAS.marca;

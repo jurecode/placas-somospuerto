@@ -61,7 +61,6 @@ const BASE = {
   color_fondo: '#ff0054',
   color_filete: '#0ae7ae',
   circulo_x: 50, circulo_y: 62.6,
-  tam_titulo: 143,
   laminas: [],            // fotos extra del carrusel; la placa es la primera
   descripcion: '', hashtags: '', colaboradores: '', etiquetados: '',
   // cada medio pisa lo que le corresponde: su cuerpo de letra, sus colores
@@ -121,7 +120,6 @@ const URGENTE = {
   formato: 'urgente',
   titulo: 'Ahora',
   color_fondo: '#ee0008',
-  tam_titulo: 900,
 };
 
 /* ------------------------------------------------------------------ */
