@@ -1537,25 +1537,24 @@ function tasaDeVideo(){
 }
 
 /* Cuántos bits por segundo merece la salida.
-   Era un número fijo —8 Mbps— sin mirar el video de origen, y eso inflaba
-   los archivos sin que se vieran mejor: un video de teléfono de 1,1 Mbps
-   salía re-comprimido a 7 y pesaba siete veces más. Agrandar la imagen no
-   inventa detalle que el original no tiene, y encima Instagram vuelve a
-   comprimir todo lo que recibe, así que esos bits se tiran dos veces: una
-   al subirlos y otra al llegar.
-   La cuenta va sobre los píxeles del ORIGINAL y no los de la salida, porque
-   son los que traen información de verdad. El 0,14 bits por píxel y por
-   cuadro es holgado para video: lo normal ronda 0,10, y el aire de más es
-   para el titular, el logo y el degradado que se le queman encima, que son
-   bordes duros y sí piden bits.
-   El techo sigue siendo el de antes, así que esto solo puede bajar el peso,
-   nunca subirlo; y el piso evita que un original muy comprimido arrastre la
-   salida a un lugar del que no se vuelve. */
-function tasaSegunOrigen(anchoFuente, altoFuente){
+   Estuvo un rato calculado sobre los píxeles del ORIGINAL, con el argumento
+   de que agrandar no inventa detalle. El argumento es cierto y la conclusión
+   estaba mal: el codificador no comprime el original, comprime el cuadro de
+   salida, y encima de ese cuadro van el titular, el logo y el degradado, que
+   se dibujan a resolución completa y sí son detalle nuevo.
+   Medido con contenido movido y con grano, a 1080x1350: bajar de 8 a 3 Mbps
+   cuesta 0,86 dB, y sobre un original que venía bien la pérdida total llega
+   a 3,3. Así que la cuenta va sobre los píxeles de la SALIDA.
+   No hace falta ser tacaño: el control de tasa gasta lo que necesita y no
+   más —con contenido fácil se planta en 3,8 Mbps aunque se le ofrezcan 12—,
+   así que pedir de sobra no engorda los archivos que no lo piden.
+   El perfil del códec, de paso, no cambia nada: medidos Main y High dan lo
+   mismo que Baseline a igual tasa. */
+function tasaDeSalida(ancho, alto){
   const tope = tasaDeVideo();
-  const pixeles = (anchoFuente || 0) * (altoFuente || 0);
-  if(!pixeles) return tope;             // sin saber el origen, lo de antes
-  return Math.round(Math.min(tope, Math.max(3_000_000, pixeles * 30 * 0.14)));
+  const pixeles = (ancho || 0) * (alto || 0);
+  if(!pixeles) return tope;
+  return Math.round(Math.min(tope, Math.max(3_000_000, pixeles * 30 * 0.18)));
 }
 
 
@@ -1624,9 +1623,40 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
      2.228.224 y cubre de sobra cualquier formato de Instagram. */
   enc.configure({
     codec: 'avc1.42002a', width: ancho, height: alto,
-    bitrate: tasaSegunOrigen(video.ancho, video.alto), framerate: 30, avc: { format: 'avc' },
+    bitrate: tasaDeSalida(ancho, alto), framerate: 30, avc: { format: 'avc' },
     hardwareAcceleration: 'prefer-software', latencyMode: 'quality',
   });
+
+  /* La salida va a ritmo constante, aunque el origen no lo tenga.
+     Casi todo lo que sale de un teléfono, de CapCut o de una IA viene con
+     ritmo variable: los cuadros no caen cada 33,3 ms sino cuando el editor
+     decidió, mezclando tramos de 24, 30 y 60 por segundo en el mismo archivo.
+     Medido sobre esta misma tubería: entra variable y salía variable, porque
+     se conservaban los tiempos del original tal cual.
+     Eso se ve bien en la computadora y da saltitos después de que Instagram
+     lo reprocesa, que es el efecto de «se veía perfecto y quedó lageado».
+     Así que se emite un cuadro en cada instante exacto de la rejilla, con el
+     último que haya llegado: si el origen va más lento se repite, si va más
+     rápido se descarta. El archivo queda parejo de punta a punta. */
+  const ritmoOrigen = (() => {
+    const d = video.muestras.map((m) => m.duracion).filter((x) => x > 0).sort((x, y) => x - y);
+    if(!d.length) return 30;
+    const medio = d[Math.floor(d.length / 2)];
+    return video.reloj / medio > 45 ? 60 : 30;   // un 60 de verdad se respeta
+  })();
+  const PASO = Math.round(1e6 / ritmoOrigen);
+  let siguiente = 0;          // el próximo instante de la rejilla, en microsegundos
+  let hayDibujo = false;      // hasta que llegue el primer cuadro no hay qué emitir
+  let emitidos = 0;
+
+  const emitir = () => {
+    const salida = new VideoFrame(lienzo, { timestamp: siguiente, duration: PASO });
+    // una clave cada dos segundos, para que se pueda saltar dentro del video
+    enc.encode(salida, { keyFrame: emitidos % (ritmoOrigen * 2) === 0 });
+    salida.close();
+    siguiente += PASO;
+    emitidos++;
+  };
 
   const total = video.muestras.length;
   let hechos = 0;
@@ -1634,13 +1664,10 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
     output: (cuadro) => {
       if(cerrado){ cuadro.close(); return; }
       try{
-        pintar(ctx, cuadro, cuadro.timestamp / 1e6);
-        const salida = new VideoFrame(lienzo, {
-          timestamp: cuadro.timestamp, duration: cuadro.duration || 33333,
-        });
-        // una clave cada dos segundos, para que se pueda saltar dentro del video
-        enc.encode(salida, { keyFrame: hechos % 60 === 0 });
-        salida.close();
+        // los instantes que este cuadro deja atrás se llenan con lo anterior
+        while(hayDibujo && siguiente < cuadro.timestamp) emitir();
+        pintar(ctx, cuadro, siguiente / 1e6);
+        hayDibujo = true;
       }finally{
         cuadro.close();
         hechos++;
@@ -1694,22 +1721,26 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
     }
   }
   await dec.flush(); dec.close();
+  /* Lo que quedó dibujado cubre hasta el final del original: se emiten los
+     instantes que faltan para no cortar el video antes de tiempo. */
+  const duracionOrigen = video.muestras.reduce((a, m) => a + m.duracion, 0) / video.reloj * 1e6;
+  while(hayDibujo && siguiente < duracionOrigen) emitir();
+  if(!emitidos && hayDibujo) emitir();       // un original de un solo cuadro
   await enc.flush(); enc.close();
   cerrado = true;
   }catch(e){ cerrarTodo(); throw e; }
   if(falla) throw falla;
   if(!muestras.length) throw new Error('no salió ningún cuadro');
 
-  // las duraciones salen de la distancia entre cuadros, en el reloj del archivo
+  /* Todas las muestras duran lo mismo: se emitieron sobre una rejilla fija.
+     No hace falta deducir la duración de la distancia entre cuadros, que era
+     lo que arrastraba el ritmo irregular del original hasta el archivo final. */
   muestras.sort((a, b) => a.tiempo - b.tiempo);
+  const duracionPareja = Math.max(1, Math.round(PASO * RELOJ / 1e6));
   const pistaVideo = {
     tipo: 'video', reloj: RELOJ, ancho, alto, descripcion,
-    muestras: muestras.map((m, i) => {
-      const sig = muestras[i + 1];
-      const dura = sig ? (sig.tiempo - m.tiempo) : (RELOJ / 30) * 1e6 / RELOJ;
-      return { datos: m.datos, clave: m.clave,
-               duracion: Math.max(1, Math.round(dura * RELOJ / 1e6)) };
-    }),
+    muestras: muestras.map((m) => ({ datos: m.datos, clave: m.clave,
+                                     duracion: duracionPareja })),
   };
 
   const pistas = [pistaVideo];
@@ -1867,7 +1898,7 @@ async function quemarVideo(archivo, lamina, avisar){
     destino.stream.getAudioTracks().forEach((t) => flujo.addTrack(t));
   }catch(e){ /* si el video no trae audio, sigue sin él */ }
 
-  const tasa = tasaSegunOrigen(video.videoWidth, video.videoHeight);
+  const tasa = tasaDeSalida(ANCHO_FEED, altoDe(ANCHO_FEED));
   const grabador = new MediaRecorder(flujo, {
     mimeType: tipo, videoBitsPerSecond: tasa,
   });
@@ -1984,7 +2015,7 @@ async function quemarReel(fuente, avisar){
     destino.stream.getAudioTracks().forEach((t) => flujo.addTrack(t));
   }catch(e){ /* si no trae audio, sigue sin él */ }
 
-  const tasa = tasaSegunOrigen(video.videoWidth, video.videoHeight);
+  const tasa = tasaDeSalida(REEL.ancho, REEL.alto);
   const grabador = new MediaRecorder(flujo, { mimeType: tipo, videoBitsPerSecond: tasa });
   const trozos = [];
   grabador.ondataavailable = (e) => { if(e.data.size) trozos.push(e.data); };
@@ -2071,7 +2102,26 @@ let subiendoVideo = null;   // termina cuando el crudo llegó al servidor
 const fuenteDelReel = () => videoLocal || placa.video || '';
 
 async function agregarReel(archivo){
-  anotar('video elegido', { para: 'reel', peso: mb(archivo.size) });
+  /* El reel anotaba solo el peso, y el peso solo no dice nada: 2 MB pueden ser
+     un video corto y sano o uno largo y destruido. Se mide igual que en el
+     carrusel, que es donde se vio que el problema venía de origen. */
+  let viene = null;
+  try{
+    const el = document.createElement('video');
+    el.src = URL.createObjectURL(archivo);
+    el.muted = true;
+    const sacar = enEscena(el);
+    await new Promise((ok) => { el.onloadedmetadata = ok; el.onerror = ok; setTimeout(ok, 4000); });
+    viene = comoVieneElVideo(archivo.size, el.duration, el.videoWidth, el.videoHeight);
+    anotar('video elegido', { para: 'reel', peso: mb(archivo.size),
+      dura: seg((el.duration || 0) * 1000),
+      tamano: `${el.videoWidth}x${el.videoHeight}`,
+      origen: viene ? `${viene.mbps} Mbps · ${viene.estado}` : 'sin medir',
+      nivel: viene?.estado === 'machacado' ? 'aviso' : 'ok' });
+    sacar(); URL.revokeObjectURL(el.src);
+  }catch(e){
+    anotar('video elegido', { para: 'reel', peso: mb(archivo.size) });
+  }
   if(videoLocal) URL.revokeObjectURL(videoLocal);
   videoLocal = URL.createObjectURL(archivo);
   ultimoQuemado = null;
@@ -2087,6 +2137,13 @@ async function agregarReel(archivo){
     estado(texto, mal);
   };
   decir('Guardando el video… 0%. Podés ir escribiendo el titular.');
+  if(viene?.estado === 'machacado'){
+    aviso('Este video ya viene muy comprimido',
+      `Trae ${viene.mbps} Mbps, que es poco: ya tiene bloques antes de que lo `
+      + 'toquemos, y va a salir así por más que lo procesemos bien. Si lo tenés '
+      + 'en mejor calidad —del original y no reenviado por WhatsApp ni descargado '
+      + 'de otra red— conviene usar ese.');
+  }
 
   // si mientras sube se cambia de placa, lo subido es de la otra: no se toca
   const suPlaca = placa;
@@ -2281,6 +2338,27 @@ async function cuadroDelVideo(archivo){
   }finally{ sacar(); URL.revokeObjectURL(video.src); }
 }
 
+/* Qué tan machacado viene el video que eligieron.
+   Medido sobre esta misma cadena: un original de 0,36 Mbps —que es lo que
+   llega desde WhatsApp, o de descargar algo ya publicado— pierde 10,3 dB
+   antes de que el editor lo toque, y lo que nosotros le agregamos son 0,41.
+   Es decir: sobre un video así no hay nada que se pueda hacer del lado del
+   editor, y conviene saberlo antes de publicarlo y no después.
+   La cuenta es bits por píxel y por cuadro, que compara peras con peras entre
+   resoluciones distintas. Por debajo de 0,03 el video ya viene con bloques
+   visibles; de 0,05 para arriba está sano. */
+function comoVieneElVideo(bytes, segundos, ancho, alto){
+  const pixeles = (ancho || 0) * (alto || 0);
+  if(!bytes || !segundos || !pixeles) return null;
+  const bpp = (bytes * 8) / segundos / (pixeles * 30);
+  const mbps = bytes * 8 / segundos / 1e6;
+  return {
+    bpp: +bpp.toFixed(3),
+    mbps: +mbps.toFixed(2),
+    estado: bpp < 0.03 ? 'machacado' : (bpp < 0.05 ? 'justo' : 'sano'),
+  };
+}
+
 /* El video se guarda crudo, igual que el del reel. Antes se le quemaba el
    degradado al subirlo y quedaba con el color de ese momento: si después se
    cambiaba la paleta, la placa cambiaba y el video del carrusel no. */
@@ -2291,10 +2369,19 @@ async function agregarVideo(archivo, indice){
   const suPlaca = placa;
   try{
     const { jpg, duracion, ancho, alto } = await cuadroDelVideo(archivo);
+    const viene = comoVieneElVideo(archivo.size, duracion, ancho, alto);
     anotar('video elegido', { para: 'carrusel', peso: mb(archivo.size),
-      dura: seg(duracion * 1000), tamano: `${ancho}x${alto}` });
-    if(duracion > 45){
-      estado(`Ojo: dura ${enMinutos(duracion)}. Al publicar, grabarlo va a tardar lo mismo.`);
+      dura: seg(duracion * 1000), tamano: `${ancho}x${alto}`,
+      origen: viene ? `${viene.mbps} Mbps · ${viene.estado}` : 'sin medir',
+      nivel: viene?.estado === 'machacado' ? 'aviso' : 'ok' });
+    if(viene?.estado === 'machacado'){
+      aviso('Este video ya viene muy comprimido',
+        `Trae ${viene.mbps} Mbps para ${ancho}x${alto}, que es poco: ya tiene bloques `
+        + 'antes de que lo toquemos. Va a salir así por más que lo procesemos bien. '
+        + 'Si lo tenés en mejor calidad —del original y no reenviado por WhatsApp ni '
+        + 'descargado de otra red— conviene usar ese.');
+    }else if(duracion > 45){
+      estado(`Ojo: dura ${enMinutos(duracion)}.`);
     }
 
     trabajo('Subiendo el video', 0, 'Se guarda tal cual, sin procesar.');
