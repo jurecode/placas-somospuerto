@@ -151,9 +151,10 @@ function pintarNoticias(){
     <article class="noticia ${publicadas.has(n.id) ? 'publicada' : ''}" data-i="${i}">
       <div class="celda-foto">
         <div class="previa">
-          <canvas class="miniatura" width="${VISTA}" height="${altoDe(VISTA)}" data-previa></canvas>
+          <canvas class="miniatura" width="${VISTA}" height="${altoDe(VISTA)}" data-previa
+                  title="Tocala para verla en grande"></canvas>
           <canvas class="miniatura chica" width="${VISTA}" height="${altoDe(VISTA)}" data-cierre
-                  title="La lámina de cierre"></canvas>
+                  title="La lámina de cierre · tocala para verla en grande"></canvas>
         </div>
         <span class="apunte" data-estado-foto>${n.foto ? '' : 'buscando la foto…'}</span>
       </div>
@@ -168,6 +169,13 @@ function pintarNoticias(){
         <select data-campo="etiqueta">
           ${ETIQUETAS.map((e) => `<option ${e === n.etiqueta ? 'selected' : ''}>${esc(e)}</option>`).join('')}
         </select>
+        <div class="paleta">
+          ${PALETA.map((p, k) => `
+            <button class="tono ${k === n.paleta ? 'activa' : ''}" data-paleta="${k}"
+                    title="${esc(p.nombre || '')}" aria-label="${esc(p.nombre || '')}">
+              <i style="background:${esc(p.fondo)}"></i><i style="background:${esc(p.filete)}"></i>
+            </button>`).join('')}
+        </div>
       </div>
       <div class="celda-resumen">
         <textarea class="resumen" data-campo="resumen">${esc(n.resumen)}</textarea>
@@ -186,7 +194,7 @@ function pintarNoticias(){
 
 /* El ancho al que se dibuja la vista previa. Chico, pero el doble de lo que
    se ve, para que no salga borrosa en pantallas densas. */
-const VISTA = 216;
+const VISTA = 420;
 
 /* La vista previa es la placa de verdad, dibujada con el mismo dibujante que
    la publica. Antes acá iba la foto cruda del medio, y eso obligaba a
@@ -260,8 +268,36 @@ $('#lista').addEventListener('click', async (ev) => {
   const art = ev.target.closest('.noticia');
   if(!art) return;
   const n = noticias[Number(art.dataset.i)];
+
+  const tono = ev.target.closest('[data-paleta]');
+  if(tono){
+    n.paleta = Number(tono.dataset.paleta);
+    localStorage.setItem('feeds_paleta', String(n.paleta));
+    art.querySelectorAll('[data-paleta]').forEach((b) =>
+      b.classList.toggle('activa', b === tono));
+    return dibujarPrevia(n, art);
+  }
+  const lienzo = ev.target.closest('[data-previa], [data-cierre]');
+  if(lienzo) return agrandar(lienzo);
+
   if(ev.target.closest('[data-publicar]')) return publicarNoticia(n, art);
   if(ev.target.closest('[data-editor]'))   return abrirEnElEditor(n, art);
+});
+
+/* Ver la placa en grande antes de decidir. En escritorio la fila ya la
+   muestra a buen tamaño, pero para leer un titular largo o mirar cómo quedó
+   la foto conviene tenerla entera. */
+function agrandar(lienzo){
+  const velo = $('#velo_grande');
+  const destino = $('#grande');
+  destino.width = lienzo.width;
+  destino.height = lienzo.height;
+  destino.getContext('2d').drawImage(lienzo, 0, 0);
+  velo.hidden = false;
+}
+$('#velo_grande').addEventListener('click', () => { $('#velo_grande').hidden = true; });
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape') $('#velo_grande').hidden = true;
 });
 
 /* ------------------------------------------------------------------ */
@@ -310,7 +346,7 @@ function repartirTitular(texto, porLinea = 26){
 }
 
 function placaDesde(n, ruta){
-  const p = PALETA[0];
+  const p = PALETA[n.paleta ?? 0] || PALETA[0];
   return {
     nombre: n.titulo.slice(0, 60),
     titulo: repartirTitular(n.titulo),
@@ -516,9 +552,14 @@ async function cargarNoticias(recargar){
   $('#lista').innerHTML = '<p class="vacio">Trayendo noticias…</p>';
   try{
     const d = await api(`api/feeds.php?fuente=${fuenteActiva}${recargar ? '&recargar=1' : ''}`);
+    /* La paleta arranca en la última que se usó: si el medio está publicando
+       toda la jornada en fucsia, no tiene sentido volver a elegirla en cada
+       noticia. */
+    const ultima = Number(localStorage.getItem('feeds_paleta')) || 0;
     noticias = (d.items || []).map((n) => ({
       ...n,
       etiqueta: etiquetaSugerida(n.categorias, n.titulo),
+      paleta: ultima < PALETA.length ? ultima : 0,
       deFuente: fuenteActiva,
     }));
     estado(`${noticias.length} noticias de ${d.fuente.nombre}`);

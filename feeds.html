@@ -67,16 +67,16 @@
   .pestanas button.mas{ color:var(--suave) }
 
   /* ---------- la tabla de noticias ---------- */
-  .lista{ padding:14px 16px; display:grid; gap:10px; max-width:1500px; margin:0 auto }
+  .lista{ padding:14px 16px; display:grid; gap:10px; max-width:1800px; margin:0 auto }
 
   .cabecera{
     display:grid; gap:12px; align-items:center; padding:0 12px;
-    grid-template-columns:158px minmax(0,2.2fr) 150px minmax(0,2fr) 190px;
+    grid-template-columns:296px minmax(0,1.9fr) 168px minmax(0,1.6fr) 178px;
     font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--suave);
   }
   .noticia{
     display:grid; gap:12px; align-items:start;
-    grid-template-columns:158px minmax(0,2.2fr) 150px minmax(0,2fr) 190px;
+    grid-template-columns:296px minmax(0,1.9fr) 168px minmax(0,1.6fr) 178px;
     background:var(--panel); border:1px solid var(--linea); border-radius:12px; padding:12px;
   }
   .noticia.publicada{ border-color:var(--ok); opacity:.65 }
@@ -85,10 +85,27 @@
   /* la placa ya armada y, al lado, la lámina de cierre: es lo que se sube */
   .previa{ display:flex; gap:6px; align-items:flex-start }
   .miniatura{
-    width:100px; height:auto; border-radius:8px; display:block;
+    width:200px; height:auto; border-radius:8px; display:block; cursor:zoom-in;
     background:var(--hueco); border:1px solid var(--linea);
   }
-  .miniatura.chica{ width:44px; opacity:.85 }
+  .miniatura.chica{ width:82px; opacity:.85 }
+  /* en pantallas anchas de verdad, todavía más grande */
+  @media (min-width:1700px){
+    .noticia, .cabecera{ grid-template-columns:376px minmax(0,1.9fr) 168px minmax(0,1.6fr) 178px }
+    .miniatura{ width:264px }
+    .miniatura.chica{ width:104px }
+  }
+
+  /* las paletas del medio, las mismas del editor */
+  .paleta{ display:grid; grid-template-columns:repeat(6,1fr); gap:4px; margin-top:8px }
+  .tono{
+    padding:0; height:22px; border-radius:5px; overflow:hidden; display:flex;
+    border:1px solid var(--linea); background:none;
+  }
+  .tono:hover{ background:none; filter:brightness(1.15) }
+  .tono i{ flex:1 }
+  .tono i:last-child{ flex:0 0 30% }
+  .tono.activa{ outline:2px solid var(--acento); outline-offset:1px; border-color:var(--acento) }
   .celda-foto .apunte{ display:block; margin-top:5px }
 
   .titular{ min-height:74px; resize:vertical; line-height:1.35; font-weight:600 }
@@ -105,13 +122,13 @@
   /* en pantallas angostas la tabla deja de serlo: cada noticia es una ficha */
   @media (max-width:1080px){
     .cabecera{ display:none }
-    .noticia{ grid-template-columns:138px minmax(0,1fr); grid-template-areas:
+    .noticia{ grid-template-columns:222px minmax(0,1fr); grid-template-areas:
       "foto  titular"
       "foto  etiqueta"
       "resumen resumen"
       "acciones acciones"; }
-    .miniatura{ width:88px }
-    .miniatura.chica{ width:40px }
+    .miniatura{ width:150px }
+    .miniatura.chica{ width:60px }
     .celda-foto{ grid-area:foto } .celda-titular{ grid-area:titular }
     .celda-etiqueta{ grid-area:etiqueta } .celda-resumen{ grid-area:resumen }
     .celda-acciones{ grid-area:acciones }
@@ -121,15 +138,16 @@
   @media (max-width:560px){
     .noticia{ grid-template-columns:1fr; grid-template-areas:
       "foto" "titular" "etiqueta" "resumen" "acciones"; }
-    .miniatura{ width:150px }
-    .miniatura.chica{ width:64px }
+    .miniatura{ width:min(62vw, 240px) }
+    .miniatura.chica{ width:min(25vw, 96px) }
     .acciones{ grid-auto-flow:row }
+    .paleta{ grid-template-columns:repeat(6,1fr) }
   }
 
   /* ---------- avisos y diálogos ---------- */
   .barra-estado{
     padding:10px 16px; font-size:12.5px; color:var(--suave); min-height:20px;
-    max-width:1500px; margin:0 auto;
+    max-width:1800px; margin:0 auto;
   }
   .barra-estado.error{ color:var(--mal) }
   .vacio{ padding:40px 16px; text-align:center; color:var(--suave); line-height:1.6 }
@@ -155,6 +173,12 @@
   }
   .lista-fuentes small{ color:var(--suave); display:block; word-break:break-all; font-size:11px }
   .lista-fuentes button{ flex:none; padding:4px 9px; font-size:11px }
+
+  .visor{ display:grid; gap:10px; justify-items:center; cursor:zoom-out }
+  .visor canvas{
+    max-width:min(92vw, 620px); max-height:82svh; width:auto; height:auto;
+    border-radius:12px; box-shadow:0 20px 60px #000a;
+  }
 </style>
 </head>
 <body>
@@ -172,7 +196,7 @@
 <p class="barra-estado" id="estado"></p>
 
 <div class="cabecera" id="cabecera" hidden>
-  <span>Cómo va a salir</span><span>Titular</span><span>Etiqueta</span><span>Bajada</span><span></span>
+  <span>Cómo va a salir</span><span>Titular</span><span>Etiqueta y color</span><span>Bajada</span><span></span>
 </div>
 <main class="lista" id="lista"></main>
 
@@ -199,6 +223,12 @@
       <button class="principal" id="agregar_fuente">Agregar</button>
     </div>
   </div>
+</div>
+
+<!-- la placa en grande, para mirarla antes de decidir -->
+<div class="velo" id="velo_grande" hidden>
+  <div class="visor"><canvas id="grande"></canvas>
+    <p class="nota">Tocá en cualquier lado para cerrar</p></div>
 </div>
 
 <!-- clave de acceso, igual que el editor -->
