@@ -411,10 +411,16 @@ $('#m_archivo').addEventListener('change', async (ev) => {
 /* armar la placa                                                      */
 /* ------------------------------------------------------------------ */
 
+/* Sin decir de dónde venimos. Varios medios —ipauta entre ellos— devuelven
+   403 cuando la foto se pide desde otro sitio: es la defensa contra el
+   hotlinking. Pedida sin referencia, la misma foto responde 200.
+   Sin esto la placa salía en negro, y encima parecía otro problema: como el
+   dibujo se hacía igual, se veía la placa armada pero vacía. */
 function cargarImagen(ruta){
   return new Promise((listo) => {
     if(!ruta) return listo(null);
     const img = new Image();
+    img.referrerPolicy = 'no-referrer';
     img.onload = () => listo(img);
     img.onerror = () => listo(null);
     img.src = ruta;
@@ -455,6 +461,13 @@ function repartirTitular(texto, porLinea = 26){
 function placaDesde(n, ruta){
   const p = PALETA[n.paleta ?? 0] || PALETA[0];
   return {
+    /* Los valores del medio van PRIMERO, como piso: son lo que trae puesto
+       una placa nueva. Estaban al final, y ahí pisaban todo lo elegido en la
+       fila. En eyey, que fija color y etiqueta en sus predeterminados, eso
+       hacía que la placa saliera siempre roja y siempre con «Musica» por más
+       que se tocara otra paleta u otra etiqueta: se veía marcada la elegida y
+       se dibujaba la del medio. */
+    ...(MARCA.predeterminados || {}),
     nombre: n.titulo.slice(0, 60),
     titulo: repartirTitular(n.titulo),
     etiqueta: n.etiqueta,
@@ -475,7 +488,6 @@ function placaDesde(n, ruta){
     laminas: [],
     descripcion: n.resumen || n.titulo,
     hashtags: '', colaboradores: '', etiquetados: '',
-    ...(MARCA.predeterminados || {}),
   };
 }
 
