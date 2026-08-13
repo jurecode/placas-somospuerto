@@ -174,10 +174,32 @@
   .lista-fuentes small{ color:var(--suave); display:block; word-break:break-all; font-size:11px }
   .lista-fuentes button{ flex:none; padding:4px 9px; font-size:11px }
 
-  .visor{ display:grid; gap:10px; justify-items:center; cursor:zoom-out }
-  .visor canvas{
-    max-width:min(92vw, 620px); max-height:82svh; width:auto; height:auto;
-    border-radius:12px; box-shadow:0 20px 60px #000a;
+  /* el retoque: la placa a la izquierda y los mandos a la derecha */
+  .retoque{
+    width:min(100%, 1040px); max-height:92svh; overflow:auto;
+    background:var(--panel); border:1px solid var(--linea); border-radius:16px;
+    padding:18px; display:grid; gap:18px; grid-template-columns:minmax(0,1fr) 300px;
+  }
+  .retoque__arte{ display:flex; gap:10px; align-items:flex-start; min-width:0 }
+  .retoque__arte canvas{
+    border-radius:10px; box-shadow:0 16px 44px #0009; background:var(--hueco);
+    width:100%; height:auto; max-height:78svh; object-fit:contain;
+  }
+  #m_cierre{ width:34%; flex:none }
+  #m_placa{ flex:1; min-width:0 }
+  .retoque__mandos{ display:grid; gap:14px; align-content:start }
+  .retoque__mandos .ajuste{ display:flex; gap:6px }
+  .retoque__mandos .ajuste button{ flex:1; font-size:12px; padding:6px }
+  .retoque__mandos .ajuste button.activo{ border-color:var(--acento); background:var(--activo) }
+  .encuadre{ display:grid; grid-template-columns:auto 1fr; gap:6px 8px; align-items:center; margin-top:10px }
+  .encuadre span{ font-size:11px; color:var(--suave) }
+  input[type=range]{ width:100%; accent-color:var(--acento); padding:0; border:0; background:none }
+  .retoque__mandos .fila{ display:flex; gap:8px; flex-wrap:wrap }
+  .retoque__mandos .fila button{ flex:1; font-size:12px; white-space:nowrap }
+
+  @media (max-width:900px){
+    .retoque{ grid-template-columns:1fr; padding:14px; gap:14px }
+    .retoque__arte canvas{ max-height:44svh }
   }
 </style>
 </head>
@@ -225,10 +247,48 @@
   </div>
 </div>
 
-<!-- la placa en grande, para mirarla antes de decidir -->
-<div class="velo" id="velo_grande" hidden>
-  <div class="visor"><canvas id="grande"></canvas>
-    <p class="nota">Tocá en cualquier lado para cerrar</p></div>
+<!-- retoque: la placa en grande y los mismos controles del editor -->
+<div class="velo" id="velo_modal" hidden>
+  <div class="retoque">
+    <div class="retoque__arte">
+      <canvas id="m_placa"></canvas>
+      <canvas id="m_cierre" title="La lámina de cierre"></canvas>
+    </div>
+    <div class="retoque__mandos">
+      <div>
+        <label for="m_titulo">Titular</label>
+        <textarea id="m_titulo" rows="4"></textarea>
+      </div>
+      <div>
+        <label for="m_etiqueta">Etiqueta</label>
+        <select id="m_etiqueta"></select>
+      </div>
+      <div>
+        <label>Color</label>
+        <div class="paleta" id="m_paleta"></div>
+      </div>
+      <div>
+        <label>La foto</label>
+        <div class="ajuste">
+          <button data-m-ajuste="completa" title="Entra entera; lo que sobra se rellena difuminado">Completa</button>
+          <button data-m-ajuste="cubrir" title="Llena el cuadro y recorta lo que sobra">Rellenar</button>
+        </div>
+        <div class="encuadre">
+          <span>X</span><input type="range" id="m_x" min="0" max="100" step="1" value="50">
+          <span>Y</span><input type="range" id="m_y" min="0" max="100" step="1" value="50">
+        </div>
+        <div class="fila" style="margin-top:8px">
+          <button data-m-centrar>Centrar</button>
+          <button onclick="document.getElementById('m_archivo').click()">Cambiar foto…</button>
+          <input type="file" id="m_archivo" accept="image/*" hidden>
+        </div>
+        <p class="nota" id="m_aviso"></p>
+      </div>
+      <div class="fila" style="justify-content:flex-end">
+        <button class="principal" id="m_cerrar">Listo</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- clave de acceso, igual que el editor -->

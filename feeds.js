@@ -152,9 +152,9 @@ function pintarNoticias(){
       <div class="celda-foto">
         <div class="previa">
           <canvas class="miniatura" width="${VISTA}" height="${altoDe(VISTA)}" data-previa
-                  title="Tocala para verla en grande"></canvas>
+                  title="Tocala para retocarla"></canvas>
           <canvas class="miniatura chica" width="${VISTA}" height="${altoDe(VISTA)}" data-cierre
-                  title="La lámina de cierre · tocala para verla en grande"></canvas>
+                  title="La lámina de cierre · tocala para retocar la placa"></canvas>
         </div>
         <span class="apunte" data-estado-foto>${n.foto ? '' : 'buscando la foto…'}</span>
       </div>
@@ -195,6 +195,8 @@ function pintarNoticias(){
 /* El ancho al que se dibuja la vista previa. Chico, pero el doble de lo que
    se ve, para que no salga borrosa en pantallas densas. */
 const VISTA = 420;
+/* El modal dibuja más fino: es donde se mira de cerca. */
+const MODAL = 660;
 
 /* La vista previa es la placa de verdad, dibujada con el mismo dibujante que
    la publica. Antes acá iba la foto cruda del medio, y eso obligaba a
@@ -211,7 +213,7 @@ async function dibujarPrevia(n, art){
   const cierre = art.querySelector('[data-cierre]');
   if(!lienzo) return;
 
-  const placa = placaDesde(n, n.foto || 'assets/marcador.jpg');
+  const placa = placaDesde(n, n.fotoPropia || n.foto || 'assets/marcador.jpg');
   const [foto, logo] = await Promise.all([cargarImagen(placa.foto_izq), cargarImagen(LOGO)]);
   if(!art.isConnected) return;
   dibujar(lienzo.getContext('2d'), placa, { izq: foto, der: foto, cen: foto, logo }, VISTA);
@@ -277,27 +279,132 @@ $('#lista').addEventListener('click', async (ev) => {
       b.classList.toggle('activa', b === tono));
     return dibujarPrevia(n, art);
   }
-  const lienzo = ev.target.closest('[data-previa], [data-cierre]');
-  if(lienzo) return agrandar(lienzo);
+  if(ev.target.closest('[data-previa], [data-cierre], [data-retocar]')) return abrirModal(n, art);
 
   if(ev.target.closest('[data-publicar]')) return publicarNoticia(n, art);
   if(ev.target.closest('[data-editor]'))   return abrirEnElEditor(n, art);
 });
 
-/* Ver la placa en grande antes de decidir. En escritorio la fila ya la
-   muestra a buen tamaño, pero para leer un titular largo o mirar cómo quedó
-   la foto conviene tenerla entera. */
-function agrandar(lienzo){
-  const velo = $('#velo_grande');
-  const destino = $('#grande');
-  destino.width = lienzo.width;
-  destino.height = lienzo.height;
-  destino.getContext('2d').drawImage(lienzo, 0, 0);
-  velo.hidden = false;
+/* El modal de retoque: la placa en grande y los mismos controles del editor.
+   La foto de una nota ajena casi nunca cae bien de una: viene apaisada, o con
+   la cara contra un borde. Con esto se acomoda sin salir de la tabla, y lo
+   que se ve es la placa de verdad, no una aproximación. */
+let enModal = null;   // { n, art }
+
+function abrirModal(n, art){
+  enModal = { n, art };
+  $('#m_titulo').value = n.titulo;
+  $('#m_etiqueta').innerHTML = ETIQUETAS.map((e) =>
+    `<option ${e === n.etiqueta ? 'selected' : ''}>${esc(e)}</option>`).join('');
+  $('#m_paleta').innerHTML = PALETA.map((p, k) => `
+    <button class="tono ${k === (n.paleta ?? 0) ? 'activa' : ''}" data-m-paleta="${k}"
+            title="${esc(p.nombre || '')}">
+      <i style="background:${esc(p.fondo)}"></i><i style="background:${esc(p.filete)}"></i>
+    </button>`).join('');
+  $('#m_x').value = n.foto_x ?? 50;
+  $('#m_y').value = n.foto_y ?? 50;
+  marcarAjuste();
+  $('#velo_modal').hidden = false;
+  dibujarModal();
 }
-$('#velo_grande').addEventListener('click', () => { $('#velo_grande').hidden = true; });
-document.addEventListener('keydown', (e) => {
-  if(e.key === 'Escape') $('#velo_grande').hidden = true;
+
+function marcarAjuste(){
+  const cual = enModal?.n.ajuste || 'completa';
+  document.querySelectorAll('[data-m-ajuste]').forEach((b) =>
+    b.classList.toggle('activo', b.dataset.mAjuste === cual));
+}
+
+async function dibujarModal(){
+  if(!enModal) return;
+  const { n } = enModal;
+  const placa = placaDesde(n, n.fotoPropia || n.foto || 'assets/marcador.jpg');
+  const [foto, logo] = await Promise.all([cargarImagen(placa.foto_izq), cargarImagen(LOGO)]);
+  if(!enModal) return;
+  const c = $('#m_placa');
+  c.width = MODAL; c.height = altoDe(MODAL);
+  dibujar(c.getContext('2d'), placa, { izq: foto, der: foto, cen: foto, logo }, MODAL);
+  const cc = $('#m_cierre');
+  if(CIERRE === false){ cc.hidden = true; return; }
+  cc.width = MODAL; cc.height = altoDe(MODAL);
+  dibujarCierre(cc.getContext('2d'), placa, await arteDelCierre(placa.color_fondo), MODAL);
+}
+
+function cerrarModal(){
+  if(enModal){
+    // lo retocado se refleja en la fila y en sus campos
+    const { n, art } = enModal;
+    const t = art.querySelector('[data-campo="titulo"]');
+    if(t) t.value = n.titulo;
+    const e = art.querySelector('[data-campo="etiqueta"]');
+    if(e) e.value = n.etiqueta;
+    art.querySelectorAll('[data-paleta]').forEach((b) =>
+      b.classList.toggle('activa', Number(b.dataset.paleta) === (n.paleta ?? 0)));
+    dibujarPrevia(n, art);
+  }
+  enModal = null;
+  $('#velo_modal').hidden = true;
+}
+
+$('#m_cerrar').addEventListener('click', cerrarModal);
+$('#velo_modal').addEventListener('click', (ev) => { if(ev.target.id === 'velo_modal') cerrarModal(); });
+document.addEventListener('keydown', (e) => { if(e.key === 'Escape') cerrarModal(); });
+
+$('#velo_modal').addEventListener('input', (ev) => {
+  if(!enModal) return;
+  const { n } = enModal;
+  if(ev.target.id === 'm_titulo')   n.titulo = ev.target.value;
+  if(ev.target.id === 'm_etiqueta') n.etiqueta = ev.target.value;
+  if(ev.target.id === 'm_x')        n.foto_x = Number(ev.target.value);
+  if(ev.target.id === 'm_y')        n.foto_y = Number(ev.target.value);
+  dibujarModal();
+});
+
+$('#velo_modal').addEventListener('click', async (ev) => {
+  if(!enModal) return;
+  const { n } = enModal;
+  const tono = ev.target.closest('[data-m-paleta]');
+  if(tono){
+    n.paleta = Number(tono.dataset.mPaleta);
+    localStorage.setItem('feeds_paleta', String(n.paleta));
+    $('#m_paleta').querySelectorAll('.tono').forEach((b) => b.classList.toggle('activa', b === tono));
+    return dibujarModal();
+  }
+  const aj = ev.target.closest('[data-m-ajuste]');
+  if(aj){
+    n.ajuste = aj.dataset.mAjuste;
+    marcarAjuste();
+    return dibujarModal();
+  }
+  if(ev.target.closest('[data-m-centrar]')){
+    n.foto_x = 50; n.foto_y = 50;
+    $('#m_x').value = 50; $('#m_y').value = 50;
+    return dibujarModal();
+  }
+});
+
+/* Cambiar la foto por una propia. La de la nota a veces no sirve —una captura
+   de pantalla, un gráfico, la cara cortada— y era motivo para irse al editor
+   por una sola cosa. */
+$('#m_archivo').addEventListener('change', async (ev) => {
+  const archivo = ev.target.files && ev.target.files[0];
+  if(!archivo || !enModal) return;
+  const { n } = enModal;
+  $('#m_aviso').textContent = 'Subiendo la foto…';
+  try{
+    const r = await fetch('api/fotos.php', {
+      method: 'POST',
+      headers: { 'X-Clave': clave(), 'Content-Type': 'application/octet-stream' },
+      body: archivo,
+    });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
+    n.fotoPropia = d.ruta;
+    n.foto_x = 50; n.foto_y = 50;
+    $('#m_x').value = 50; $('#m_y').value = 50;
+    $('#m_aviso').textContent = 'Foto cambiada.';
+    dibujarModal();
+  }catch(e){ $('#m_aviso').textContent = e.message; }
+  ev.target.value = '';
 });
 
 /* ------------------------------------------------------------------ */
@@ -353,9 +460,16 @@ function placaDesde(n, ruta){
     etiqueta: n.etiqueta,
     formato: 'noticia',
     diseno: 'unica',
-    foto_izq: ruta, foto_izq_x: 50, foto_izq_y: 50, foto_izq_ajuste: 'cubrir',
-    foto_der: ruta, foto_der_x: 50, foto_der_y: 50, foto_der_ajuste: 'cubrir',
-    foto_cen: ruta, foto_cen_x: 50, foto_cen_y: 50, foto_cen_ajuste: 'cubrir',
+    /* Entera y no recortada, igual que arranca una placa en el editor: una
+       foto de prensa suele traer la cara pegada a un borde, y recortarla al
+       4:5 sin mirar corta justo lo que importa. Lo que sobra se rellena con
+       una copia difuminada de la misma foto. Desde el modal se cambia. */
+    foto_izq: ruta, foto_izq_x: n.foto_x ?? 50, foto_izq_y: n.foto_y ?? 50,
+    foto_izq_ajuste: n.ajuste || 'completa',
+    foto_der: ruta, foto_der_x: n.foto_x ?? 50, foto_der_y: n.foto_y ?? 50,
+    foto_der_ajuste: n.ajuste || 'completa',
+    foto_cen: ruta, foto_cen_x: n.foto_x ?? 50, foto_cen_y: n.foto_y ?? 50,
+    foto_cen_ajuste: n.ajuste || 'completa',
     color_fondo: p.fondo, color_filete: p.filete,
     circulo_x: 50, circulo_y: 62.6,
     laminas: [],
@@ -420,7 +534,7 @@ function liberar(art, texto, clase){
 }
 
 async function publicarNoticia(n, art){
-  if(!n.foto) return liberar(art, 'Esta noticia no tiene foto: abrila en el editor y ponele una.', 'mal');
+  if(!n.foto && !n.fotoPropia) return liberar(art, 'Esta noticia no tiene foto: abrila en el editor y ponele una.', 'mal');
   if(!String(n.titulo).trim()) return liberar(art, 'Falta el titular.', 'mal');
   const cuantas = CIERRE === false ? 1 : 2;
   if(!confirm(`Se va a publicar en Instagram, ahora mismo, un post de ${cuantas} imagen${cuantas > 1 ? 'es' : ''}:\n\n`
@@ -428,7 +542,8 @@ async function publicarNoticia(n, art){
 
   try{
     ocupar(art, 'Bajando la foto…');
-    const ruta = await bajarFoto(n.foto);
+    // si se subió una propia desde el modal, esa ya está en el servidor
+    const ruta = n.fotoPropia || await bajarFoto(n.foto);
 
     ocupar(art, 'Dibujando la placa…');
     const placa = placaDesde(n, ruta);
@@ -460,7 +575,7 @@ async function publicarNoticia(n, art){
 async function abrirEnElEditor(n, art){
   try{
     ocupar(art, 'Preparando la placa…');
-    const ruta = n.foto ? await bajarFoto(n.foto) : 'assets/marcador.jpg';
+    const ruta = n.fotoPropia || (n.foto ? await bajarFoto(n.foto) : 'assets/marcador.jpg');
     const placa = placaDesde(n, ruta);
     const { id } = await api('api/placas.php', {
       method: 'POST',
