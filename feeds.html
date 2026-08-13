@@ -71,22 +71,25 @@
 
   .cabecera{
     display:grid; gap:12px; align-items:center; padding:0 12px;
-    grid-template-columns:132px minmax(0,2.2fr) 150px minmax(0,2fr) 190px;
+    grid-template-columns:158px minmax(0,2.2fr) 150px minmax(0,2fr) 190px;
     font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--suave);
   }
   .noticia{
     display:grid; gap:12px; align-items:start;
-    grid-template-columns:132px minmax(0,2.2fr) 150px minmax(0,2fr) 190px;
+    grid-template-columns:158px minmax(0,2.2fr) 150px minmax(0,2fr) 190px;
     background:var(--panel); border:1px solid var(--linea); border-radius:12px; padding:12px;
   }
   .noticia.publicada{ border-color:var(--ok); opacity:.65 }
   .noticia.ocupada{ border-color:var(--acento) }
 
+  /* la placa ya armada y, al lado, la lámina de cierre: es lo que se sube */
+  .previa{ display:flex; gap:6px; align-items:flex-start }
   .miniatura{
-    width:132px; aspect-ratio:4/5; object-fit:cover; border-radius:8px;
-    background:var(--hueco); border:1px solid var(--linea); display:block;
+    width:100px; height:auto; border-radius:8px; display:block;
+    background:var(--hueco); border:1px solid var(--linea);
   }
-  .miniatura.falta{ display:grid; place-items:center; font-size:11px; color:var(--suave); text-align:center; padding:8px }
+  .miniatura.chica{ width:44px; opacity:.85 }
+  .celda-foto .apunte{ display:block; margin-top:5px }
 
   .titular{ min-height:74px; resize:vertical; line-height:1.35; font-weight:600 }
   .resumen{ min-height:74px; resize:vertical; font-size:12.5px; color:var(--suave) }
@@ -102,12 +105,13 @@
   /* en pantallas angostas la tabla deja de serlo: cada noticia es una ficha */
   @media (max-width:1080px){
     .cabecera{ display:none }
-    .noticia{ grid-template-columns:100px minmax(0,1fr); grid-template-areas:
+    .noticia{ grid-template-columns:138px minmax(0,1fr); grid-template-areas:
       "foto  titular"
       "foto  etiqueta"
       "resumen resumen"
       "acciones acciones"; }
-    .miniatura{ width:100px }
+    .miniatura{ width:88px }
+    .miniatura.chica{ width:40px }
     .celda-foto{ grid-area:foto } .celda-titular{ grid-area:titular }
     .celda-etiqueta{ grid-area:etiqueta } .celda-resumen{ grid-area:resumen }
     .celda-acciones{ grid-area:acciones }
@@ -117,7 +121,8 @@
   @media (max-width:560px){
     .noticia{ grid-template-columns:1fr; grid-template-areas:
       "foto" "titular" "etiqueta" "resumen" "acciones"; }
-    .miniatura{ width:100%; max-width:220px; aspect-ratio:4/5 }
+    .miniatura{ width:150px }
+    .miniatura.chica{ width:64px }
     .acciones{ grid-auto-flow:row }
   }
 
@@ -167,7 +172,7 @@
 <p class="barra-estado" id="estado"></p>
 
 <div class="cabecera" id="cabecera" hidden>
-  <span>Foto</span><span>Titular</span><span>Etiqueta</span><span>Bajada</span><span></span>
+  <span>Cómo va a salir</span><span>Titular</span><span>Etiqueta</span><span>Bajada</span><span></span>
 </div>
 <main class="lista" id="lista"></main>
 

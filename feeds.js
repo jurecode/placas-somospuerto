@@ -150,9 +150,12 @@ function pintarNoticias(){
   lista.innerHTML = noticias.map((n, i) => `
     <article class="noticia ${publicadas.has(n.id) ? 'publicada' : ''}" data-i="${i}">
       <div class="celda-foto">
-        ${n.foto
-          ? `<img class="miniatura" src="${esc(n.foto)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
-          : `<div class="miniatura falta" data-sin-foto>buscando la foto…</div>`}
+        <div class="previa">
+          <canvas class="miniatura" width="${VISTA}" height="${altoDe(VISTA)}" data-previa></canvas>
+          <canvas class="miniatura chica" width="${VISTA}" height="${altoDe(VISTA)}" data-cierre
+                  title="La lámina de cierre"></canvas>
+        </div>
+        <span class="apunte" data-estado-foto>${n.foto ? '' : 'buscando la foto…'}</span>
       </div>
       <div class="celda-titular">
         <textarea class="titular" data-campo="titulo">${esc(n.titulo)}</textarea>
@@ -177,7 +180,51 @@ function pintarNoticias(){
         </div>
       </div>
     </article>`).join('');
+  dibujarTodas();
   buscarFotosQueFaltan();
+}
+
+/* El ancho al que se dibuja la vista previa. Chico, pero el doble de lo que
+   se ve, para que no salga borrosa en pantallas densas. */
+const VISTA = 216;
+
+/* La vista previa es la placa de verdad, dibujada con el mismo dibujante que
+   la publica. Antes acá iba la foto cruda del medio, y eso obligaba a
+   publicar a ciegas: el titular podía no entrar, la etiqueta podía estar
+   equivocada y no había forma de saberlo hasta verlo publicado.
+   La foto se dibuja directo desde el sitio del otro medio, sin bajarla. Eso
+   «mancha» el lienzo y el navegador después no deja sacar el JPEG, pero para
+   mirar no molesta: al publicar se baja la foto y se dibuja de nuevo en un
+   lienzo limpio. Así la previa es instantánea y no llena el servidor de
+   fotos de noticias que nunca se van a publicar. */
+async function dibujarPrevia(n, art){
+  if(!art || !art.isConnected) return;
+  const lienzo = art.querySelector('[data-previa]');
+  const cierre = art.querySelector('[data-cierre]');
+  if(!lienzo) return;
+
+  const placa = placaDesde(n, n.foto || 'assets/marcador.jpg');
+  const [foto, logo] = await Promise.all([cargarImagen(placa.foto_izq), cargarImagen(LOGO)]);
+  if(!art.isConnected) return;
+  dibujar(lienzo.getContext('2d'), placa, { izq: foto, der: foto, cen: foto, logo }, VISTA);
+
+  if(cierre){
+    if(CIERRE === false){ cierre.hidden = true; }
+    else dibujarCierre(cierre.getContext('2d'), placa, await arteDelCierre(placa.color_fondo), VISTA);
+  }
+}
+
+/* Se junta el redibujo: escribiendo el titular, cada tecla pediría uno. */
+const esperando = new Map();
+function pedirPrevia(n, art){
+  clearTimeout(esperando.get(n.id));
+  esperando.set(n.id, setTimeout(() => dibujarPrevia(n, art), 220));
+}
+
+function dibujarTodas(){
+  for(const [i, n] of noticias.entries()){
+    dibujarPrevia(n, document.querySelector(`.noticia[data-i="${i}"]`));
+  }
 }
 
 /* Las noticias que no traen foto en el feed —BioBio, por ejemplo— la tienen
@@ -191,17 +238,10 @@ async function buscarFotosQueFaltan(){
       if(fuenteActiva !== n.deFuente) return;          // se cambió de pestaña
       n.foto = foto || null;
       n.sinFoto = !foto;
-      const hueco = document.querySelector(`.noticia[data-i="${i}"] [data-sin-foto]`);
-      if(!hueco) continue;
-      if(foto){
-        const img = new Image();
-        img.className = 'miniatura'; img.loading = 'lazy';
-        img.referrerPolicy = 'no-referrer'; img.alt = '';
-        img.src = foto;
-        hueco.replaceWith(img);
-      }else{
-        hueco.textContent = 'sin foto';
-      }
+      const art = document.querySelector(`.noticia[data-i="${i}"]`);
+      const aviso = art?.querySelector('[data-estado-foto]');
+      if(aviso) aviso.textContent = foto ? '' : 'sin foto: abrila en el editor y ponele una';
+      if(foto) await dibujarPrevia(n, art);
     }catch(e){ n.sinFoto = true; }
   }
 }
@@ -210,7 +250,10 @@ $('#lista').addEventListener('input', (ev) => {
   const art = ev.target.closest('.noticia');
   const campo = ev.target.dataset.campo;
   if(!art || !campo) return;
-  noticias[Number(art.dataset.i)][campo] = ev.target.value;
+  const n = noticias[Number(art.dataset.i)];
+  n[campo] = ev.target.value;
+  // el titular y la etiqueta se ven en la placa; la bajada no
+  if(campo !== 'resumen') pedirPrevia(n, art);
 });
 
 $('#lista').addEventListener('click', async (ev) => {
