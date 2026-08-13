@@ -586,16 +586,16 @@ async function arteDelCierre(colorFondo){
 
 /* El titular de un feed viene en una sola línea y muy largo. Se corta en
    líneas parecidas para que el dibujante no tenga que achicarlo tanto. */
-function repartirTitular(texto, porLinea = 26){
-  const palabras = String(texto).trim().split(/\s+/);
-  const lineas = [];
-  let actual = '';
-  for(const p of palabras){
-    if(actual && (actual + ' ' + p).length > porLinea){ lineas.push(actual); actual = p; }
-    else actual = actual ? actual + ' ' + p : p;
-  }
-  if(actual) lineas.push(actual);
-  return lineas.join('\n');
+/* El titular va de corrido y lo reparte el dibujante.
+   Acá había un corte propio, cada 26 caracteres, y eso peleaba con el del
+   dibujante: este parte por ancho medido con la fuente de verdad, así que
+   volvía a partir las líneas ya cortadas y dejaba palabras huérfanas —una
+   línea con un «EL» solo—. Encima contaba los asteriscos del resaltado como
+   si fueran letras, y esos no se ven.
+   Un solo repartidor, el que mide de verdad. Los saltos escritos a mano en
+   el titular se respetan igual, porque el dibujante corta primero por ellos. */
+function repartirTitular(texto){
+  return String(texto).trim();
 }
 
 function placaDesde(n, ruta){

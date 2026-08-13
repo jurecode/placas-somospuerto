@@ -119,7 +119,12 @@ export function enPalabras(parrafo){
   return palabras;
 }
 
-/* Corta cada línea del titular por ancho, como hacía el navegador. */
+/* Corta cada línea del titular por ancho, como hacía el navegador.
+   Mide el texto pelado, sin contar lo que ensanchan los recuadros del
+   resaltado. Probé descontarlos y no conviene: el desborde real son 3 px y
+   solo con cuatro o más tramos marcados —invisible—, mientras que reservar
+   ese lugar hace cortar las líneas bastante antes del margen, que se nota
+   mucho más y es peor. */
 export function repartir(ctx, texto, tipo, px, interletrado, maxAncho){
   const lineas = [];
   for(const parrafo of String(texto).toUpperCase().split('\n')){
