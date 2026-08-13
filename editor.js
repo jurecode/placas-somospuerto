@@ -440,18 +440,64 @@ function estado(texto, esError){
   el.classList.toggle('error', !!esError);
 }
 
-/* Lo que tarda se muestra en grande, tapando el editor: quemar un video
-   lleva lo que dura el video y con el aviso chico de abajo parecía colgado.
+/* Lo que tarda se avisa en una franja abajo. Antes era un cartel del alto de
+   la pantalla, y mientras un video subía no se podía hacer nada más: ni
+   escribir el titular, ni empezar la noticia siguiente. La franja deja el
+   editor a la vista y a mano.
    `avance` es 0..1 cuando se puede medir; sin número la barra va y viene.
-   Se cierra con cerrarTrabajo(), siempre desde un finally. */
-/* Procesar un video puede tardar minutos y el aviso tapa la pantalla. Sin
-   una salida, cualquier atasco dejaba el editor trabado hasta recargar. */
+   Cada cosa que tarda se abre con abrirTrabajo() y se cierra con
+   cerrarTrabajo(), siempre desde un finally. */
+
+/* Se cuentan, porque ahora sí pueden solaparse: como la franja no traba nada,
+   se puede mandar una foto mientras otra va por la mitad. Sin contarlas, la
+   primera en terminar apagaba el aviso de la que seguía y parecía que se
+   había colgado. */
+let enCurso = 0;
+let ultimoRotulo = '';      // para poder rehacerlo cuando cambia la cuenta
+let avisoAbierto = false;   // un error se queda hasta que lo lean
+
+/* Procesar un video puede tardar minutos. Sin una salida, cualquier atasco
+   dejaba el editor sin forma de recuperarse salvo recargar. */
 let pedidoCortar = false;
 const cortaron = () => pedidoCortar;
 $('#cortar_trabajo')?.addEventListener('click', () => {
+  if(avisoAbierto){                       // era un error, no algo en marcha
+    avisoAbierto = false;
+    return pintarTrabajo();
+  }
   pedidoCortar = true;
   trabajo('Cortando…', null, 'Termina en unos segundos.');
 });
+
+/* Se muestra mientras haya algo en curso o un error sin leer. */
+function pintarTrabajo(){
+  const caja = $('#trabajando');
+  if(!caja) return;
+  const hay = enCurso > 0 || avisoAbierto;
+  caja.hidden = !hay;
+  document.body.classList.toggle('hay-trabajo', hay);
+  // con dos cosas a la vez el rótulo solo nombra una, así que lo aclara. Se
+  // rehace acá y no solo al avisar: si no, al terminar la primera quedaba
+  // diciendo «2 en curso» hasta el aviso siguiente, que puede no llegar.
+  if(hay && !avisoAbierto && ultimoRotulo){
+    $('#trabajando_que').textContent =
+      enCurso > 1 ? `${ultimoRotulo} · ${enCurso} cosas en curso` : ultimoRotulo;
+  }
+}
+
+function abrirTrabajo(){
+  if(enCurso === 0){
+    pedidoCortar = false;                 // arranca algo nuevo
+    avisoAbierto = false;
+    ultimoRotulo = '';                    // el de la vez pasada ya no vale
+    const riel = $('#trabajando')?.querySelector('.trabajando__riel');
+    if(riel) riel.hidden = false;
+    const salir = $('#cortar_trabajo');
+    if(salir) salir.textContent = 'Cancelar';
+  }
+  enCurso++;
+  pintarTrabajo();
+}
 
 function trabajo(texto, avance, pista){
   const caja = $('#trabajando');
@@ -459,13 +505,9 @@ function trabajo(texto, avance, pista){
   if(!caja){
     return estado(texto + (typeof avance === 'number' ? ` ${Math.round(avance * 100)}%` : '…'));
   }
-  if(caja.hidden){
-    pedidoCortar = false;                 // arranca un trabajo nuevo
-    caja.querySelector('.trabajando__riel').hidden = false;
-    $('#cortar_trabajo').textContent = 'Cancelar';
-  }
-  caja.hidden = false;
-  $('#trabajando_que').textContent = texto;
+  ultimoRotulo = texto;
+  if(enCurso === 0) abrirTrabajo();       // por si alguien avisa sin abrir
+  else pintarTrabajo();
   const medible = typeof avance === 'number' && isFinite(avance);
   const pct = $('#trabajando_pct');
   pct.hidden = !medible;
@@ -477,18 +519,33 @@ function trabajo(texto, avance, pista){
 }
 
 function cerrarTrabajo(){
-  const caja = $('#trabajando');
-  if(caja) caja.hidden = true;
+  enCurso = Math.max(0, enCurso - 1);
+  pintarTrabajo();
 }
 
 /* Un problema que hay que ver sí o sí. Sin esto, perder el video se avisaba
-   en una línea de 11 px al pie del panel, que en el teléfono ni se ve. */
+   en una línea de 11 px al pie del panel, que en el teléfono ni se ve.
+   Queda hasta que lo cierren: no lo tapa lo que venga después. */
 function aviso(titulo, detalle){
   const caja = $('#trabajando');
   if(!caja) return estado(titulo + ': ' + detalle, true);
-  trabajo(titulo, null, detalle);
+  avisoAbierto = true;
+  pintarTrabajo();
+  $('#trabajando_que').textContent = titulo;
+  $('#trabajando_pct').hidden = true;
+  $('#trabajando_pista').textContent = detalle || '';
   caja.querySelector('.trabajando__riel').hidden = true;
   $('#cortar_trabajo').textContent = 'Entendido';
+}
+
+/* Publicar, programar y descargar dibujan con lo que la placa tiene en ese
+   momento: el titular, los colores, las fotos. Si se pudiera seguir editando
+   mientras corren, una lámina saldría con el texto viejo y la siguiente con
+   el nuevo, y eso no se ve hasta que ya está publicado. Así que esas —y solo
+   esas— dejan el formulario quieto. Subir archivos no dibuja nada y no entra
+   acá: ahí se sigue trabajando encima. */
+function congelar(si){
+  document.body.classList.toggle('congelado', !!si);
 }
 
 /* El hosting sirve las imágenes con un año de caché y no hace caso al
@@ -1036,10 +1093,18 @@ $('#tira').addEventListener('click', (ev) => {
    soporta (escritorio, casi siempre), se bajan los archivos. */
 $('#compartir').addEventListener('click', async (ev) => {
   ev.target.disabled = true;
+  abrirTrabajo();
+  congelar(true);   // dibuja con lo que hay ahora
   trabajo('Preparando las imágenes', null);
+  let archivos;
   try{
-    const archivos = await archivosDelCarrusel();
-    cerrarTrabajo();   // lo que sigue es la hoja del sistema: estorbaba taparla
+    archivos = await archivosDelCarrusel();
+  }catch(e){ estado(e.message, true); }
+  // lo que sigue es la hoja del sistema, y el aviso propio estorbaba
+  finally{ cerrarTrabajo(); congelar(false); }
+
+  try{
+    if(!archivos) return;
     const texto = armarCaption();
     if(navigator.canShare && navigator.canShare({ files: archivos })){
       await navigator.share({ files: archivos, text: texto });
@@ -1052,8 +1117,7 @@ $('#compartir').addEventListener('click', async (ev) => {
     if(e.name !== 'AbortError') estado(e.message, true);
     else estado('');
   }
-  finally{ cerrarTrabajo(); }
-  ev.target.disabled = false;
+  finally{ ev.target.disabled = false; }
 });
 
 $('#publicar').addEventListener('click', async (ev) => {
@@ -1069,15 +1133,23 @@ $('#publicar').addEventListener('click', async (ev) => {
     campo?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     return;
   }
+  /* Como subir ya no traba el editor, se puede llegar acá con una foto a
+     medio camino: el carrusel todavía no la tiene y el post saldría sin ella,
+     sin que nada lo avise. Publicar e ir a la cola son las dos cosas que no
+     se pueden deshacer, así que esperan. */
+  if(enCurso > 0){
+    return estado('Esperá a que termine lo que se está subiendo: si no, sale sin eso.', true);
+  }
   const laminas = (placa.laminas || []).length + 1;
   if(!confirm(`Se va a publicar en Instagram un carrusel de ${laminas} imagen${laminas > 1 ? 'es' : ''}. ¿Seguimos?`)) return;
   ev.target.disabled = true;
   // publicar puede llevar minutos; si la pantalla se apaga, se corta todo
   const despierto = await mantenerDespierto();
+  abrirTrabajo();
+  congelar(true);   // cada pieza se dibuja con lo que hay ahora
   try{
     if(placa.formato === 'reel' && !fuenteDelReel()){
       estado('Falta el video del reel.', true);
-      ev.target.disabled = false;
       return;
     }
     let items;
@@ -1113,8 +1185,11 @@ $('#publicar').addEventListener('click', async (ev) => {
     estado('Publicado' + (datos.aviso ? ' — ' + datos.aviso : ''));
     if(datos.enlace) window.open(datos.enlace, '_blank');
   }catch(e){ estado(e.message, true); }
-  finally{ cerrarTrabajo(); despierto?.release().catch(() => {}); }
-  ev.target.disabled = false;
+  finally{
+    cerrarTrabajo(); congelar(false);
+    despierto?.release().catch(() => {});
+    ev.target.disabled = false;
+  }
 });
 
 /* ------------------------------------------------------------------ */
@@ -1168,8 +1243,17 @@ $('#programar').addEventListener('click', async (ev) => {
   if(!String(placa.descripcion || '').trim()){
     return estado('Falta la descripción: es lo que va debajo de la publicación.', true);
   }
+  /* Como subir ya no traba el editor, se puede llegar acá con una foto a
+     medio camino: el carrusel todavía no la tiene y el post saldría sin ella,
+     sin que nada lo avise. Publicar e ir a la cola son las dos cosas que no
+     se pueden deshacer, así que esperan. */
+  if(enCurso > 0){
+    return estado('Esperá a que termine lo que se está subiendo: si no, sale sin eso.', true);
+  }
   ev.target.disabled = true;
   const despierto = await mantenerDespierto();
+  abrirTrabajo();
+  congelar(true);   // las imágenes se generan ahora, con lo que hay ahora
   try{
     const carga = await cargaParaProgramar();
     trabajo('Anotando en la cola', null);
@@ -1188,8 +1272,11 @@ $('#programar').addEventListener('click', async (ev) => {
     estado('Programado');
     await pintarCola();
   }catch(e){ estado(e.message, true); }
-  finally{ cerrarTrabajo(); despierto?.release().catch(() => {}); }
-  ev.target.disabled = false;
+  finally{
+    cerrarTrabajo(); congelar(false);
+    despierto?.release().catch(() => {});
+    ev.target.disabled = false;
+  }
 });
 
 $('#cola').addEventListener('click', async (ev) => {
@@ -1211,13 +1298,14 @@ $('#copiar').addEventListener('click', async () => {
 
 $('#bajar_carrusel').addEventListener('click', async (ev) => {
   ev.target.disabled = true;
+  abrirTrabajo();
+  congelar(true);
   trabajo('Generando las imágenes', null);
   try{
     const n = await exportarCarrusel();
     estado(`Listas ${n} imagen${n > 1 ? 'es' : ''} en JPEG 1080`);
   }catch(e){ estado(e.message, true); }
-  finally{ cerrarTrabajo(); }
-  ev.target.disabled = false;
+  finally{ cerrarTrabajo(); congelar(false); ev.target.disabled = false; }
 });
 
 /* El reel terminado, para tenerlo en el teléfono o subirlo a mano. Si ya se
@@ -1225,6 +1313,8 @@ $('#bajar_carrusel').addEventListener('click', async (ev) => {
 $('#bajar_reel').addEventListener('click', async (ev) => {
   ev.target.disabled = true;
   const despierto = await mantenerDespierto();
+  abrirTrabajo();
+  congelar(true);   // el titular se le quema encima con lo que hay ahora
   try{
     if(!placa.reel_crudo && placa.video){
       // los de antes ya están hechos: se bajan del servidor y listo
@@ -1236,16 +1326,22 @@ $('#bajar_reel').addEventListener('click', async (ev) => {
     }
     estado('Video listo, se descargó');
   }catch(e){ estado(e.message, true); }
-  finally{ cerrarTrabajo(); despierto?.release().catch(() => {}); }
-  ev.target.disabled = false;
+  finally{
+    cerrarTrabajo(); congelar(false);
+    despierto?.release().catch(() => {});
+    ev.target.disabled = false;
+  }
 });
 
 /* Una foto nueva parte entera y centrada: así no se corta aunque venga con
    otra resolución. */
 async function reemplazarFoto(campo, archivo){
+  abrirTrabajo();   // sin congelar: subir no dibuja nada, se sigue trabajando
   trabajo('Subiendo la foto', null, archivo.name);
+  const suPlaca = placa;   // si mientras sube se cambia de noticia, es de la otra
   try{
     const { ruta } = await guardarFoto(archivo);
+    if(placa !== suPlaca) return estado('La foto subió, pero ya estabas en otra noticia.', true);
     placa[campo + '_ajuste'] = 'completa';
     placa[campo + '_x'] = 50;
     placa[campo + '_y'] = 50;
@@ -1256,9 +1352,12 @@ async function reemplazarFoto(campo, archivo){
 
 async function reemplazarLamina(i, archivo){
   if(esVideo(archivo)) return agregarVideo(archivo, i);   // ese trae su propio aviso
+  abrirTrabajo();
   trabajo('Subiendo la foto', null, archivo.name);
+  const suPlaca = placa;
   try{
     const { ruta } = await guardarFoto(archivo);
+    if(placa !== suPlaca) return estado('La foto subió, pero ya estabas en otra noticia.', true);
     placa.laminas[i] = { foto: ruta, ajuste: 'completa', x: 50, y: 50 };
     cambio('laminas', placa.laminas);
     await pintarLaminas();
@@ -1951,7 +2050,10 @@ async function cuadroDelVideo(archivo){
    degradado al subirlo y quedaba con el color de ese momento: si después se
    cambiaba la paleta, la placa cambiaba y el video del carrusel no. */
 async function agregarVideo(archivo, indice){
-  trabajo('Preparando el video', null, 'Se guarda tal cual: el degradado y el logo se le graban al publicar.');
+  abrirTrabajo();
+  trabajo('Preparando el video', null,
+    'Se guarda tal cual. Podés seguir con la noticia mientras sube: el degradado y el logo se le graban al publicar.');
+  const suPlaca = placa;
   try{
     const { jpg, duracion, ancho, alto } = await cuadroDelVideo(archivo);
     anotar('video elegido', { para: 'carrusel', peso: mb(archivo.size),
@@ -1965,6 +2067,7 @@ async function agregarVideo(archivo, indice){
       (a) => trabajo('Subiendo el video', a, 'Se guarda tal cual, sin procesar.'));
     const conPortada = await guardarFoto(new File([jpg], 'portada.jpg', { type: 'image/jpeg' }));
 
+    if(placa !== suPlaca) return estado('El video subió, pero ya estabas en otra noticia.', true);
     const nueva = { ajuste: 'cubrir', x: 50, y: 50, tipo: 'video',
                     crudo: subido.ruta, foto: conPortada.ruta };
     if(indice === undefined) placa.laminas = (placa.laminas || []).concat(nueva);
@@ -2061,6 +2164,7 @@ document.addEventListener('drop', async (ev) => {
 
   try{
     if(zona.dataset.campo){
+      // esas dos abren y cierran su propio aviso
       await reemplazarFoto(zona.dataset.campo, archivos[0]);
       estado('Foto actualizada');
     }else if(zona.dataset.lamina !== undefined){
@@ -2070,21 +2174,25 @@ document.addEventListener('drop', async (ev) => {
       const lugar = MAX_LAMINAS - (placa.laminas || []).length;
       const entran = archivos.slice(0, lugar);
       if(!entran.length) return estado(`El carrusel ya está lleno: ${MAX_LAMINAS + 1} imágenes más el cierre`, true);
-      for(const [i, archivo] of entran.entries()){
-        // el video abre su propio aviso, con su porcentaje
-        if(esVideo(archivo)){ await agregarVideo(archivo); continue; }
-        trabajo(`Subiendo ${entran.length > 1 ? `${i + 1} de ${entran.length}` : 'la foto'}`,
-          i / entran.length, archivo.name);
-        const { ruta } = await guardarFoto(archivo);
-        placa.laminas = (placa.laminas || []).concat({ foto: ruta, ajuste: 'completa', x: 50, y: 50 });
-      }
+      abrirTrabajo();
+      const suPlaca = placa;
+      try{
+        for(const [i, archivo] of entran.entries()){
+          // el video abre su propio aviso, con su porcentaje
+          if(esVideo(archivo)){ await agregarVideo(archivo); continue; }
+          trabajo(`Subiendo ${entran.length > 1 ? `${i + 1} de ${entran.length}` : 'la foto'}`,
+            i / entran.length, archivo.name);
+          const { ruta } = await guardarFoto(archivo);
+          if(placa !== suPlaca) return estado('Las fotos subieron, pero ya estabas en otra noticia.', true);
+          placa.laminas = (placa.laminas || []).concat({ foto: ruta, ajuste: 'completa', x: 50, y: 50 });
+        }
+      }finally{ cerrarTrabajo(); }
       cambio('laminas', placa.laminas);
       await pintarLaminas();
       estado(`${entran.length} foto${entran.length > 1 ? 's' : ''} al carrusel` +
              (archivos.length > entran.length ? ` (${archivos.length - entran.length} no entraron)` : ''));
     }
   }catch(e){ estado(e.message, true); }
-  finally{ cerrarTrabajo(); }
 });
 
 $('#selector').addEventListener('change', (ev) => cargar(Number(ev.target.value)));
@@ -2102,14 +2210,15 @@ $('#borrar').addEventListener('click', async () => {
 
 document.querySelectorAll('[data-exportar]').forEach((boton) => {
   boton.addEventListener('click', async () => {
-    trabajo('Generando el PNG', null);
     boton.disabled = true;
+    abrirTrabajo();
+    congelar(true);
+    trabajo('Generando el PNG', null);
     try{
       await exportarPng(Number(boton.dataset.lado));
       estado('Listo, se descargó el PNG');
     }catch(e){ estado(e.message, true); }
-    finally{ cerrarTrabajo(); }
-    boton.disabled = false;
+    finally{ cerrarTrabajo(); congelar(false); boton.disabled = false; }
   });
 });
 
