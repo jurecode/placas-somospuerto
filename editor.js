@@ -592,6 +592,62 @@ async function imagenesDe(p){
 let pendiente = null;
 let bucleReel = null;   // redibuja la capa de texto mientras el reel se mueve
 
+/* Un video del carrusel se veía como una foto quieta: la portada. Así no
+   había forma de saber qué quedaba dentro del 4:5 ni cómo se movía, y eso
+   recién se descubría publicado.
+   Ahora la previa lo reproduce, y lo dibuja con dibujarLamina —la misma
+   función que genera lo que se sube—, así que lo que se ve es literalmente
+   lo que se va a publicar. Si se usara CSS para recortar serían dos recortes
+   distintos y tarde o temprano dejarían de coincidir. */
+let bucleLamina = null;
+let videoLamina = null;
+/* Cada dibujo se lleva un número. El bucle que pinta los cuadros compara el
+   suyo contra el último antes de pedir el siguiente y se apaga si ya no es el
+   vigente. Sin esto, mover un deslizador —que redibuja— dejaba el bucle
+   anterior corriendo y arrancaba otro encima: a los pocos toques había media
+   docena pintando el mismo lienzo. */
+let generacionLamina = 0;
+
+function soltarVideoLamina(){
+  if(bucleLamina){ cancelAnimationFrame(bucleLamina); bucleLamina = null; }
+  if(videoLamina){
+    videoLamina.pause();
+    videoLamina.removeAttribute('src');
+    videoLamina.load();
+    videoLamina.remove();
+    videoLamina = null;
+  }
+}
+
+/* Devuelve el <video> listo para dibujar, o null si no llegó a haber imagen.
+   Va colgado de la página aunque no se vea: iOS no decodifica un <video>
+   suelto y se queda clavado en el primer cuadro. */
+async function videoParaPrevia(ruta){
+  if(videoLamina && videoLamina.dataset.ruta === ruta) return videoLamina;
+  soltarVideoLamina();
+  const v = document.createElement('video');
+  v.dataset.ruta = ruta;
+  v.src = ruta;
+  v.muted = true;            // sin esto el navegador no lo deja arrancar solo
+  v.loop = true;
+  v.playsInline = true;
+  v.setAttribute('playsinline', '');
+  Object.assign(v.style, {
+    position: 'fixed', left: '0', top: '0', width: '2px', height: '2px',
+    opacity: '0.01', pointerEvents: 'none', zIndex: '-1',
+  });
+  document.body.appendChild(v);
+  videoLamina = v;
+  const listo = await new Promise((ok) => {
+    v.onloadeddata = () => ok(true);
+    v.onerror = () => ok(false);
+    setTimeout(() => ok(v.readyState >= 2), 4000);
+  });
+  if(!listo) return null;
+  await v.play().catch(() => {});
+  return v;
+}
+
 /* Se juntan varios cambios seguidos en un solo dibujo. Con setTimeout y no
    con requestAnimationFrame a propósito: rAF no corre si la pestaña está
    en segundo plano y la vista previa quedaría congelada. */
@@ -599,7 +655,11 @@ function repintar(){
   clearTimeout(pendiente);
   clearInterval(bucleReel);   // si había una capa animándose, se rearma abajo
   bucleReel = null;
+  if(bucleLamina){ cancelAnimationFrame(bucleLamina); bucleLamina = null; }
   pendiente = setTimeout(async () => {
+    // el número de este dibujo. Se toma acá y no antes: entre que se pidió el
+    // repintado y que corre puede haberse pedido otro
+    const mia = ++generacionLamina;
     try{
       const lienzo = $('#previa');
       const esReel = placa.formato === 'reel';
@@ -633,6 +693,7 @@ function repintar(){
         if(!conVideo && reproductor.src){ reproductor.pause(); reproductor.removeAttribute('src'); }
       }
       if(esReel){
+        soltarVideoLamina();
         if(crudo){
           const logo = await cargarImagen(LOGO);
           // solo se redibuja cuando el momento de la animación cambió: pasado
@@ -660,13 +721,28 @@ function repintar(){
       const ultima = laminas.length + (conCierre ? 1 : 0);
       if(vista > ultima) vista = 0;
       if(vista === 0){
+        soltarVideoLamina();
         dibujar(ctx, placa, await imagenesDe(placa), lienzo.width);
       }else if(conCierre && vista === ultima){
+        soltarVideoLamina();
         dibujarCierre(ctx, placa, await arteDelCierre(), lienzo.width);
       }else{
         const lam = laminas[vista - 1];
-        dibujarLamina(ctx, placa, lam, await cargarImagen(lam.foto),
-          await cargarImagen(LOGO), lienzo.width);
+        const logo = await cargarImagen(LOGO);
+        const enMovimiento = lam.tipo === 'video' && lam.crudo
+          ? await videoParaPrevia(recurso(lam.crudo)) : null;
+        if(enMovimiento && mia === generacionLamina){
+          // se redibuja al ritmo de la pantalla; cuesta unos 4 ms el cuadro
+          const cuadro = () => {
+            if(mia !== generacionLamina) return;   // ya hay un dibujo más nuevo
+            dibujarLamina(ctx, placa, lam, enMovimiento, logo, lienzo.width);
+            bucleLamina = requestAnimationFrame(cuadro);
+          };
+          cuadro();
+        }else if(!enMovimiento){
+          soltarVideoLamina();
+          dibujarLamina(ctx, placa, lam, await cargarImagen(lam.foto), logo, lienzo.width);
+        }
       }
       await pintarTira();
     }catch(e){
@@ -918,9 +994,16 @@ async function pintarLaminas(){
                 onclick="this.parentNode.querySelector('input').click()">Cambiar…</button>
         <button type="button" class="archivo" data-quitar="${i}">Quitar</button>
         <input type="file" accept="image/*,video/mp4,video/quicktime" data-lamina-foto="${i}">
-        ${lam.tipo === 'video' ? '<p class="nota">Ya quedó con el logo quemado.</p>' :
-          `<div class="ajuste">${AJUSTES.map(([id, n, ayuda]) =>
-            `<button data-lamina-ajuste="${i}:${id}" title="${ayuda}">${n}</button>`).join('')}</div>`}
+        <div class="ajuste">${AJUSTES.map(([id, n, ayuda]) =>
+          `<button data-lamina-ajuste="${i}:${id}" title="${ayuda}">${n}</button>`).join('')}</div>
+        <div class="encuadre">
+          <span>X</span><input type="range" data-lamina-eje="${i}:x" min="0" max="100" step="1" value="${lam.x ?? 50}">
+          <span>Y</span><input type="range" data-lamina-eje="${i}:y" min="0" max="100" step="1" value="${lam.y ?? 50}">
+        </div>
+        ${lam.tipo === 'video' ? `<p class="nota">
+          Se sube tal cual y el logo se le graba al publicar. Tocá su cuadro en
+          la tira para verlo moverse ya recortado, que es como va a salir.
+        </p>` : ''}
       </div>
     </div>`).join('') || '<p class="nota">Solo la placa. Agregá fotos para armar un carrusel.</p>';
 
@@ -933,7 +1016,8 @@ async function pintarLaminas(){
   $('#cuantas').textContent = laminas.length + 1;
   document.querySelectorAll('[data-lamina-ajuste]').forEach((b) => {
     const [i, valor] = b.dataset.laminaAjuste.split(':');
-    b.classList.toggle('activo', (laminas[i].ajuste || 'completa') === valor);
+    const porDefecto = laminas[i].tipo === 'video' ? 'cubrir' : 'completa';
+    b.classList.toggle('activo', (laminas[i].ajuste || porDefecto) === valor);
   });
 }
 
@@ -1082,9 +1166,23 @@ document.addEventListener('click', async (ev) => {
   if(ajuste){
     const [i, valor] = ajuste.dataset.laminaAjuste.split(':');
     placa.laminas[i].ajuste = valor;
+    // se pasa a mirar la lámina que se está tocando: encuadrar a ciegas,
+    // con la placa en pantalla, era adivinar
+    vista = Number(i) + 1;
     cambio('laminas', placa.laminas);
     return pintarLaminas();
   }
+});
+
+/* Mover el encuadre de una lámina. Va por `input` y no por `change` para que
+   se vea correrse mientras se arrastra, que es de lo que se trata. */
+document.addEventListener('input', (ev) => {
+  const eje = ev.target.closest('[data-lamina-eje]');
+  if(!eje) return;
+  const [i, cual] = eje.dataset.laminaEje.split(':');
+  placa.laminas[i][cual] = Number(eje.value);
+  vista = Number(i) + 1;
+  cambio('laminas', placa.laminas);
 });
 
 $('#tira').addEventListener('click', (ev) => {
@@ -2010,6 +2108,43 @@ const firmaDelReel = () => JSON.stringify([
    arrancan con un fundido, y el cuadro fijo del segundo y medio caía justo
    ahí. Se prueban varios momentos, se mide cuánta imagen tiene cada uno
    —brillo medio y cuánto varía— y gana el que más tenga. */
+/* Cuánta imagen tiene un cuadro. Un cuadro negro da media y contraste casi
+   cero; uno con imagen, los dos altos. Se premia el contraste, que es lo que
+   de verdad se ve. */
+function puntajeDeCuadro(ctx, lado){
+  const d = ctx.getImageData(0, 0, lado, lado).data;
+  let suma = 0, suma2 = 0, n = 0;
+  for(let i = 0; i < d.length; i += 16){   // uno de cada cuatro píxeles
+    const v = (d[i] + d[i + 1] + d[i + 2]) / 3;
+    suma += v; suma2 += v * v; n++;
+  }
+  const media = suma / n;
+  const contraste = Math.sqrt(Math.max(0, suma2 / n - media * media));
+  return media * 0.6 + contraste * 1.4;
+}
+
+/* De varios momentos, el que tenga más imagen. Recibe un <video> ya cargado
+   y lo deja parado en el mejor. Casi todos los videos abren con un fundido
+   desde negro, así que el primer segundo casi nunca sirve de portada. */
+async function mejorMomento(video, dura){
+  const momentos = [1, 2, 3, 5, 8, 12].filter((t) => t < dura - 0.2);
+  if(!momentos.length) momentos.push(Math.min(0.5, dura / 2));
+
+  const lienzo = document.createElement('canvas');
+  lienzo.width = lienzo.height = 96;   // alcanza para medir, y es instantáneo
+  const ctx = lienzo.getContext('2d', { willReadFrequently: true });
+
+  let mejor = momentos[0], mejorPuntaje = -1;
+  for(const t of momentos){
+    video.currentTime = t;
+    await new Promise((r) => { video.onseeked = r; setTimeout(r, 900); });
+    ctx.drawImage(video, 0, 0, 96, 96);
+    const puntaje = puntajeDeCuadro(ctx, 96);
+    if(puntaje > mejorPuntaje){ mejorPuntaje = puntaje; mejor = t; }
+  }
+  return mejor;
+}
+
 async function momentoDePortada(fuente){
   const video = document.createElement('video');
   const propia = typeof fuente !== 'string';
@@ -2023,34 +2158,7 @@ async function momentoDePortada(fuente){
     });
     const dura = video.duration || 0;
     if(!dura) return 1.5;
-
-    // el primer segundo se saltea: casi siempre es el fundido de entrada
-    const momentos = [1, 2, 3, 5, 8, 12].filter((t) => t < dura - 0.2);
-    if(!momentos.length) momentos.push(Math.min(0.5, dura / 2));
-
-    const lienzo = document.createElement('canvas');
-    lienzo.width = lienzo.height = 96;   // alcanza para medir, y es instantáneo
-    const ctx = lienzo.getContext('2d', { willReadFrequently: true });
-
-    let mejor = momentos[0], mejorPuntaje = -1;
-    for(const t of momentos){
-      video.currentTime = t;
-      await new Promise((r) => { video.onseeked = r; setTimeout(r, 900); });
-      ctx.drawImage(video, 0, 0, 96, 96);
-      const d = ctx.getImageData(0, 0, 96, 96).data;
-      let suma = 0, suma2 = 0, n = 0;
-      for(let i = 0; i < d.length; i += 16){   // uno de cada cuatro píxeles
-        const v = (d[i] + d[i + 1] + d[i + 2]) / 3;
-        suma += v; suma2 += v * v; n++;
-      }
-      const media = suma / n;
-      const contraste = Math.sqrt(Math.max(0, suma2 / n - media * media));
-      // un cuadro negro tiene media y contraste casi cero; uno con imagen,
-      // los dos altos. Se premia el contraste, que es lo que se ve.
-      const puntaje = media * 0.6 + contraste * 1.4;
-      if(puntaje > mejorPuntaje){ mejorPuntaje = puntaje; mejor = t; }
-    }
-    return mejor;
+    return await mejorMomento(video, dura);
   }catch(e){
     return 1.5;   // ante la duda, lo de antes
   }finally{ sacar(); if(propia) URL.revokeObjectURL(video.src); }
@@ -2131,13 +2239,23 @@ async function cuadroDelVideo(archivo){
       throw new Error(`El video dura ${enMinutos(video.duration)} y el máximo son `
       + `${enMinutos(DURACION_MAX)}. Recortalo y volvé a elegirlo.`);
     }
-    video.currentTime = Math.min(1, video.duration / 2);
-    await new Promise((r) => { video.onseeked = r; setTimeout(r, 1500); });
+    /* Antes se saltaba a un segundo fijo y se dibujaba lo que hubiera. Si el
+       video abre con un fundido desde negro —que es lo habitual— la portada
+       salía negra, y en la tira el carrusel mostraba un hueco. Se busca el
+       cuadro con más imagen, igual que hace el reel. */
+    await mejorMomento(video, video.duration || 0);
+    await new Promise((r) => setTimeout(r, 120));
 
     const lienzo = document.createElement('canvas');
-    lienzo.width = ANCHO_FEED; lienzo.height = altoDe(ANCHO_FEED);
-    dibujarFoto(lienzo.getContext('2d'), video, 0, 0, ANCHO_FEED, altoDe(ANCHO_FEED),
-      'cubrir', 50, 50, ANCHO_FEED / LIENZO);
+    /* La portada se guarda con la forma del video y sin recortar. Antes salía
+       ya recortada al 4:5 y centrada, y eso volvía mentirosa la miniatura en
+       cuanto se movía el encuadre: la tira recortaba de nuevo una imagen que
+       ya venía recortada, mientras que lo que se publica recorta el original.
+       Guardándola entera, la miniatura y la salida hacen la misma cuenta. */
+    const escala = Math.min(1, 1080 / Math.max(video.videoWidth, video.videoHeight));
+    lienzo.width = Math.round(video.videoWidth * escala);
+    lienzo.height = Math.round(video.videoHeight * escala);
+    lienzo.getContext('2d').drawImage(video, 0, 0, lienzo.width, lienzo.height);
     const jpg = await new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.9));
     return { jpg, duracion: video.duration, ancho: video.videoWidth, alto: video.videoHeight };
   }finally{ sacar(); URL.revokeObjectURL(video.src); }
