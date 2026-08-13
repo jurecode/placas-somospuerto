@@ -1438,6 +1438,28 @@ function tasaDeVideo(){
     : (innerWidth < 900 ? 5_000_000 : 8_000_000);
 }
 
+/* Cuántos bits por segundo merece la salida.
+   Era un número fijo —8 Mbps— sin mirar el video de origen, y eso inflaba
+   los archivos sin que se vieran mejor: un video de teléfono de 1,1 Mbps
+   salía re-comprimido a 7 y pesaba siete veces más. Agrandar la imagen no
+   inventa detalle que el original no tiene, y encima Instagram vuelve a
+   comprimir todo lo que recibe, así que esos bits se tiran dos veces: una
+   al subirlos y otra al llegar.
+   La cuenta va sobre los píxeles del ORIGINAL y no los de la salida, porque
+   son los que traen información de verdad. El 0,14 bits por píxel y por
+   cuadro es holgado para video: lo normal ronda 0,10, y el aire de más es
+   para el titular, el logo y el degradado que se le queman encima, que son
+   bordes duros y sí piden bits.
+   El techo sigue siendo el de antes, así que esto solo puede bajar el peso,
+   nunca subirlo; y el piso evita que un original muy comprimido arrastre la
+   salida a un lugar del que no se vuelve. */
+function tasaSegunOrigen(anchoFuente, altoFuente){
+  const tope = tasaDeVideo();
+  const pixeles = (anchoFuente || 0) * (altoFuente || 0);
+  if(!pixeles) return tope;             // sin saber el origen, lo de antes
+  return Math.round(Math.min(tope, Math.max(3_000_000, pixeles * 30 * 0.14)));
+}
+
 
 /* ------------------------------------------------------------------ */
 /* grabar sin depender del reloj                                       */
@@ -1506,7 +1528,7 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
      2.228.224 y cubre de sobra cualquier formato de Instagram. */
   enc.configure({
     codec: 'avc1.42002a', width: ancho, height: alto,
-    bitrate: tasaDeVideo(), framerate: 30, avc: { format: 'avc' },
+    bitrate: tasaSegunOrigen(video.ancho, video.alto), framerate: 30, avc: { format: 'avc' },
     hardwareAcceleration: 'prefer-software', latencyMode: 'quality',
   });
 
@@ -1676,8 +1698,9 @@ async function quemarVideo(archivo, lamina, avisar){
     destino.stream.getAudioTracks().forEach((t) => flujo.addTrack(t));
   }catch(e){ /* si el video no trae audio, sigue sin él */ }
 
+  const tasa = tasaSegunOrigen(video.videoWidth, video.videoHeight);
   const grabador = new MediaRecorder(flujo, {
-    mimeType: tipo, videoBitsPerSecond: tasaDeVideo(),
+    mimeType: tipo, videoBitsPerSecond: tasa,
   });
   const trozos = [];
   grabador.ondataavailable = (e) => { if(e.data.size) trozos.push(e.data); };
@@ -1727,6 +1750,8 @@ async function quemarVideo(archivo, lamina, avisar){
     dura: seg((video.duration || 0) * 1000),
     cuadros: `${logrados} de ${esperados}`,
     fluidez: porciento + '%',
+    origen: `${video.videoWidth}x${video.videoHeight}`,
+    tasa: (tasa / 1e6).toFixed(1) + ' Mbps',
     nivel: porciento < 80 ? 'mal' : (porciento < 95 ? 'aviso' : 'ok'),
   });
 
@@ -1787,7 +1812,8 @@ async function quemarReel(fuente, avisar){
     destino.stream.getAudioTracks().forEach((t) => flujo.addTrack(t));
   }catch(e){ /* si no trae audio, sigue sin él */ }
 
-  const grabador = new MediaRecorder(flujo, { mimeType: tipo, videoBitsPerSecond: tasaDeVideo() });
+  const tasa = tasaSegunOrigen(video.videoWidth, video.videoHeight);
+  const grabador = new MediaRecorder(flujo, { mimeType: tipo, videoBitsPerSecond: tasa });
   const trozos = [];
   grabador.ondataavailable = (e) => { if(e.data.size) trozos.push(e.data); };
   let falloGrabador = null;
@@ -1840,6 +1866,8 @@ async function quemarReel(fuente, avisar){
     dura: seg((video.duration || 0) * 1000),
     cuadros: `${logrados} de ${esperados}`,
     fluidez: porciento + '%',
+    origen: `${video.videoWidth}x${video.videoHeight}`,
+    tasa: (tasa / 1e6).toFixed(1) + ' Mbps',
     nivel: porciento < 80 ? 'mal' : (porciento < 95 ? 'aviso' : 'ok'),
   });
 
