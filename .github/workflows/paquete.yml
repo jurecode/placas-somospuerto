@@ -42,12 +42,29 @@ jobs:
           V: ${{ github.run_number }}
         run: |
           sed -i "s|src=\"editor.js\"|src=\"editor.js?v=$V\"|" sitio/index.html
-          sed -i "s|from './placa.js'|from './placa.js?v=$V'|g" sitio/editor.js
+
+          # Todos los import, no solo el de editor.js. Antes se firmaba a mano
+          # `from './placa.js'` y nada más, así que dibujo-eyey.js, mp4.js y el
+          # placa.js que pide dibujo-eyey.js viajaban sin firma: el navegador
+          # se quedaba con la copia de hace meses y la mezclaba con la nueva.
+          # Eso hizo que eyey siguiera dibujando cuadrado con el resto del
+          # editor ya en 4:5, y no había forma de verlo desde el sitio.
+          for f in sitio/*.js; do
+            sed -i -E "s|from '\./([A-Za-z0-9_./-]+\.js)'|from './\1?v=$V'|g" "$f"
+          done
           # y el logo y demás imágenes de assets/, que también quedaban viejas
           sed -i "s|const VERSION = 'dev'|const VERSION = '$V'|" sitio/editor.js
+
           grep -q "editor.js?v=$V" sitio/index.html || { echo "no se firmó index.html"; exit 1; }
-          grep -q "placa.js?v=$V"  sitio/editor.js  || { echo "no se firmó editor.js";  exit 1; }
           grep -q "const VERSION = '$V'" sitio/editor.js || { echo "no se firmó VERSION"; exit 1; }
+          # Ningún import puede quedar sin firmar: uno solo alcanza para servir
+          # medio editor viejo, que es el error más difícil de encontrar de
+          # todos, porque el sitio dice que está actualizado.
+          if grep -rEn "from '\./[A-Za-z0-9_./-]+\.js'" sitio/*.js; then
+            echo "quedaron import sin firmar (arriba)"; exit 1
+          fi
+          echo "firmados con v=$V:"
+          grep -hoE "from '\./[^']+'" sitio/*.js | sort -u
 
       # Un paquete por medio, cada uno con su marca ya puesta en marca/. Así
       # el sitio se instala descomprimiendo y nada más: nadie tiene que mover
