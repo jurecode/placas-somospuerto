@@ -160,6 +160,10 @@ function pintarNoticias(){
       </div>
       <div class="celda-titular">
         <textarea class="titular" data-campo="titulo">${esc(n.titulo)}</textarea>
+        <div class="medida">
+          <span data-largo></span>
+          <button class="acortar" data-acortar>Acortar</button>
+        </div>
         <span class="fuente">
           ${n.fecha ? esc(new Date(n.fecha).toLocaleString('es-CL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })) : ''}
           ${n.enlace ? ` · <a href="${esc(n.enlace)}" target="_blank" rel="noopener noreferrer">ver la nota</a>` : ''}
@@ -231,9 +235,27 @@ function pedirPrevia(n, art){
   esperando.set(n.id, setTimeout(() => dibujarPrevia(n, art), 220));
 }
 
+/* El largo, y si hay dónde cortar. Un titular de más de 90 se dibuja con la
+   letra achicada, así que conviene saberlo antes y no después. */
+function pintarMedida(n, art){
+  const el = art?.querySelector('[data-largo]');
+  if(!el) return;
+  const largo = (n.titulo || '').length;
+  el.textContent = largo + ' caracteres' + (largo > 90 ? ' · la letra se achica' : '');
+  el.classList.toggle('mal', largo > 90);
+  const boton = art.querySelector('[data-acortar]');
+  if(!boton) return;
+  if(n.cortes === undefined) n.cortes = versionesCortas(n.original ?? n.titulo);
+  boton.disabled = !n.cortes.length;
+  boton.textContent = !n.cortes.length ? 'sin corte'
+    : (n.corte === undefined || n.corte === n.cortes.length ? 'Acortar' : 'Otro');
+}
+
 function dibujarTodas(){
   for(const [i, n] of noticias.entries()){
-    dibujarPrevia(n, document.querySelector(`.noticia[data-i="${i}"]`));
+    const art = document.querySelector(`.noticia[data-i="${i}"]`);
+    dibujarPrevia(n, art);
+    pintarMedida(n, art);
   }
 }
 
@@ -262,6 +284,13 @@ $('#lista').addEventListener('input', (ev) => {
   if(!art || !campo) return;
   const n = noticias[Number(art.dataset.i)];
   n[campo] = ev.target.value;
+  if(campo === 'titulo'){
+    // escrito a mano: los cortes se recalculan sobre lo nuevo
+    n.original = ev.target.value;
+    n.cortes = undefined;
+    n.corte = undefined;
+    pintarMedida(n, art);
+  }
   // el titular y la etiqueta se ven en la placa; la bajada no
   if(campo !== 'resumen') pedirPrevia(n, art);
 });
@@ -279,6 +308,13 @@ $('#lista').addEventListener('click', async (ev) => {
       b.classList.toggle('activa', b === tono));
     return dibujarPrevia(n, art);
   }
+  if(ev.target.closest('[data-acortar]')){
+    if(!acortarTitular(n)) return;
+    const caja = art.querySelector('[data-campo="titulo"]');
+    if(caja) caja.value = n.titulo;
+    pintarMedida(n, art);
+    return dibujarPrevia(n, art);
+  }
   if(ev.target.closest('[data-previa], [data-cierre], [data-retocar]')) return abrirModal(n, art);
 
   if(ev.target.closest('[data-publicar]')) return publicarNoticia(n, art);
@@ -294,6 +330,7 @@ let enModal = null;   // { n, art }
 function abrirModal(n, art){
   enModal = { n, art };
   $('#m_titulo').value = n.titulo;
+  pintarMedidaModal(n);
   $('#m_etiqueta').innerHTML = ETIQUETAS.map((e) =>
     `<option ${e === n.etiqueta ? 'selected' : ''}>${esc(e)}</option>`).join('');
   $('#m_paleta').innerHTML = PALETA.map((p, k) => `
@@ -306,6 +343,19 @@ function abrirModal(n, art){
   marcarAjuste();
   $('#velo_modal').hidden = false;
   dibujarModal();
+}
+
+function pintarMedidaModal(n){
+  const el = $('#m_largo');
+  if(!el) return;
+  const largo = (n.titulo || '').length;
+  el.textContent = largo + ' caracteres' + (largo > 90 ? ' · la letra se achica' : '');
+  el.classList.toggle('mal', largo > 90);
+  const boton = $('#m_acortar');
+  if(n.cortes === undefined) n.cortes = versionesCortas(n.original ?? n.titulo);
+  boton.disabled = !n.cortes.length;
+  boton.textContent = !n.cortes.length ? 'No hay dónde cortarlo'
+    : (n.corte === undefined || n.corte === n.cortes.length ? 'Acortar' : 'Probar otro corte');
 }
 
 function marcarAjuste(){
@@ -339,6 +389,7 @@ function cerrarModal(){
     if(e) e.value = n.etiqueta;
     art.querySelectorAll('[data-paleta]').forEach((b) =>
       b.classList.toggle('activa', Number(b.dataset.paleta) === (n.paleta ?? 0)));
+    pintarMedida(n, art);
     dibujarPrevia(n, art);
   }
   enModal = null;
@@ -352,7 +403,11 @@ document.addEventListener('keydown', (e) => { if(e.key === 'Escape') cerrarModal
 $('#velo_modal').addEventListener('input', (ev) => {
   if(!enModal) return;
   const { n } = enModal;
-  if(ev.target.id === 'm_titulo')   n.titulo = ev.target.value;
+  if(ev.target.id === 'm_titulo'){
+    n.titulo = ev.target.value;
+    n.original = ev.target.value; n.cortes = undefined; n.corte = undefined;
+    pintarMedidaModal(n);
+  }
   if(ev.target.id === 'm_etiqueta') n.etiqueta = ev.target.value;
   if(ev.target.id === 'm_x')        n.foto_x = Number(ev.target.value);
   if(ev.target.id === 'm_y')        n.foto_y = Number(ev.target.value);
@@ -373,6 +428,12 @@ $('#velo_modal').addEventListener('click', async (ev) => {
   if(aj){
     n.ajuste = aj.dataset.mAjuste;
     marcarAjuste();
+    return dibujarModal();
+  }
+  if(ev.target.closest('#m_acortar')){
+    if(!acortarTitular(n)) return;
+    $('#m_titulo').value = n.titulo;
+    pintarMedidaModal(n);
     return dibujarModal();
   }
   if(ev.target.closest('[data-m-centrar]')){
@@ -406,6 +467,85 @@ $('#m_archivo').addEventListener('change', async (ev) => {
   }catch(e){ $('#m_aviso').textContent = e.message; }
   ev.target.value = '';
 });
+
+/* Versiones más cortas de un titular, de la más larga a la más breve.
+   Se corta, no se reescribe: las palabras siguen siendo las del medio, así
+   que no hay forma de publicar algo que la fuente no dijo. */
+const COMILLAS = '"«»“”';
+
+/* Los dos puntos que parten el titular en dos, ignorando los que están
+   dentro de una cita. */
+function dosPuntosAfuera(t){
+  let dentro = false, comilla = '';
+  for(let i = 0; i < t.length; i++){
+    const c = t[i];
+    if(!dentro && COMILLAS.includes(c)){ dentro = true; comilla = c; continue; }
+    if(dentro && (c === comilla || '»”'.includes(c))){ dentro = false; continue; }
+    if(!dentro && c === ':') return i;
+  }
+  return -1;
+}
+
+const CIERRES = /\s+(tras|luego de|después de|mientras|pese a|a pesar de|según|en medio de|a raíz de|debido a)\s+.+$/i;
+const ROTULOS = /^\s*(video|fotos?|en vivo|urgente|exclusivo|opinión|entrevista|análisis)\s*[|:–—-]\s*/i;
+
+function versionesCortas(titulo){
+  const original = String(titulo || '').replace(/\s+/g, ' ').trim();
+  const salida = [];
+  const agregar = (t) => {
+    if(!t) return;
+    t = t.replace(/\s+/g, ' ').replace(/[\s,;:–—-]+$/, '').trim();
+    // demasiado corto deja de ser un titular; igual de largo no sirve de nada
+    if(t.length < 18 || t.length >= original.length) return;
+    if(!salida.includes(t)) salida.push(t);
+  };
+
+  let base = original.replace(ROTULOS, '');
+  agregar(base);
+  agregar(base.replace(/\s*\([^)]*\)\s*/g, ' '));
+
+  const i = dosPuntosAfuera(base);
+  if(i > 0){
+    const izq = base.slice(0, i);
+    const der = base.slice(i + 1);
+    // se ofrecen los dos lados: a veces la noticia está en el gancho y a
+    // veces en lo que viene después
+    agregar(izq.length >= der.length ? izq : der);
+    agregar(izq.length >= der.length ? der : izq);
+    agregar(izq.replace(CIERRES, ''));
+    agregar(der.replace(CIERRES, ''));
+  }
+
+  agregar(base.replace(CIERRES, ''));
+
+  /* La cola coordinada: «... dice adiós al fútbol y confirma que esta será su
+     última temporada». Se saca solo si lo que queda sigue siendo un titular. */
+  const y = base.replace(/\s+y\s+\S+.{12,}$/i, '');
+  if(y.length >= 38) agregar(y);
+
+  /* La cola relativa: «..., que ya había sido advertido por los vecinos». */
+  const que = base.replace(/,\s+(que|quien|donde|lo que)\s+.+$/i, '');
+  if(que.length >= 38) agregar(que);
+
+  /* A propósito no se corta por cantidad de caracteres. Probado con titulares
+     de verdad, eso devuelve cosas como «Sistemas frontales dejaron más de
+     3.700 pequeños» o «...Isla Santa María piden»: frases partidas al medio
+     que como titular no se pueden publicar. Si no hay dónde cortar sin
+     romperlo, mejor decirlo y que se edite a mano. */
+
+  return salida.sort((a, b) => b.length - a.length);
+}
+
+/* Pasa al siguiente corte, y del último vuelve al titular entero.
+   Se guarda el original aparte: acortar nunca puede ser un camino de ida. */
+function acortarTitular(n){
+  if(n.original === undefined) n.original = n.titulo;
+  if(!n.cortes) n.cortes = versionesCortas(n.original);
+  if(!n.cortes.length) return false;
+  n.corte = ((n.corte ?? -1) + 1) % (n.cortes.length + 1);
+  n.titulo = n.corte === n.cortes.length ? n.original : n.cortes[n.corte];
+  return true;
+}
 
 /* ------------------------------------------------------------------ */
 /* armar la placa                                                      */

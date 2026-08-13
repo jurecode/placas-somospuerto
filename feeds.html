@@ -111,6 +111,12 @@
   .titular{ min-height:74px; resize:vertical; line-height:1.35; font-weight:600 }
   .resumen{ min-height:74px; resize:vertical; font-size:12.5px; color:var(--suave) }
   .fuente{ font-size:11px; color:var(--suave); margin-top:6px; display:block }
+  /* cuánto mide el titular y el botón para recortarlo */
+  .medida{ display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap }
+  .medida span{ font-size:11px; color:var(--suave); flex:1; min-width:0 }
+  .medida span.mal{ color:var(--acento) }
+  .acortar{ flex:none; padding:3px 9px; font-size:11px }
+  .acortar:disabled{ opacity:.45 }
   .fuente a{ text-decoration:none }
 
   .acciones{ display:grid; gap:7px }
@@ -258,6 +264,10 @@
       <div>
         <label for="m_titulo">Titular</label>
         <textarea id="m_titulo" rows="4"></textarea>
+        <div class="medida">
+          <span id="m_largo"></span>
+          <button class="acortar" id="m_acortar">Acortar</button>
+        </div>
       </div>
       <div>
         <label for="m_etiqueta">Etiqueta</label>
