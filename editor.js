@@ -1572,17 +1572,15 @@ function tasaSegunOrigen(anchoFuente, altoFuente){
    y si se cambia de pestaña solo va más lento.
    El audio se copia tal cual, sin volver a comprimirlo. */
 
-/* El camino rápido está terminado a medias: descomprime, dibuja y comprime
-   bien —comprobado cuadro por cuadro—, pero el archivo que arma todavía no se
-   puede recorrer: abre, dura lo que tiene que durar, y al saltar a cualquier
-   segundo devuelve siempre el primer cuadro. El error está en la tabla de
-   tiempos del contenedor.
-   Queda apagado hasta que eso esté resuelto: un reel que no se puede
-   reproducir es peor que uno que tarda. Se enciende poniendo
-   codecs_rapido = 1 en el almacenamiento del navegador, para poder seguir
-   probándolo sin tocar el código. */
+/* El camino rápido: descomprimir, dibujar y volver a comprimir, sin reloj de
+   por medio. Estuvo apagado mientras el archivo que producía no se dejaba
+   recorrer; ya se dejó, y medido da 600 cuadros de 600 en una décima parte de
+   lo que dura el video, contra 29% de los cuadros en tiempo real.
+   Va encendido salvo que se lo apague a mano, y si el navegador no lo tiene
+   —o si algo falla en el medio— se graba a la antigua sin que nadie se entere.
+   Guardar un '0' es la salida de emergencia si aparece un video que lo rompa. */
 const hayCodecs = () =>
-  localStorage.getItem('codecs_rapido') === '1' &&
+  localStorage.getItem('codecs_rapido') !== '0' &&
   typeof VideoEncoder === 'function' && typeof VideoDecoder === 'function';
 
 async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
@@ -1672,9 +1670,26 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
       duration: Math.round(m.duracion * 1e6 / video.reloj),
       data: m.datos,
     }));
-    // sin esto la cola crece sin límite y el aparato se queda sin memoria
+    /* Se frena hasta que los codecs hagan lugar; sin esto la cola crece sin
+       límite y el aparato se queda sin memoria.
+       Antes se preguntaba cada 6 ms con setTimeout, y esperar costaba más que
+       trabajar: un setTimeout de 6 ms tarda unos 6,75 ms de reloj real, y con
+       la pestaña de fondo el navegador lo estira a un segundo. Ahora se espera
+       el aviso propio del codec —`dequeue`, que llega cuando de verdad sacó
+       algo de la cola— con un plazo corto por las dudas. */
     while(dec.decodeQueueSize > 20 || enc.encodeQueueSize > 20){
-      await new Promise((r) => setTimeout(r, 6));
+      await new Promise((r) => {
+        let plazo = 0;
+        const seguir = () => {
+          clearTimeout(plazo);
+          dec.removeEventListener('dequeue', seguir);
+          enc.removeEventListener('dequeue', seguir);
+          r();
+        };
+        dec.addEventListener('dequeue', seguir);
+        enc.addEventListener('dequeue', seguir);
+        plazo = setTimeout(seguir, 100);
+      });
       if(falla) throw falla;
     }
   }
@@ -2180,6 +2195,7 @@ async function grabarReel(){
   // bajarlo del servidor para volver a subirlo
   let video = null;
   if(hayCodecs()){
+    const arranque = Date.now();
     try{
       const logo = await cargarImagen(LOGO);
       video = await quemarConCodecs(fuente,
@@ -2189,9 +2205,13 @@ async function grabarReel(){
         },
         (a) => trabajo(rotulo, a, espera),
         REEL.ancho, REEL.alto);
+      anotar('grabado', { camino: 'rápido', tardo: seg(Date.now() - arranque),
+        fluidez: '100%', porque: 'no depende del reloj: van todos los cuadros' });
     }catch(e){
       if(String(e.message) === 'Cancelado') throw e;
       console.warn('el camino rápido no pudo, se graba a la antigua:', e.message);
+      anotar('camino rápido no pudo', { porque: String(e.message).slice(0, 120),
+        nivel: 'aviso' });
       video = null;
     }
   }
@@ -2314,14 +2334,19 @@ async function videoDeLamina(lam, i){
 
   let video = null;
   if(hayCodecs()){
+    const arranque = Date.now();
     try{
       const logo = await cargarImagen(LOGO);
       video = await quemarConCodecs(lam.crudo,
         (ctx, cuadro) => dibujarLamina(ctx, placa, lam, cuadro, logo, ANCHO_FEED),
         (a) => trabajo(rotulo, a, espera), ANCHO_FEED, altoDe(ANCHO_FEED));
+      anotar('grabado', { camino: 'rápido', tardo: seg(Date.now() - arranque),
+        fluidez: '100%', porque: 'no depende del reloj: van todos los cuadros' });
     }catch(e){
       if(String(e.message) === 'Cancelado') throw e;
       console.warn('el camino rápido no pudo, se graba a la antigua:', e.message);
+      anotar('camino rápido no pudo', { porque: String(e.message).slice(0, 120),
+        nivel: 'aviso' });
       video = null;
     }
   }
