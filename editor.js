@@ -1610,6 +1610,62 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
   return armarMp4(pistas);
 }
 
+
+/* Grabar es a reloj: el video se reproduce a velocidad normal y se captura
+   lo que el lienzo tenga en ese instante. Si el navegador deja de llamar al
+   dibujo treinta veces por segundo, esos cuadros no existen en el archivo, y
+   eso es lo que después se ve como tirones.
+   Puede pasar por dos motivos muy distintos que la bitácora no distinguía:
+   la pestaña se fue al fondo —ahí el navegador la castiga a propósito— o el
+   aparato no da abasto. El primero se arregla dejando la pantalla a la vista
+   y el segundo no, así que conviene saber cuál fue. Dibujar cuesta unos 4 ms
+   de los 33 que hay, o sea que el dibujo nunca es el culpable: siempre es
+   que no lo llamaron. */
+/* El veredicto, aparte y sin nada alrededor, para poder probarlo solo.
+   Los dos umbrales: medio segundo al fondo ya explica cualquier tirón, y una
+   pausa de 200 ms son seis cuadros perdidos de una, que no se explica por
+   dibujar —eso cuesta 4 ms— sino porque no llamaron al dibujo. */
+function porQueSeCorto(pausaMax, alFondo){
+  if(alFondo > 500) return 'la pantalla no estuvo a la vista';
+  if(pausaMax > 200) return 'el aparato no dio abasto';
+  return '-';
+}
+
+/* El reloj entra por parámetro para poder probar esto sin depender de cuánto
+   tarde de verdad la máquina. En el editor siempre es performance.now. */
+function vigilarFluidez(ahoraFn = () => performance.now(), oculto = () => document.hidden){
+  let ultimo = ahoraFn();
+  let primera = true;
+  // `null` y no 0: el instante cero es un instante válido, y usarlo como
+  // «no está al fondo» hacía que ese caso no se contara nunca
+  let pausaMax = 0, alFondo = 0, desde = oculto() ? ultimo : null;
+  const alCambiar = () => {
+    const ahora = ahoraFn();
+    if(oculto()){ desde = ahora; }
+    else if(desde !== null){ alFondo += ahora - desde; desde = null; }
+  };
+  document.addEventListener('visibilitychange', alCambiar);
+  return {
+    latido(){
+      const ahora = ahoraFn();
+      // la primera vuelta no cuenta: mediría la espera hasta arrancar, que
+      // incluye cargar el video y no tiene nada que ver con la fluidez
+      if(!primera) pausaMax = Math.max(pausaMax, ahora - ultimo);
+      primera = false;
+      ultimo = ahora;
+    },
+    fin(){
+      document.removeEventListener('visibilitychange', alCambiar);
+      if(desde !== null) alFondo += ahoraFn() - desde;
+      return {
+        pausaMax: Math.round(pausaMax) + ' ms',
+        fondo: alFondo > 500 ? seg(alFondo) : 'no',
+        porque: porQueSeCorto(pausaMax, alFondo),
+      };
+    },
+  };
+}
+
 /* iOS no reproduce un <video> que no está colgado de la página: se queda en
    el primer cuadro y la grabación no avanza nunca —el porcentaje se clava y
    parece colgado—. Se lo pone fuera de la vista mientras dura el trabajo.
@@ -1707,10 +1763,12 @@ async function quemarVideo(archivo, lamina, avisar){
   let falloGrabador = null;
   grabador.onerror = (e) => { falloGrabador = e.error || new Error('falló la grabación'); };
 
+  const vigia = vigilarFluidez();
   let dibujando = true, cuadros = 0;
   const pintar = () => {
     if(!dibujando) return;
-    dibujarLamina(ctx, placa, lamina, video, logo, 1080);
+    vigia.latido();
+    dibujarLamina(ctx, placa, lamina, video, logo, ANCHO_FEED);
     cuadros++;
     if(video.duration) avisar?.(video.currentTime / video.duration);
     setTimeout(pintar, 33);   // ~30 cuadros por segundo
@@ -1752,6 +1810,7 @@ async function quemarVideo(archivo, lamina, avisar){
     fluidez: porciento + '%',
     origen: `${video.videoWidth}x${video.videoHeight}`,
     tasa: (tasa / 1e6).toFixed(1) + ' Mbps',
+    ...vigia.fin(),
     nivel: porciento < 80 ? 'mal' : (porciento < 95 ? 'aviso' : 'ok'),
   });
 
@@ -1819,9 +1878,11 @@ async function quemarReel(fuente, avisar){
   let falloGrabador = null;
   grabador.onerror = (e) => { falloGrabador = e.error || new Error('falló la grabación'); };
 
+  const vigia = vigilarFluidez();
   let dibujando = true, cuadros = 0;
   const pintar = () => {
     if(!dibujando) return;
+    vigia.latido();
     dibujarReel(ctx, placa, video, logo, REEL.ancho, REEL.alto,
       Math.min(1, video.currentTime / ANIMACION));
     cuadros++;
@@ -1868,6 +1929,7 @@ async function quemarReel(fuente, avisar){
     fluidez: porciento + '%',
     origen: `${video.videoWidth}x${video.videoHeight}`,
     tasa: (tasa / 1e6).toFixed(1) + ' Mbps',
+    ...vigia.fin(),
     nivel: porciento < 80 ? 'mal' : (porciento < 95 ? 'aviso' : 'ok'),
   });
 
