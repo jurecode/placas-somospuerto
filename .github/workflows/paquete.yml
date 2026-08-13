@@ -21,6 +21,8 @@ jobs:
           mkdir -p sitio
           # lo que va al hosting: el editor, el panel y los recursos
           cp index.html index.php editor.js placa.js dibujo-eyey.js mp4.js robots.txt sitio/
+          # el panel de feeds: página aparte, no toca el editor
+          cp feeds.html feeds.js sitio/
           cp panel-*.html sitio/
           cp -r assets sitio/
           cp -r marca sitio/
@@ -42,6 +44,7 @@ jobs:
           V: ${{ github.run_number }}
         run: |
           sed -i "s|src=\"editor.js\"|src=\"editor.js?v=$V\"|" sitio/index.html
+          sed -i "s|src=\"feeds.js\"|src=\"feeds.js?v=$V\"|" sitio/feeds.html
 
           # Todos los import, no solo el de editor.js. Antes se firmaba a mano
           # `from './placa.js'` y nada más, así que dibujo-eyey.js, mp4.js y el
@@ -56,6 +59,7 @@ jobs:
           sed -i "s|const VERSION = 'dev'|const VERSION = '$V'|" sitio/editor.js
 
           grep -q "editor.js?v=$V" sitio/index.html || { echo "no se firmó index.html"; exit 1; }
+          grep -q "feeds.js?v=$V"  sitio/feeds.html || { echo "no se firmó feeds.html"; exit 1; }
           grep -q "const VERSION = '$V'" sitio/editor.js || { echo "no se firmó VERSION"; exit 1; }
           # Ningún import puede quedar sin firmar: uno solo alcanza para servir
           # medio editor viejo, que es el error más difícil de encontrar de

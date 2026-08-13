@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Noticias de otros medios</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@500;900&family=Poppins:ital,wght@0,700;0,900;1,800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* La misma paleta del editor, para que sea el mismo sistema y no dos. */
+    --marca-morado:#804A8A; --marca-morado-hondo:#3A0353;
+    --marca-durazno:#F8D299; --marca-naranja:#F59E51;
+
+    --bg:#1B0328;
+    --panel:#26073A;
+    --hueco:#150220;
+    --boton:#3A1152;
+    --boton-claro:#4B1C68;
+    --linea:#452060;
+    --texto:#F4EAF8;
+    --suave:#B79BC6;
+    --acento:var(--marca-naranja);
+    --activo:#43184F;
+    --mal:#FF9B8A;
+    --ok:#3DE0B4;
+  }
+  *{ box-sizing:border-box; margin:0 }
+  body{
+    background:var(--bg); color:var(--texto);
+    font:14px/1.5 system-ui, sans-serif;
+    min-height:100svh; padding-bottom:40px;
+  }
+  button{
+    font:inherit; color:var(--texto); background:var(--boton); cursor:pointer;
+    border:1px solid var(--linea); border-radius:7px; padding:8px 12px;
+  }
+  button:hover{ background:var(--boton-claro) }
+  button:disabled{ opacity:.5; cursor:default }
+  /* el texto va oscuro: blanco sobre este naranja no se lee */
+  button.principal{ background:var(--acento); border-color:var(--acento); color:var(--bg); font-weight:700 }
+  button.principal:hover{ filter:brightness(1.1) }
+  input, select, textarea{
+    width:100%; background:var(--hueco); color:var(--texto); font:inherit;
+    border:1px solid var(--linea); border-radius:7px; padding:8px 10px;
+  }
+  input:focus, select:focus, textarea:focus{ outline:2px solid var(--acento); outline-offset:-1px }
+  a{ color:var(--acento) }
+
+  /* ---------- encabezado ---------- */
+  header{
+    position:sticky; top:0; z-index:10; background:var(--panel);
+    border-bottom:1px solid var(--linea); padding:12px 16px;
+  }
+  .titulo{ display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+  h1{ font-size:16px; flex:1; min-width:180px }
+  h1 small{ display:block; color:var(--suave); font-weight:400; font-size:12px }
+
+  /* las pestañas: una por medio, para que no se mezcle todo */
+  .pestanas{ display:flex; gap:6px; overflow-x:auto; padding:10px 0 2px; scrollbar-width:thin }
+  .pestanas button{
+    flex:none; padding:7px 13px; font-size:13px; border-radius:20px; white-space:nowrap;
+  }
+  .pestanas button.activa{ border-color:var(--acento); background:var(--activo); color:var(--acento) }
+  .pestanas button.mas{ color:var(--suave) }
+
+  /* ---------- la tabla de noticias ---------- */
+  .lista{ padding:14px 16px; display:grid; gap:10px; max-width:1500px; margin:0 auto }
+
+  .cabecera{
+    display:grid; gap:12px; align-items:center; padding:0 12px;
+    grid-template-columns:132px minmax(0,2.2fr) 150px minmax(0,2fr) 190px;
+    font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--suave);
+  }
+  .noticia{
+    display:grid; gap:12px; align-items:start;
+    grid-template-columns:132px minmax(0,2.2fr) 150px minmax(0,2fr) 190px;
+    background:var(--panel); border:1px solid var(--linea); border-radius:12px; padding:12px;
+  }
+  .noticia.publicada{ border-color:var(--ok); opacity:.65 }
+  .noticia.ocupada{ border-color:var(--acento) }
+
+  .miniatura{
+    width:132px; aspect-ratio:4/5; object-fit:cover; border-radius:8px;
+    background:var(--hueco); border:1px solid var(--linea); display:block;
+  }
+  .miniatura.falta{ display:grid; place-items:center; font-size:11px; color:var(--suave); text-align:center; padding:8px }
+
+  .titular{ min-height:74px; resize:vertical; line-height:1.35; font-weight:600 }
+  .resumen{ min-height:74px; resize:vertical; font-size:12.5px; color:var(--suave) }
+  .fuente{ font-size:11px; color:var(--suave); margin-top:6px; display:block }
+  .fuente a{ text-decoration:none }
+
+  .acciones{ display:grid; gap:7px }
+  .acciones button{ width:100%; font-size:13px }
+  .apunte{ font-size:11px; color:var(--suave); line-height:1.35 }
+  .apunte.mal{ color:var(--mal) }
+  .apunte.ok{ color:var(--ok) }
+
+  /* en pantallas angostas la tabla deja de serlo: cada noticia es una ficha */
+  @media (max-width:1080px){
+    .cabecera{ display:none }
+    .noticia{ grid-template-columns:100px minmax(0,1fr); grid-template-areas:
+      "foto  titular"
+      "foto  etiqueta"
+      "resumen resumen"
+      "acciones acciones"; }
+    .miniatura{ width:100px }
+    .celda-foto{ grid-area:foto } .celda-titular{ grid-area:titular }
+    .celda-etiqueta{ grid-area:etiqueta } .celda-resumen{ grid-area:resumen }
+    .celda-acciones{ grid-area:acciones }
+    .acciones{ grid-auto-flow:column; grid-auto-columns:1fr }
+    .titular, .resumen{ min-height:0 }
+  }
+  @media (max-width:560px){
+    .noticia{ grid-template-columns:1fr; grid-template-areas:
+      "foto" "titular" "etiqueta" "resumen" "acciones"; }
+    .miniatura{ width:100%; max-width:220px; aspect-ratio:4/5 }
+    .acciones{ grid-auto-flow:row }
+  }
+
+  /* ---------- avisos y diálogos ---------- */
+  .barra-estado{
+    padding:10px 16px; font-size:12.5px; color:var(--suave); min-height:20px;
+    max-width:1500px; margin:0 auto;
+  }
+  .barra-estado.error{ color:var(--mal) }
+  .vacio{ padding:40px 16px; text-align:center; color:var(--suave); line-height:1.6 }
+
+  .velo{
+    position:fixed; inset:0; z-index:50; display:grid; place-items:center;
+    background:#12021Ccc; padding:20px;
+  }
+  .velo[hidden]{ display:none }
+  .caja{
+    width:min(100%, 460px); background:var(--panel); border:1px solid var(--linea);
+    border-radius:16px; padding:22px; display:grid; gap:12px;
+  }
+  .caja h2{ font-size:15px }
+  .caja label{ font-size:12px; color:var(--suave); display:block; margin-bottom:5px }
+  .caja .fila{ display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap }
+  .nota{ font-size:11.5px; color:var(--suave); line-height:1.5 }
+  .lista-fuentes{ list-style:none; display:grid; gap:6px; max-height:220px; overflow:auto }
+  .lista-fuentes li{
+    display:flex; gap:8px; align-items:center; justify-content:space-between;
+    background:var(--hueco); border:1px solid var(--linea); border-radius:8px; padding:7px 10px;
+    font-size:12.5px;
+  }
+  .lista-fuentes small{ color:var(--suave); display:block; word-break:break-all; font-size:11px }
+  .lista-fuentes button{ flex:none; padding:4px 9px; font-size:11px }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="titulo">
+    <h1>Noticias de otros medios<small id="sub">Elegí una y publicala con el diseño del medio</small></h1>
+    <button id="recargar">Actualizar</button>
+    <button id="fuentes">Fuentes</button>
+    <a href="index.html"><button>Ir al editor</button></a>
+  </div>
+  <nav class="pestanas" id="pestanas"></nav>
+</header>
+
+<p class="barra-estado" id="estado"></p>
+
+<div class="cabecera" id="cabecera" hidden>
+  <span>Foto</span><span>Titular</span><span>Etiqueta</span><span>Bajada</span><span></span>
+</div>
+<main class="lista" id="lista"></main>
+
+<!-- gestión de fuentes -->
+<div class="velo" id="velo_fuentes" hidden>
+  <div class="caja">
+    <h2>Fuentes de noticias</h2>
+    <ul class="lista-fuentes" id="lista_fuentes"></ul>
+    <div>
+      <label for="nueva_nombre">Nombre de la pestaña</label>
+      <input id="nueva_nombre" placeholder="ADN Deportes" autocomplete="off">
+    </div>
+    <div>
+      <label for="nueva_url">Dirección del feed</label>
+      <input id="nueva_url" placeholder="https://…/feed/" autocomplete="off" inputmode="url">
+    </div>
+    <p class="nota">
+      Se comprueba antes de guardarla: si no es un feed o no tiene noticias,
+      avisa en el momento en vez de dejar una pestaña vacía.
+    </p>
+    <p class="nota" id="aviso_fuentes"></p>
+    <div class="fila">
+      <button id="cerrar_fuentes">Cerrar</button>
+      <button class="principal" id="agregar_fuente">Agregar</button>
+    </div>
+  </div>
+</div>
+
+<!-- clave de acceso, igual que el editor -->
+<div class="velo" id="velo_clave" hidden>
+  <div class="caja">
+    <h2>Clave de acceso</h2>
+    <p class="nota">Es la misma del editor. Queda guardada en este navegador.</p>
+    <input id="clave" type="password" autocomplete="current-password">
+    <p class="nota" id="aviso_clave"></p>
+    <div class="fila"><button class="principal" id="entrar">Entrar</button></div>
+  </div>
+</div>
+
+<script type="module" src="feeds.js"></script>
+</body>
+</html>
