@@ -9,8 +9,19 @@
 
 export const LIENZO = 3000;
 
+/* El arte dejó de ser cuadrado: el feed muestra 4:5, que ocupa más pantalla.
+   3000 x 3750 es exactamente eso, y sale en 1080 x 1350.
+   El alto extra se lo lleva la foto: el titular, la etiqueta y el logo están
+   anclados al borde de abajo y no se mueven, así que la placa se sigue viendo
+   igual y solo respira más arriba. */
+export const ALTO = 3750;
+export const altoDe = (ancho) => Math.round(ancho * ALTO / LIENZO);
+
 export const MEDIDAS = {
-  media:    { x: 318, y: 136, ancho: 2364, alto: 1604, radio: 48, filete: 30 },
+  /* El collage va de `y` hasta `abajo` unidades del borde inferior: se estira
+     con el lienzo en vez de tener un alto fijo, que es lo que hace que el
+     4:5 no obligue a recolocar nada. */
+  media:    { x: 318, y: 136, ancho: 2364, abajo: 1260, radio: 48, filete: 30 },
   // el centro se da en % del collage; 50/62.6 es el del arte original
   circulo:  { x: 50, y: 62.6, radio: 512, anillo: 30 },
   pie:      { x: 414, margenDerecho: 318, abajo: 479, separacion: 83 },
@@ -275,9 +286,10 @@ function dibujarEtiqueta(ctx, datos, u, abajoDe){
 /* formatos                                                            */
 /* ------------------------------------------------------------------ */
 
-function dibujarNoticia(ctx, datos, fotos, u){
+function dibujarNoticia(ctx, datos, fotos, u, altoLienzo){
   const M = MEDIDAS.media;
-  const x = M.x * u, y = M.y * u, ancho = M.ancho * u, alto = M.alto * u;
+  const x = M.x * u, y = M.y * u, ancho = M.ancho * u;
+  const alto = altoLienzo - y - M.abajo * u;
 
   // collage
   ctx.save();
@@ -325,7 +337,7 @@ function dibujarNoticia(ctx, datos, fotos, u){
   // titular, anclado por abajo
   const maxAncho = (LIENZO - MEDIDAS.media.x - MEDIDAS.pie.x - MEDIDAS.pie.separacion) * u;
   const respiro = MEDIDAS.filete.respiro * u;
-  const abajoCaja = (LIENZO - MEDIDAS.pie.abajo) * u - respiro;
+  const abajoCaja = altoLienzo - MEDIDAS.pie.abajo * u - respiro;
   const tope = MEDIDAS.titular.arriba * u;
 
   /* Se prueba con el cuerpo del arte y, si el bloque se saldría por arriba,
@@ -374,35 +386,37 @@ function dibujarNoticia(ctx, datos, fotos, u){
   dibujarEtiqueta(ctx, datos, u, arribaTexto - respiro);
 }
 
-function dibujarUrgente(ctx, datos, fotos, u, lado){
+function dibujarUrgente(ctx, datos, fotos, u, ancho, alto){
   const U = MEDIDAS.urgente;
 
   // fondo: color de la paleta oscurecido hacia el negro por abajo
   ctx.fillStyle = datos.color_fondo;
-  ctx.fillRect(0, 0, lado, lado);
-  const sombra = ctx.createLinearGradient(0, 0, 0, lado);
+  ctx.fillRect(0, 0, ancho, alto);
+  const sombra = ctx.createLinearGradient(0, 0, 0, alto);
   [[0, .28], [.26, 0], [.44, 0], [.74, .50], [1, .96]]
     .forEach(([p, a]) => sombra.addColorStop(p, `rgba(0,0,0,${a})`));
   ctx.fillStyle = sombra;
-  ctx.fillRect(0, 0, lado, lado);
+  ctx.fillRect(0, 0, ancho, alto);
 
   ctx.save();
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  const centro = lado / 2;
+  const centro = ancho / 2;
 
   // "URGENTE", fijo
   const pxBajada = U.bajada * u;
   const metBajada = metricas(ctx, TIPOS.urgenteBajada, pxBajada);
   ctx.font = fuente(TIPOS.urgenteBajada, pxBajada);
   ctx.letterSpacing = `${-0.01 * pxBajada}px`;
-  const arribaBajada = U.arriba * u;
+  // acá no hay foto que estire: el bloque entero baja la mitad del alto que
+  // ganó el lienzo, y así queda a la misma altura del centro que en cuadrado
+  const arribaBajada = U.arriba * u + (alto - ancho) / 2;
   ctx.fillText('URGENTE', centro,
     arribaBajada + (pxBajada - (metBajada.ascenso + metBajada.descenso)) / 2 + metBajada.ascenso);
 
   // la palabra grande se estira hasta llenar el ancho
-  const disponible = lado - U.margen * u * 2;
+  const disponible = ancho - U.margen * u * 2;
   const lineas = String(datos.titulo).toUpperCase().split('\n').filter((l) => l.trim());
   let px = MEDIDAS.urgente.fuente * u;
   const anchoCon = (tam) => Math.max(...lineas.map(
@@ -426,21 +440,25 @@ function dibujarUrgente(ctx, datos, fotos, u, lado){
 /* entrada principal                                                   */
 /* ------------------------------------------------------------------ */
 
-export function dibujar(ctx, datos, fotos, lado){
-  const u = lado / LIENZO;
+/* Se pide el ancho y el alto sale solo: la proporción es parte del diseño,
+   no algo que cada quien elija. El canvas tiene que venir de ese tamaño. */
+export function dibujar(ctx, datos, fotos, ancho){
+  const u = ancho / LIENZO;
+  const alto = altoDe(ancho);
 
-  ctx.clearRect(0, 0, lado, lado);
+  ctx.clearRect(0, 0, ancho, alto);
   ctx.fillStyle = datos.color_fondo;
-  ctx.fillRect(0, 0, lado, lado);
+  ctx.fillRect(0, 0, ancho, alto);
   ctx.letterSpacing = '0px';
 
-  if(datos.formato === 'urgente') dibujarUrgente(ctx, datos, fotos, u, lado);
-  else dibujarNoticia(ctx, datos, fotos, u);
+  if(datos.formato === 'urgente') dibujarUrgente(ctx, datos, fotos, u, ancho, alto);
+  else dibujarNoticia(ctx, datos, fotos, u, alto);
 
   if(fotos.logo){
     const L = MEDIDAS.logo;
-    const [ancho, alto] = medidaLogo(fotos.logo, u);
-    ctx.drawImage(fotos.logo, (lado - ancho) / 2, lado - (L.abajo * u) - alto, ancho, alto);
+    const [anchoLogo, altoLogo] = medidaLogo(fotos.logo, u);
+    ctx.drawImage(fotos.logo, (ancho - anchoLogo) / 2,
+      alto - (L.abajo * u) - altoLogo, anchoLogo, altoLogo);
   }
 }
 
@@ -450,34 +468,45 @@ export function dibujar(ctx, datos, fotos, lado){
 export const LAMINA_DEG_INICIO = 82;
 
 /* La lámina de cierre: el color de la paleta y encima el arte de siempre,
-   que ya viene con el logo, el «síguenos y comparte» y los iconos. El arte
-   es transparente y del mismo tamaño que el lienzo, así que va entero: no
-   hay nada que calcular ni que se pueda desalinear. */
-export function dibujarCierre(ctx, datos, arte, lado){
-  ctx.clearRect(0, 0, lado, lado);
+   que ya viene con el logo, el «síguenos y comparte» y los iconos.
+   El arte está dibujado cuadrado, de cuando la placa lo era, y es un PNG
+   transparente: solo pinta el dibujo y el resto deja ver el color de abajo.
+   Por eso entra entero y centrado en vez de recortado: agrandarlo hasta
+   llenar el 4:5 le comía los márgenes —«COMPARTE» quedaba tocando el borde—
+   y no hacía falta, porque lo que sobra arriba y abajo es el mismo color de
+   la paleta que ya está pintado. No se ve ninguna franja.
+   El día que haya un arte hecho en 4:5, llena el lienzo justo. */
+export function dibujarCierre(ctx, datos, arte, ancho){
+  const alto = altoDe(ancho);
+  ctx.clearRect(0, 0, ancho, alto);
   ctx.fillStyle = datos.color_fondo || '#111111';
-  ctx.fillRect(0, 0, lado, lado);
-  if(arte) ctx.drawImage(arte, 0, 0, lado, lado);
+  ctx.fillRect(0, 0, ancho, alto);
+  if(!arte) return;
+  const escala = Math.min(ancho / arte.width, alto / arte.height);
+  const w = arte.width * escala, h = arte.height * escala;
+  ctx.drawImage(arte, (ancho - w) / 2, (alto - h) / 2, w, h);
 }
 
-export function dibujarLamina(ctx, datos, lamina, foto, logo, lado){
-  const u = lado / LIENZO;
+export function dibujarLamina(ctx, datos, lamina, foto, logo, ancho){
+  const u = ancho / LIENZO;
+  const alto = altoDe(ancho);
 
-  ctx.clearRect(0, 0, lado, lado);
+  ctx.clearRect(0, 0, ancho, alto);
   ctx.fillStyle = '#0b0b0d';
-  ctx.fillRect(0, 0, lado, lado);
+  ctx.fillRect(0, 0, ancho, alto);
   ctx.letterSpacing = '0px';
 
-  dibujarFoto(ctx, foto, 0, 0, lado, lado,
+  dibujarFoto(ctx, foto, 0, 0, ancho, alto,
     lamina.ajuste || 'completa', lamina.x ?? 50, lamina.y ?? 50, u);
 
-  ctx.fillStyle = degradado(ctx, datos, 0, 0, lado, lado, LAMINA_DEG_INICIO);
-  ctx.fillRect(0, 0, lado, lado);
+  ctx.fillStyle = degradado(ctx, datos, 0, 0, ancho, alto, LAMINA_DEG_INICIO);
+  ctx.fillRect(0, 0, ancho, alto);
 
   if(logo){
     const L = MEDIDAS.logo;
     const [anchoLogo, altoLogo] = medidaLogo(logo, u);
-    ctx.drawImage(logo, (lado - anchoLogo) / 2, lado - (L.abajo * u) - altoLogo, anchoLogo, altoLogo);
+    ctx.drawImage(logo, (ancho - anchoLogo) / 2,
+      alto - (L.abajo * u) - altoLogo, anchoLogo, altoLogo);
   }
 }
 

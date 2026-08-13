@@ -332,7 +332,7 @@
   /* se descuenta lo que ocupan la tira, el botón y su pie: si no, la tira
      quedaba empujada fuera de la ventana en pantallas bajas */
   /* Se limita por los dos lados y no por el ancho: el lienzo cambia de forma
-     según el formato (1:1 la placa, 9:16 el reel) y con una sola medida el
+     según el formato (4:5 la placa, 9:16 el reel) y con una sola medida el
      reel se salía de la ventana. */
   #previa{
     width:auto; height:auto; max-width:100%; max-height:calc(100svh - 300px);
@@ -365,7 +365,8 @@
   }
   .tira button:hover{ border-color:var(--marca-morado) }
   .tira button.activa{ border-color:var(--acento); box-shadow:0 0 0 3px #f59e5133 }
-  .tira canvas{ width:80px; height:80px; display:block }
+  /* 4:5, la misma forma que la placa */
+  .tira canvas{ width:80px; height:100px; display:block }
   .tira i{
     position:absolute; left:0; top:0; font-style:normal; font-size:10px;
     font-weight:700; color:#fff; background:#000a; padding:2px 5px; border-radius:0 0 6px 0;
@@ -540,7 +541,7 @@
     button{ min-height:40px }
     .chips button{ min-height:34px }
     *{ -webkit-tap-highlight-color:transparent }
-    .tira canvas{ width:52px; height:52px }
+    .tira canvas{ width:52px; height:65px }
   }
 </style>
 </head>
@@ -717,8 +718,8 @@
   <fieldset data-seccion="mas">
     <legend>Exportar</legend>
     <div class="campo fila">
-      <button class="descarga" data-exportar="png" data-lado="1080"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>PNG 1080</button>
-      <button class="descarga" data-exportar="png" data-lado="3000"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>PNG 3000</button>
+      <button class="descarga" data-exportar="png" data-lado="1080"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>PNG 1080×1350</button>
+      <button class="descarga" data-exportar="png" data-lado="3000"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>PNG 3000×3750</button>
     </div>
     <div class="campo fila" style="margin-top:10px">
       <button class="descarga" id="bajar_carrusel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>Bajar imágenes</button>

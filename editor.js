@@ -4,7 +4,7 @@
  * las placas y las fotos se guardan en MySQL a través de api/, así que son
  * las mismas desde cualquier dispositivo. */
 
-import { dibujarCierre, dibujarReel, dibujarFoto, esperarTipografias, textoSobre, LIENZO, REEL } from './placa.js';
+import { dibujarCierre, dibujarReel, dibujarFoto, esperarTipografias, textoSobre, LIENZO, altoDe, REEL } from './placa.js';
 import * as somosPuerto from './placa.js';
 import * as eyey from './dibujo-eyey.js';
 import { MARCA } from './marca/marca.js';
@@ -13,9 +13,14 @@ import { armarMp4, leerMp4, RELOJ } from './mp4.js';
 /* Cada medio tiene su dibujante y la marca dice cuál. Lo que se le pasa de
    más —el nombre, el pie— lo ignora el que no lo necesita. */
 const DIBUJANTE = { 'eyey': eyey }[MARCA.dibujo] || somosPuerto;
-const dibujar = (ctx, datos, fotos, lado) => DIBUJANTE.dibujar(ctx, datos, fotos, lado, MARCA);
-const dibujarLamina = (ctx, datos, lamina, foto, logo, lado) =>
-  DIBUJANTE.dibujarLamina(ctx, datos, lamina, foto, logo, lado, MARCA);
+const dibujar = (ctx, datos, fotos, ancho) => DIBUJANTE.dibujar(ctx, datos, fotos, ancho, MARCA);
+const dibujarLamina = (ctx, datos, lamina, foto, logo, ancho) =>
+  DIBUJANTE.dibujarLamina(ctx, datos, lamina, foto, logo, ancho, MARCA);
+
+/* El ancho con que Instagram muestra el feed. El alto lo pone el dibujante
+   —altoDe(1080) = 1350, el 4:5— porque la proporción es del diseño y no algo
+   que cada lugar del editor pueda elegir por su cuenta. */
+const ANCHO_FEED = 1080;
 
 /* ------------------------------------------------------------------ */
 /* catálogos                                                           */
@@ -598,9 +603,9 @@ function repintar(){
     try{
       const lienzo = $('#previa');
       const esReel = placa.formato === 'reel';
-      // el reel es 9:16, así que el lienzo cambia de forma
-      const anchoQuiere = esReel ? REEL.ancho : 1080;
-      const altoQuiere  = esReel ? REEL.alto : 1080;
+      // el reel es 9:16 y la placa 4:5, así que el lienzo cambia de forma
+      const anchoQuiere = esReel ? REEL.ancho : ANCHO_FEED;
+      const altoQuiere  = esReel ? REEL.alto : altoDe(ANCHO_FEED);
       if(lienzo.width !== anchoQuiere || lienzo.height !== altoQuiere){
         lienzo.width = anchoQuiere;
         lienzo.height = altoQuiere;
@@ -683,7 +688,7 @@ const baseNombre = () => (placa.nombre || 'placa').toLowerCase()
   .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'placa';
 
 /* Instagram solo acepta JPEG, así que el carrusel sale en ese formato y a
-   1080, que es el tamaño con que muestra el feed. */
+   1080 x 1350, que es el 4:5 con que muestra el feed. */
 /* Miniaturas de todas las láminas, en orden, como van a salir en el feed. */
 async function pintarTira(){
   const laminas = placa.laminas || [];
@@ -715,7 +720,7 @@ async function pintarTira(){
       const esCierre = cierre && i === cuantas - 1;
       const titulo = esCierre ? 'El cierre' : (i ? 'Lámina ' + (i + 1) : 'La placa');
       return `<button data-vista="${i}" title="${titulo}">
-         <canvas width="160" height="160"></canvas><i>${i + 1}</i>
+         <canvas width="160" height="${altoDe(160)}"></canvas><i>${i + 1}</i>
        </button>`;
     }).join('');
   }
@@ -744,7 +749,7 @@ async function itemsParaPublicar(avisar){
   const cierre = llevaCierre() && laminas.length + 2 <= 10;
   const total = laminas.length + 1 + (cierre ? 1 : 0);
   const lienzo = document.createElement('canvas');
-  lienzo.width = lienzo.height = 1080;
+  lienzo.width = ANCHO_FEED; lienzo.height = altoDe(ANCHO_FEED);
   const ctx = lienzo.getContext('2d');
   const logo = await cargarImagen(LOGO);
   const jpeg = () => new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.92));
@@ -753,7 +758,7 @@ async function itemsParaPublicar(avisar){
   });
 
   const items = [];
-  dibujar(ctx, placa, await imagenesDe(placa), 1080);
+  dibujar(ctx, placa, await imagenesDe(placa), ANCHO_FEED);
   items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
   avisar?.(1 / total);
 
@@ -761,14 +766,14 @@ async function itemsParaPublicar(avisar){
     if(lam.tipo === 'video'){
       items.push(await videoDeLamina(lam, i));
     }else{
-      dibujarLamina(ctx, placa, lam, await cargarImagen(lam.foto), logo, 1080);
+      dibujarLamina(ctx, placa, lam, await cargarImagen(lam.foto), logo, ANCHO_FEED);
       items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
     }
     avisar?.(items.length / total);
   }
 
   if(cierre){
-    dibujarCierre(ctx, placa, await arteDelCierre(), 1080);
+    dibujarCierre(ctx, placa, await arteDelCierre(), ANCHO_FEED);
     items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
     avisar?.(1);
   }
@@ -778,20 +783,20 @@ async function itemsParaPublicar(avisar){
 async function archivosDelCarrusel(){
   const laminas = placa.laminas || [];
   const lienzo = document.createElement('canvas');
-  lienzo.width = lienzo.height = 1080;
+  lienzo.width = ANCHO_FEED; lienzo.height = altoDe(ANCHO_FEED);
   const ctx = lienzo.getContext('2d');
   const logo = await cargarImagen(LOGO);
   const jpeg = () => new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.92));
 
   const archivos = [];
-  dibujar(ctx, placa, await imagenesDe(placa), 1080);
+  dibujar(ctx, placa, await imagenesDe(placa), ANCHO_FEED);
   archivos.push(new File([await jpeg()], `${baseNombre()}-1.jpg`, { type: 'image/jpeg' }));
   for(let i = 0; i < laminas.length; i++){
-    dibujarLamina(ctx, placa, laminas[i], await cargarImagen(laminas[i].foto), logo, 1080);
+    dibujarLamina(ctx, placa, laminas[i], await cargarImagen(laminas[i].foto), logo, ANCHO_FEED);
     archivos.push(new File([await jpeg()], `${baseNombre()}-${i + 2}.jpg`, { type: 'image/jpeg' }));
   }
   if(llevaCierre()){
-    dibujarCierre(ctx, placa, await arteDelCierre(), 1080);
+    dibujarCierre(ctx, placa, await arteDelCierre(), ANCHO_FEED);
     archivos.push(new File([await jpeg()], `${baseNombre()}-cierre.jpg`, { type: 'image/jpeg' }));
   }
   return archivos;
@@ -813,11 +818,12 @@ function armarCaption(){
   return partes.filter(Boolean).join('\n\n');
 }
 
-async function exportarPng(lado){
+async function exportarPng(ancho){
   const lienzo = document.createElement('canvas');
-  lienzo.width = lienzo.height = lado;
-  dibujar(lienzo.getContext('2d'), placa, await imagenesDe(placa), lado);
-  bajar(await new Promise((r) => lienzo.toBlob(r, 'image/png')), `${baseNombre()}-${lado}px.png`);
+  lienzo.width = ancho; lienzo.height = altoDe(ancho);
+  dibujar(lienzo.getContext('2d'), placa, await imagenesDe(placa), ancho);
+  bajar(await new Promise((r) => lienzo.toBlob(r, 'image/png')),
+    `${baseNombre()}-${ancho}x${altoDe(ancho)}.png`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1303,7 +1309,7 @@ $('#bajar_carrusel').addEventListener('click', async (ev) => {
   trabajo('Generando las imágenes', null);
   try{
     const n = await exportarCarrusel();
-    estado(`Listas ${n} imagen${n > 1 ? 'es' : ''} en JPEG 1080`);
+    estado(`Listas ${n} imagen${n > 1 ? 'es' : ''} en JPEG ${ANCHO_FEED}×${altoDe(ANCHO_FEED)}`);
   }catch(e){ estado(e.message, true); }
   finally{ cerrarTrabajo(); congelar(false); ev.target.disabled = false; }
 });
@@ -1652,7 +1658,7 @@ async function quemarVideo(archivo, lamina, avisar){
   }
 
   const lienzo = document.createElement('canvas');
-  lienzo.width = lienzo.height = 1080;
+  lienzo.width = ANCHO_FEED; lienzo.height = altoDe(ANCHO_FEED);
   const ctx = lienzo.getContext('2d');
   const logo = await cargarImagen(LOGO);
 
@@ -2039,8 +2045,9 @@ async function cuadroDelVideo(archivo){
     await new Promise((r) => { video.onseeked = r; setTimeout(r, 1500); });
 
     const lienzo = document.createElement('canvas');
-    lienzo.width = lienzo.height = 1080;
-    dibujarFoto(lienzo.getContext('2d'), video, 0, 0, 1080, 1080, 'cubrir', 50, 50, 1080 / LIENZO);
+    lienzo.width = ANCHO_FEED; lienzo.height = altoDe(ANCHO_FEED);
+    dibujarFoto(lienzo.getContext('2d'), video, 0, 0, ANCHO_FEED, altoDe(ANCHO_FEED),
+      'cubrir', 50, 50, ANCHO_FEED / LIENZO);
     const jpg = await new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.9));
     return { jpg, duracion: video.duration, ancho: video.videoWidth, alto: video.videoHeight };
   }finally{ sacar(); URL.revokeObjectURL(video.src); }
@@ -2102,8 +2109,8 @@ async function videoDeLamina(lam, i){
     try{
       const logo = await cargarImagen(LOGO);
       video = await quemarConCodecs(lam.crudo,
-        (ctx, cuadro) => dibujarLamina(ctx, placa, lam, cuadro, logo, 1080),
-        (a) => trabajo(rotulo, a, espera), 1080, 1080);
+        (ctx, cuadro) => dibujarLamina(ctx, placa, lam, cuadro, logo, ANCHO_FEED),
+        (a) => trabajo(rotulo, a, espera), ANCHO_FEED, altoDe(ANCHO_FEED));
     }catch(e){
       if(String(e.message) === 'Cancelado') throw e;
       console.warn('el camino rápido no pudo, se graba a la antigua:', e.message);
