@@ -1621,12 +1621,6 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
      nivel 3.1, que topa en 921.600 píxeles: un reel de 1080x1920 necesita más
      del doble y el codificador lo rechaza. El 2a es el nivel 4.2, que llega a
      2.228.224 y cubre de sobra cualquier formato de Instagram. */
-  enc.configure({
-    codec: 'avc1.42002a', width: ancho, height: alto,
-    bitrate: tasaDeSalida(ancho, alto), framerate: 30, avc: { format: 'avc' },
-    hardwareAcceleration: 'prefer-software', latencyMode: 'quality',
-  });
-
   /* La salida va a ritmo constante, aunque el origen no lo tenga.
      Casi todo lo que sale de un teléfono, de CapCut o de una IA viene con
      ritmo variable: los cuadros no caen cada 33,3 ms sino cuando el editor
@@ -1645,6 +1639,16 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
     return video.reloj / medio > 45 ? 60 : 30;   // un 60 de verdad se respeta
   })();
   const PASO = Math.round(1e6 / ritmoOrigen);
+
+  /* El ritmo va acá y no un 30 fijo: es lo que el codificador usa para
+     repartir los bits entre cuadros. Diciéndole 30 mientras se le entregan 60
+     reparte el doble de lo que corresponde a cada uno. */
+  enc.configure({
+    codec: 'avc1.42002a', width: ancho, height: alto,
+    bitrate: tasaDeSalida(ancho, alto), framerate: ritmoOrigen, avc: { format: 'avc' },
+    hardwareAcceleration: 'prefer-software', latencyMode: 'quality',
+  });
+
   let siguiente = 0;          // el próximo instante de la rejilla, en microsegundos
   let hayDibujo = false;      // hasta que llegue el primer cuadro no hay qué emitir
   let emitidos = 0;
