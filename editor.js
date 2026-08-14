@@ -417,6 +417,8 @@ $('#marca_video')?.addEventListener('click', (ev) => {
   localStorage.setItem('marca_en_video', b.dataset.marcaVideo === 'no' ? '0' : '1');
   quemados.clear();   // lo grabado antes ya no vale
   pintarCalidad();
+  repintar();         // la previa muestra lo que se va a subir, así que cambia
+  pintarLaminas();
   estado(b.dataset.marcaVideo === 'no'
     ? 'Los videos se van a subir tal cual, sin recomprimir. Pesan mucho menos.'
     : 'A los videos se les va a quemar el degradado y el logo encima.');
@@ -839,13 +841,13 @@ function repintar(){
           // se redibuja al ritmo de la pantalla; cuesta unos 4 ms el cuadro
           const cuadro = () => {
             if(mia !== generacionLamina) return;   // ya hay un dibujo más nuevo
-            dibujarLamina(ctx, placa, lam, enMovimiento, logo, lienzo.width);
+            pintarLamina(ctx, lam, enMovimiento, logo, lienzo.width);
             bucleLamina = requestAnimationFrame(cuadro);
           };
           cuadro();
         }else if(!enMovimiento){
           soltarVideoLamina();
-          dibujarLamina(ctx, placa, lam, await cargarImagen(lam.foto), logo, lienzo.width);
+          pintarLamina(ctx, lam, await cargarImagen(lam.foto), logo, lienzo.width);
         }
       }
       await pintarTira();
@@ -911,7 +913,7 @@ async function pintarTira(){
   dibujar(ctx0, placa, await imagenesDe(placa), 160);
   for(let i = 0; i < laminas.length; i++){
     const ctx = botones[i + 1].querySelector('canvas').getContext('2d');
-    dibujarLamina(ctx, placa, laminas[i], await cargarImagen(laminas[i].foto), logo, 160);
+    pintarLamina(ctx, laminas[i], await cargarImagen(laminas[i].foto), logo, 160);
   }
   if(cierre){
     const ctx = botones[cuantas - 1].querySelector('canvas').getContext('2d');
@@ -946,7 +948,7 @@ async function itemsParaPublicar(avisar){
     if(lam.tipo === 'video'){
       items.push(await videoDeLamina(lam, i));
     }else{
-      dibujarLamina(ctx, placa, lam, await cargarImagen(lam.foto), logo, ANCHO_FEED);
+      pintarLamina(ctx, lam, await cargarImagen(lam.foto), logo, ANCHO_FEED);
       items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
     }
     avisar?.(items.length / total);
@@ -972,7 +974,7 @@ async function archivosDelCarrusel(){
   dibujar(ctx, placa, await imagenesDe(placa), ANCHO_FEED);
   archivos.push(new File([await jpeg()], `${baseNombre()}-1.jpg`, { type: 'image/jpeg' }));
   for(let i = 0; i < laminas.length; i++){
-    dibujarLamina(ctx, placa, laminas[i], await cargarImagen(laminas[i].foto), logo, ANCHO_FEED);
+    pintarLamina(ctx, laminas[i], await cargarImagen(laminas[i].foto), logo, ANCHO_FEED);
     archivos.push(new File([await jpeg()], `${baseNombre()}-${i + 2}.jpg`, { type: 'image/jpeg' }));
   }
   if(llevaCierre()){
@@ -1697,7 +1699,20 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
     : await fuente.arrayBuffer();
 
   const { video, audio } = leerMp4(buffer);
-  if(!video || !video.muestras.length) throw new Error('no se pudo leer el índice del video');
+  /* Sin muestras en las tablas, casi siempre es un MP4 fragmentado: los que
+     salen del grabador del navegador y de varias apps de edición guardan los
+     cuadros en cajas `moof` sueltas en vez de en el índice del principio.
+     Este lector solo entiende el índice clásico. Se dice cuál es el caso para
+     que no parezca un archivo roto, y quien llama se pasa al camino lento,
+     que reproduce el video y no necesita leer nada. */
+  if(!video || !video.muestras.length){
+    const fragmentado = new TextDecoder('latin1')
+      .decode(new Uint8Array(buffer.slice(0, Math.min(buffer.byteLength, 4096))))
+      .includes('mvex');
+    throw new Error(fragmentado
+      ? 'el video viene fragmentado y este camino no lo puede leer'
+      : 'no se pudo leer el índice del video');
+  }
   if(!video.descripcion) throw new Error('el video no viene en H.264');
 
   /* Un lienzo normal y no uno fuera de pantalla: el de fuera de pantalla no
@@ -2506,6 +2521,24 @@ async function agregarVideo(archivo, indice){
    Se guarda lo grabado junto con la firma de lo que se ve, así publicar dos
    veces seguidas no vuelve a grabar nada. */
 const quemados = new Map();
+
+/* Una lámina, dibujada como va a salir publicada.
+   Un video sin marca encima se sube tal cual, así que la previa no puede
+   mostrarle el degradado y el logo: estaría prometiendo algo que el post no
+   va a tener. Se dibuja solo el video, encuadrado igual que al publicarlo.
+   Las fotos y los videos con marca siguen por el dibujante de siempre.
+   Vale para la previa grande, para la tira y para lo que se exporta: una sola
+   función, así no puede haber dos versiones de la verdad. */
+function pintarLamina(ctx, lam, medio, logo, ancho){
+  const crudo = lam?.tipo === 'video' && !marcaEnVideo();
+  if(!crudo) return dibujarLamina(ctx, placa, lam, medio, logo, ancho);
+  const alto = altoDe(ancho);
+  ctx.clearRect(0, 0, ancho, alto);
+  ctx.fillStyle = '#0b0b0d';
+  ctx.fillRect(0, 0, ancho, alto);
+  dibujarFoto(ctx, medio, 0, 0, ancho, alto,
+    lam.ajuste || 'completa', lam.x ?? 50, lam.y ?? 50, ancho / LIENZO);
+}
 
 /* Esperar los datos de un video sin plazo es la forma más fácil de dejar todo
    colgado. Si el navegador no dispara ni «listo» ni «error» —pasa con
