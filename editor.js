@@ -1983,10 +1983,7 @@ async function quemarVideo(archivo, lamina, avisar){
   video.muted = false;
   const sacarDeEscena = enEscena(video);
   try{
-  await new Promise((listo, falla) => {
-    video.onloadedmetadata = listo;
-    video.onerror = () => falla(new Error('No se pudo leer el video'));
-  });
+  await esperarMetadatos(video);
   if(video.duration > DURACION_MAX + 0.5){
     throw new Error(`El video dura ${enMinutos(video.duration)} y el máximo son `
       + `${enMinutos(DURACION_MAX)}. Recortalo y volvé a elegirlo.`);
@@ -2101,10 +2098,7 @@ async function quemarReel(fuente, avisar){
   video.src = propia ? URL.createObjectURL(fuente) : fuente;
   const sacarDeEscena = enEscena(video);
   try{
-  await new Promise((listo, falla) => {
-    video.onloadedmetadata = listo;
-    video.onerror = () => falla(new Error('No se pudo leer el video'));
-  });
+  await esperarMetadatos(video);
   if(video.duration > DURACION_REEL + 0.5){
     throw new Error(`El reel dura ${enMinutos(video.duration)} y el máximo que acepta `
       + `Instagram son ${enMinutos(DURACION_REEL)}. Recortalo y volvé a elegirlo.`);
@@ -2337,10 +2331,7 @@ async function momentoDePortada(fuente){
   video.muted = true;
   const sacar = enEscena(video);
   try{
-    await new Promise((listo, falla) => {
-      video.onloadedmetadata = listo;
-      video.onerror = () => falla(new Error('No se pudo leer el video'));
-    });
+    await esperarMetadatos(video);
     const dura = video.duration || 0;
     if(!dura) return 1.5;
     return await mejorMomento(video, dura);
@@ -2421,10 +2412,7 @@ async function cuadroDelVideo(archivo){
   video.muted = true;
   const sacar = enEscena(video);
   try{
-    await new Promise((listo, falla) => {
-      video.onloadedmetadata = listo;
-      video.onerror = () => falla(new Error('No se pudo leer el video'));
-    });
+    await esperarMetadatos(video);
     if(video.duration > DURACION_MAX + 0.5){
       throw new Error(`El video dura ${enMinutos(video.duration)} y el máximo son `
       + `${enMinutos(DURACION_MAX)}. Recortalo y volvé a elegirlo.`);
@@ -2518,6 +2506,36 @@ async function agregarVideo(archivo, indice){
    Se guarda lo grabado junto con la firma de lo que se ve, así publicar dos
    veces seguidas no vuelve a grabar nada. */
 const quemados = new Map();
+
+/* Esperar los datos de un video sin plazo es la forma más fácil de dejar todo
+   colgado. Si el navegador no dispara ni «listo» ni «error» —pasa con
+   formatos que no entiende, con archivos cortados a la mitad, y en iOS cuando
+   el elemento no llega a decodificar— la promesa no se resuelve nunca: el
+   aviso queda girando y no hay forma de saber en qué se trabó ni con cuál
+   archivo. Era el caso de los cuatro lugares donde se abría un video, y el
+   primero de ellos corre al elegirlo, antes de subir nada.
+   Con plazo, en el peor caso se termina con un motivo escrito. */
+async function esperarMetadatos(video, plazo = 20000){
+  await new Promise((listo, falla) => {
+    let cerrado = false;
+    const fin = (fn, arg) => {
+      if(cerrado) return;
+      cerrado = true;
+      clearTimeout(reloj);
+      video.onloadedmetadata = null;
+      video.onerror = null;
+      fn(arg);
+    };
+    const reloj = setTimeout(() => fin(falla, new Error(
+      `El navegador no pudo leer el video: no respondió en ${Math.round(plazo / 1000)} `
+      + 'segundos. Suele pasar con formatos que no entiende —HEVC, o un .mov de '
+      + 'iPhone— o si el archivo quedó cortado al subirlo.')), plazo);
+    video.onloadedmetadata = () => fin(listo);
+    video.onerror = () => fin(falla, new Error('No se pudo leer el video: no se pudo '
+      + 'abrir el archivo. Puede estar incompleto o en un formato que este navegador '
+      + 'no reproduce.'));
+  });
+}
 
 /* Las medidas de un video que ya está en el servidor, sin bajarlo entero. */
 async function medidasDeVideo(ruta){
