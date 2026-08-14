@@ -1757,10 +1757,15 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
      último que haya llegado: si el origen va más lento se repite, si va más
      rápido se descarta. El archivo queda parejo de punta a punta. */
   const ritmoOrigen = (() => {
-    const d = video.muestras.map((m) => m.duracion).filter((x) => x > 0).sort((x, y) => x - y);
-    if(!d.length) return 30;
-    const medio = d[Math.floor(d.length / 2)];
-    return video.reloj / medio > 45 ? 60 : 30;   // un 60 de verdad se respeta
+    /* El promedio y no la mediana: en un video desparejo —y los que llegan
+       suelen serlo— la mediana la fija un puñado de cuadros muy juntos y
+       daba 60 para un video que en realidad corre a seis por segundo. El
+       promedio sale de lo único que no miente, cuántos cuadros hay y cuánto
+       dura el video entero. */
+    const total = video.muestras.reduce((s, m) => s + (m.duracion || 0), 0);
+    if(!total || !video.muestras.length) return 30;
+    const porSegundo = video.muestras.length / (total / video.reloj);
+    return porSegundo > 45 ? 60 : 30;   // un 60 de verdad se respeta
   })();
   const PASO = Math.round(1e6 / ritmoOrigen);
 

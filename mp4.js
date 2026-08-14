@@ -334,7 +334,7 @@ function recorrer(vista, desde, hasta, alEncontrar){
   }
 }
 
-const CONTENEDORAS = ['moov', 'trak', 'mdia', 'minf', 'stbl', 'edts'];
+const CONTENEDORAS = ['moov', 'trak', 'mdia', 'minf', 'stbl', 'edts', 'mvex'];
 
 /* Devuelve las pistas con sus muestras ya ubicadas. */
 export function leerMp4(buffer){
@@ -356,9 +356,22 @@ export function leerMp4(buffer){
     const t = actual.tabla;
 
     if(nombre === 'mdhd'){
+      /* En la versión 1 las fechas ocupan 8 bytes cada una, pero el reloj
+         sigue siendo de 32: estaba leído como si fuera de 64 y devolvía
+         números de billones, con lo que toda duración calculada daba cero.
+         La duración sí es de 64, y empieza cuatro bytes antes de donde se la
+         buscaba. Se nota solo con archivos que usan esa versión, que son los
+         que graba el navegador. */
       const version = vista.getUint8(ini);
-      actual.reloj = version === 1 ? Number(vista.getBigUint64(ini + 20)) : vista.getUint32(ini + 12);
-      actual.duracion = version === 1 ? Number(vista.getBigUint64(ini + 28)) : vista.getUint32(ini + 16);
+      actual.reloj = version === 1 ? vista.getUint32(ini + 20) : vista.getUint32(ini + 12);
+      actual.duracion = version === 1
+        ? Number(vista.getBigUint64(ini + 24))
+        : vista.getUint32(ini + 16);
+    }
+    if(nombre === 'tkhd'){
+      // el número de pista: es con lo que los fragmentos dicen a quién pertenecen
+      const version = vista.getUint8(ini);
+      actual.id = version === 1 ? vista.getUint32(ini + 20) : vista.getUint32(ini + 12);
     }
     if(nombre === 'hdlr'){
       actual.clase = String.fromCharCode(vista.getUint8(ini + 8), vista.getUint8(ini + 9),
@@ -424,12 +437,113 @@ export function leerMp4(buffer){
     }
   };
 
+  /* Los valores por omisión de cada pista, para los archivos fragmentados:
+     cuánto dura y cuánto ocupa una muestra cuando el fragmento no lo dice. */
+  const porOmision = new Map();
+  recorrer(vista, 0, buffer.byteLength, function buscarTrex(n, a, b){
+    if(n === 'moov' || n === 'mvex'){ recorrer(vista, a, b, buscarTrex); return; }
+    if(n !== 'trex') return;
+    porOmision.set(vista.getUint32(a + 4), {
+      duracion: vista.getUint32(a + 12),
+      tamano:   vista.getUint32(a + 16),
+      banderas: vista.getUint32(a + 20),
+    });
+  });
+
   recorrer(vista, 0, buffer.byteLength, paso);
+
+  /* Los fragmentos.
+     Un MP4 fragmentado no guarda las muestras en el índice del principio sino
+     en cajas `moof` repartidas por el archivo, cada una con su pedazo de datos
+     al lado. Así los arma el grabador del navegador y varias apps de edición,
+     y son la mayoría de los videos que llegan.
+     Sin esto el lector devolvía cero muestras y todo el camino rápido se caía
+     al lento, que graba a reloj y pierde cuadros: es de ahí que salía el video
+     a tirones. */
+  const fragmentos = [];
+  recorrer(vista, 0, buffer.byteLength, (n, a, b) => {
+    if(n === 'moof') fragmentos.push({ ini: a - 8, fin: b });
+  });
+
+  for(const frag of fragmentos){
+    recorrer(vista, frag.ini + 8, frag.fin, (n, a, b) => {
+      if(n !== 'traf') return;
+      let pista = null, base = frag.ini, tiempoBase = null;
+      let dur = 0, tam = 0, ban = 0, corridas = [];
+
+      recorrer(vista, a, b, (m, x) => {
+        if(m === 'tfhd'){
+          const f = vista.getUint32(x) & 0xffffff;   // versión y banderas juntas
+          let p = x + 4;
+          const id = vista.getUint32(p); p += 4;
+          pista = pistas.find((q) => q.id === id) || null;
+          const om = porOmision.get(id) || {};
+          dur = om.duracion || 0; tam = om.tamano || 0; ban = om.banderas || 0;
+          if(f & 0x000001){ base = Number(vista.getBigUint64(p)); p += 8; }
+          if(f & 0x000002){ p += 4; }
+          if(f & 0x000008){ dur = vista.getUint32(p); p += 4; }
+          if(f & 0x000010){ tam = vista.getUint32(p); p += 4; }
+          if(f & 0x000020){ ban = vista.getUint32(p); p += 4; }
+        }
+        if(m === 'tfdt'){
+          const v = vista.getUint8(x);
+          tiempoBase = v === 1 ? Number(vista.getBigUint64(x + 4)) : vista.getUint32(x + 4);
+        }
+        if(m === 'trun'){
+          const f = vista.getUint32(x) & 0xffffff;
+          let p = x + 4;
+          const cuantas = vista.getUint32(p); p += 4;
+          let desplazamiento = 0, primeras = null;
+          if(f & 0x000001){ desplazamiento = vista.getInt32(p); p += 4; }
+          if(f & 0x000004){ primeras = vista.getUint32(p); p += 4; }
+          const lista = [];
+          for(let k = 0; k < cuantas; k++){
+            let d = dur, t = tam, bb = k === 0 && primeras !== null ? primeras : ban;
+            if(f & 0x000100){ d = vista.getUint32(p); p += 4; }
+            if(f & 0x000200){ t = vista.getUint32(p); p += 4; }
+            if(f & 0x000400){ bb = vista.getUint32(p); p += 4; }
+            if(f & 0x000800){ p += 4; }   // el corrimiento de composición no se usa
+            lista.push({ duracion: d, tamano: t, banderas: bb });
+          }
+          corridas.push({ desde: base + desplazamiento, lista });
+        }
+      });
+
+      if(!pista) return;
+      if(!pista.fragmentadas) pista.fragmentadas = [];
+      /* El tiempo de cada muestra. Si el fragmento trae `tfdt` se arranca de
+         ahí; si no —y muchos no lo traen— se sigue contando desde donde quedó
+         el fragmento anterior. Antes, sin `tfdt`, todas las muestras quedaban
+         en el instante cero: el que las consume creía que el video entero
+         ocurría a la vez y emitía un solo cuadro. */
+      if(pista.finFragmento === undefined) pista.finFragmento = 0;
+      let reloj = tiempoBase ?? pista.finFragmento;
+      for(const c of corridas){
+        let pos = c.desde;
+        for(const m of c.lista){
+          pista.fragmentadas.push({
+            datos: new Uint8Array(buffer.slice(pos, pos + m.tamano)),
+            tiempo: reloj ?? 0,
+            duracion: m.duracion,
+            // el bit 16 marca «esta no es cuadro clave»
+            clave: ((m.banderas >>> 16) & 1) === 0,
+          });
+          pos += m.tamano;
+          reloj += m.duracion;
+        }
+      }
+      pista.finFragmento = reloj;
+    });
+  }
 
   // con las tablas se reconstruye dónde empieza cada muestra y cuánto dura
   for(const p of pistas){
     const t = p.tabla;
-    if(!t.stsz || !t.stco || !t.stsc) { p.muestras = []; continue; }
+    if(!t.stsz || !t.stco || !t.stsc || !t.stsz.length){
+      // sin índice clásico manda lo que trajeron los fragmentos
+      p.muestras = p.fragmentadas || [];
+      continue;
+    }
 
     // a qué trozo pertenece cada muestra
     const porTrozo = [];
