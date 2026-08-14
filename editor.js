@@ -1638,9 +1638,13 @@ async function mantenerDespierto(){
 function calidadVideo(){ return localStorage.getItem('calidad_video') || 'alta'; }
 
 /* Si los videos del carrusel llevan el logo y el degradado quemados encima.
-   Viene puesto, que es como funcionó siempre. Apagarlo cambia mucho el peso
-   —ver videoDeLamina— a cambio de que el video no lleve la marca. */
-function marcaEnVideo(){ return localStorage.getItem('marca_en_video') !== '0'; }
+   Viene apagado. Dibujarles algo obliga a recomprimirlos enteros, y de ahí
+   salían el peso, la espera y —sobre todo— los tirones: recomprimir es lo
+   que hacía caer al camino que pierde cuadros. Sin dibujar nada el video se
+   manda tal cual llegó, que es como se ve bien.
+   La placa del carrusel lleva el logo igual, así que el post sigue firmado.
+   Se puede volver a encender desde el panel cuando convenga. */
+function marcaEnVideo(){ return localStorage.getItem('marca_en_video') === '1'; }
 function tasaDeVideo(){
   return calidadVideo() === 'rapida'
     ? 2_500_000
