@@ -128,18 +128,36 @@ function avc1(ancho, alto, avcC){
 
 /* La descripción del audio AAC. El «esds» es un descriptor anidado que viene
    de MPEG-4 y es la parte más quisquillosa del formato. */
+/* La descripción del audio, que va en cajas anidadas y cada una declara su
+   propio largo. Estaban mal contados: el descriptor del decodificador decía
+   medir 15 bytes cuando tenía 17, así que un lector estricto se detenía justo
+   antes del trozo que dice la frecuencia y los canales. Los navegadores lo
+   adivinan igual —por eso el audio se escuchaba bien en las pruebas— pero
+   Instagram rechazaba el archivo sin explicar por qué.
+   Y faltaba entero el descriptor de sincronización, que el formato pide.
+   Los largos se calculan en vez de escribirse a mano, para que no se vuelvan
+   a desfasar si alguien agrega un campo. */
 function mp4a(canales, muestreo, config){
+  // lo que dice qué audio es: frecuencia, canales, perfil
+  const especifico = new Cinta().u8(0x05).u8(config.length).bytes(config);
+
   const dec = new Cinta()
-    .u8(0x04).u8(13 + config.length)
+    .u8(0x04).u8(13 + especifico.largo)
     .u8(0x40)          // audio MPEG-4
     .u8(0x15)          // corriente de audio
-    .u24(0).u32(0).u32(0)
-    .u8(0x05).u8(config.length).bytes(config);
+    .u24(0)            // tamaño del búfer
+    .u32(128000).u32(128000)   // tasa máxima y media; en cero algunos lo rechazan
+    .bytes(especifico.unir());
+
+  /* Sin esto el formato queda incompleto. El 0x02 es «el predefinido para MP4»,
+     que es lo que corresponde acá. */
+  const sincro = new Cinta().u8(0x06).u8(1).u8(0x02);
 
   const esds = new Cinta()
-    .u8(0x03).u8(dec.largo + 3)
+    .u8(0x03).u8(3 + dec.largo + sincro.largo)
     .u16(1).u8(0)
-    .bytes(dec.unir());
+    .bytes(dec.unir())
+    .bytes(sincro.unir());
 
   const cuerpo = new Cinta()
     .bytes(new Uint8Array(6))
