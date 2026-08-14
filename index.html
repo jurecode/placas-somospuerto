@@ -385,6 +385,17 @@
   .publicar:disabled{ filter:grayscale(.7); cursor:default }
   .publicar svg{ width:19px; height:19px; flex:none }
   .pie-previa{ font-size:12px; color:var(--suave); margin-top:-6px }
+  /* ---------- qué se está subiendo ahora ---------- */
+  .ahora ul{ list-style:none; display:grid; gap:7px; margin-top:10px; padding:0 }
+  .ahora li{
+    background:var(--hueco); border:1px solid var(--linea); border-radius:8px;
+    padding:8px 10px; font-size:12.5px; display:grid; gap:2px;
+  }
+  .ahora li.propia{ border-color:var(--acento) }
+  .ahora li b{ font-weight:600 }
+  .ahora li small{ font-size:11px; color:var(--suave) }
+  .ahora li.libre{ color:var(--suave); border-style:dashed }
+
   /* ---------- lo que está subido ---------- */
   .archivos ul{ list-style:none; display:grid; gap:8px; margin-top:12px; padding:0 }
   .archivos li{
@@ -753,6 +764,16 @@
       lo que armes acá a mano no se toca.
     </p>
     <a href="feeds.php"><button class="descarga" style="width:100%">Abrir el panel de feeds</button></a>
+  </fieldset>
+
+  <fieldset data-seccion="mas" class="ahora">
+    <legend>Qué se está subiendo ahora</legend>
+    <p class="nota" style="margin-top:0">
+      Lo que hay en curso en este momento, mirado desde el servidor: si estás
+      publicando desde el teléfono y desde la computadora a la vez, acá se ven
+      los dos. Publicar dos cosas al mismo tiempo las hace chocar.
+    </p>
+    <ul id="en_curso"></ul>
   </fieldset>
 
   <fieldset data-seccion="mas" class="archivos">

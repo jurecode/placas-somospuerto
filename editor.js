@@ -445,6 +445,52 @@ $('#calidad')?.addEventListener('click', (ev) => {
 });
 pintarCalidad();
 
+/* La lista de lo que hay en curso, refrescada sola mientras se mira.
+   Solo se pregunta cuando la sección está a la vista: no tiene sentido
+   golpear el servidor cada cinco segundos mientras alguien escribe un
+   titular. */
+async function pintarEnCurso(){
+  const donde = $('#en_curso');
+  if(!donde) return;
+  let lista = [];
+  try{
+    const { actividad } = await api('api/actividad.php');
+    lista = actividad || [];
+  }catch(e){
+    donde.innerHTML = `<li class="libre">No se pudo consultar: ${esc(e.message)}</li>`;
+    return;
+  }
+  if(!lista.length){
+    donde.innerHTML = '<li class="libre">Nada en curso.</li>';
+    return;
+  }
+  const ahora = Date.now() / 1000;
+  donde.innerHTML = lista.map((x) => {
+    const hace = Math.max(0, Math.round(ahora - (x.desde || ahora)));
+    const mio = x.id === ESTE;
+    return `<li class="${mio ? 'propia' : ''}">
+      <b>${esc(x.que || 'trabajando')}</b>
+      <small>${mio ? 'acá mismo' : 'desde ' + esc(x.donde || 'otro equipo')}
+        · hace ${hace < 60 ? hace + ' s' : Math.round(hace / 60) + ' min'}
+        ${x.paso ? '· ' + esc(x.paso) : ''}</small>
+    </li>`;
+  }).join('');
+}
+
+/* Se pregunta cada cinco segundos mientras la pestaña esté a la vista.
+   Antes esto miraba si la sección estaba en pantalla, para no molestar al
+   servidor de más. No funcionaba: la sección puede no tener tamaño todavía
+   cuando se la empieza a vigilar, y entonces nunca cuenta como visible y la
+   lista no se llena nunca. El ahorro no valía la complicación —es un pedido
+   diminuto— y con la pestaña de fondo el navegador ya lo frena solo. */
+if($('#en_curso')){
+  pintarEnCurso();
+  setInterval(() => { if(!document.hidden) pintarEnCurso(); }, 5000);
+  document.addEventListener('visibilitychange', () => {
+    if(!document.hidden) pintarEnCurso();
+  });
+}
+
 /* Lo que está subido en el servidor.
    La carpeta está cerrada al público —pedirla de frente devuelve 403— y así
    tiene que seguir, pero cuando Instagram rechaza un video lo primero que uno
@@ -627,6 +673,7 @@ function trabajo(texto, avance, pista){
   barra.classList.toggle('sinmedida', !medible);
   barra.style.width = medible ? Math.round(avance * 100) + '%' : '';
   if(pista !== undefined) $('#trabajando_pista').textContent = pista || '';
+  ultimoPaso = texto;
 }
 
 function cerrarTrabajo(){
@@ -647,6 +694,64 @@ function aviso(titulo, detalle){
   $('#trabajando_pista').textContent = detalle || '';
   caja.querySelector('.trabajando__riel').hidden = true;
   $('#cortar_trabajo').textContent = 'Entendido';
+}
+
+/* ------------------------------------------------------------------ */
+/* qué se está haciendo, visto desde cualquier lado                    */
+/* ------------------------------------------------------------------ */
+
+/* El aviso de «esperá que termine» miraba solo esta pestaña. Con dos
+   abiertas, o publicando desde el teléfono y desde la computadora al mismo
+   tiempo, ninguna se enteraba de la otra y las dos publicaciones se pisaban.
+   Ahora lo que está en curso se anota en el servidor y lo ven todos. */
+const ESTE = (crypto.randomUUID?.() || Math.random().toString(36).slice(2))
+  .replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
+
+/* De dónde sale: alcanza para saber si el otro que está publicando sos vos
+   en otra pestaña o alguien más en otro aparato. */
+const AQUI = (() => {
+  const a = navigator.userAgent;
+  const que = /iPhone|iPad/.test(a) ? 'un iPhone'
+            : /Android/.test(a) ? 'un Android'
+            : /Macintosh/.test(a) ? 'una Mac'
+            : /Windows/.test(a) ? 'un Windows' : 'otro equipo';
+  return que;
+})();
+
+let latido = null;
+async function anotarActividad(que, paso, desde){
+  try{
+    await api('api/actividad.php', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clave: clave(), tarea: 'anotar', id: ESTE, que, paso, donde: AQUI, desde }),
+    });
+  }catch(e){ /* que no falle publicar por no poder anotar */ }
+}
+
+function empezarActividad(que){
+  const desde = Math.round(Date.now() / 1000);
+  anotarActividad(que, '', desde);
+  clearInterval(latido);
+  // se refresca cada tanto: lo anotado caduca solo si el navegador se cierra
+  latido = setInterval(() => anotarActividad(que, ultimoPaso, desde), 20000);
+}
+
+let ultimoPaso = '';
+function terminarActividad(){
+  clearInterval(latido); latido = null;
+  ultimoPaso = '';
+  api('api/actividad.php', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clave: clave(), tarea: 'borrar', id: ESTE }),
+  }).catch(() => {});
+}
+
+/* Lo que hay en curso ahora mismo, sin contar lo de esta pestaña. */
+async function otrosPublicando(){
+  try{
+    const { actividad } = await api('api/actividad.php');
+    return (actividad || []).filter((x) => x.id !== ESTE);
+  }catch(e){ return []; }
 }
 
 /* Publicar, programar y descargar dibujan con lo que la placa tiene en ese
@@ -1350,6 +1455,17 @@ $('#publicar').addEventListener('click', async (ev) => {
   if(enCurso > 0){
     return estado('Esperá a que termine lo que se está subiendo: si no, sale sin eso.', true);
   }
+  /* Y que no haya otro publicando desde otro lado. Dos publicaciones a la vez
+     se pisan: Instagram procesa las piezas de las dos y devuelve errores que
+     no dicen nada. */
+  const otros = await otrosPublicando();
+  if(otros.length){
+    const o = otros[0];
+    const hace = Math.max(0, Math.round(Date.now()/1000 - (o.desde || 0)));
+    if(!confirm(`Hay algo publicándose desde ${o.donde || 'otro equipo'} `
+      + `hace ${hace} segundos: «${o.que}». Publicar dos cosas a la vez las hace `
+      + 'chocar. ¿Seguimos igual?')) return;
+  }
   const laminas = (placa.laminas || []).length + 1;
   if(!confirm(`Se va a publicar en Instagram un carrusel de ${laminas} imagen${laminas > 1 ? 'es' : ''}. ¿Seguimos?`)) return;
   ev.target.disabled = true;
@@ -1357,6 +1473,7 @@ $('#publicar').addEventListener('click', async (ev) => {
   const despierto = await mantenerDespierto();
   abrirTrabajo();
   congelar(true);   // cada pieza se dibuja con lo que hay ahora
+  empezarActividad(`publicando ${placa.nombre || 'una placa'}`);
   try{
     if(placa.formato === 'reel' && !fuenteDelReel()){
       estado('Falta el video del reel.', true);
@@ -1396,7 +1513,7 @@ $('#publicar').addEventListener('click', async (ev) => {
     if(datos.enlace) window.open(datos.enlace, '_blank');
   }catch(e){ estado(e.message, true); }
   finally{
-    cerrarTrabajo(); congelar(false);
+    cerrarTrabajo(); congelar(false); terminarActividad();
     despierto?.release().catch(() => {});
     ev.target.disabled = false;
   }
@@ -1460,10 +1577,22 @@ $('#programar').addEventListener('click', async (ev) => {
   if(enCurso > 0){
     return estado('Esperá a que termine lo que se está subiendo: si no, sale sin eso.', true);
   }
+  /* Y que no haya otro publicando desde otro lado. Dos publicaciones a la vez
+     se pisan: Instagram procesa las piezas de las dos y devuelve errores que
+     no dicen nada. */
+  const otros = await otrosPublicando();
+  if(otros.length){
+    const o = otros[0];
+    const hace = Math.max(0, Math.round(Date.now()/1000 - (o.desde || 0)));
+    if(!confirm(`Hay algo publicándose desde ${o.donde || 'otro equipo'} `
+      + `hace ${hace} segundos: «${o.que}». Publicar dos cosas a la vez las hace `
+      + 'chocar. ¿Seguimos igual?')) return;
+  }
   ev.target.disabled = true;
   const despierto = await mantenerDespierto();
   abrirTrabajo();
   congelar(true);   // las imágenes se generan ahora, con lo que hay ahora
+  empezarActividad(`programando ${placa.nombre || 'una placa'}`);
   try{
     const carga = await cargaParaProgramar();
     trabajo('Anotando en la cola', null);
@@ -1483,7 +1612,7 @@ $('#programar').addEventListener('click', async (ev) => {
     await pintarCola();
   }catch(e){ estado(e.message, true); }
   finally{
-    cerrarTrabajo(); congelar(false);
+    cerrarTrabajo(); congelar(false); terminarActividad();
     despierto?.release().catch(() => {});
     ev.target.disabled = false;
   }
@@ -1537,7 +1666,7 @@ $('#bajar_reel').addEventListener('click', async (ev) => {
     estado('Video listo, se descargó');
   }catch(e){ estado(e.message, true); }
   finally{
-    cerrarTrabajo(); congelar(false);
+    cerrarTrabajo(); congelar(false); terminarActividad();
     despierto?.release().catch(() => {});
     ev.target.disabled = false;
   }
