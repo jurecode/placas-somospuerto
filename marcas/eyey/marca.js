@@ -42,8 +42,10 @@ export const MARCA = {
     diseno: 'unica',
   },
 
-  /* Una sola foto de fondo: no hay armados que elegir. */
-  disenos: false,
+  /* Los cuatro armados, igual que el otro medio: una foto o dos, con o sin
+     el círculo. Acá la foto va a sangre, así que dos fotos son las dos
+     mitades del cuadro en vez de dos recuadros con márgenes. */
+  disenos: true,
 
   /* Por ahora solo la placa normal. El urgente y el reel están dibujados con
      la pieza gráfica del otro medio, así que se esconden hasta tener la de

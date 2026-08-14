@@ -171,6 +171,12 @@
 
     /* se muestra una sección por vez */
     body[data-seccion] fieldset[data-seccion]{ display:none }
+    /* Un fieldset escondido a mano sigue escondido. Sin esto, el `display:block`
+       de la sección elegida le gana al atributo `hidden` —que solo es un
+       `display:none` del navegador— y reaparecía lo que el medio había
+       apagado, como el selector de armados donde no corresponde. */
+    body[data-seccion] fieldset[hidden]{ display:none !important }
+
     body[data-seccion="titular"]  fieldset[data-seccion="titular"],
     body[data-seccion="fotos"]    fieldset[data-seccion="fotos"],
     body[data-seccion="etiqueta"] fieldset[data-seccion="etiqueta"],
