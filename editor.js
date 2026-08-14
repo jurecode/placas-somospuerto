@@ -2427,8 +2427,73 @@ async function agregarVideo(archivo, indice){
    veces seguidas no vuelve a grabar nada. */
 const quemados = new Map();
 
+/* Las medidas de un video que ya está en el servidor, sin bajarlo entero. */
+async function medidasDeVideo(ruta){
+  const v = document.createElement('video');
+  v.src = ruta; v.muted = true; v.preload = 'metadata';
+  const sacar = enEscena(v);
+  try{
+    await new Promise((ok) => { v.onloadedmetadata = ok; v.onerror = ok; setTimeout(ok, 6000); });
+    return v.videoWidth ? { ancho: v.videoWidth, alto: v.videoHeight } : null;
+  }finally{ sacar(); }
+}
+
 async function videoDeLamina(lam, i){
-  if(!lam.crudo) return { tipo: 'video', ruta: lam.video };   // de antes: ya venía quemado
+  /* Los videos de antes vienen ya grabados y sin el archivo original, así que
+     no hay nada que volver a dibujarles. Se mandaban tal cual.
+     El problema es que se grabaron cuando la placa era cuadrada, y en el
+     mismo carrusel las imágenes ahora salen en 4:5. Instagram exige que todas
+     las piezas tengan la misma proporción y rechaza el conjunto sin explicar
+     cuál es el problema: «rechazó el video 2 de 4: ERROR».
+     Si las medidas no coinciden se lo reencuadra al 4:5 antes de mandarlo.
+     Entra entero, con lo que sobra relleno con una copia difuminada de él
+     mismo, y no se le dibuja nada encima: el logo y el degradado ya los tiene
+     grabados de cuando se hizo, y ponérselos otra vez los duplicaría. */
+  if(!lam.crudo){
+    if(!lam.video) return { tipo: 'video', ruta: lam.video };
+    const medidas = await medidasDeVideo(lam.video);
+    const quiere = altoDe(ANCHO_FEED) / ANCHO_FEED;
+    if(!medidas || Math.abs(medidas.alto / medidas.ancho - quiere) < 0.01){
+      return { tipo: 'video', ruta: lam.video };   // ya tiene la proporción buena
+    }
+    const yaEsta = quemados.get(lam.video);
+    if(yaEsta) return { tipo: 'video', ruta: yaEsta.ruta };
+
+    const rotulo = `Acomodando el video ${i + 1}`;
+    const pista = `Es de antes y mide ${medidas.ancho}x${medidas.alto}. `
+                + 'Instagram no acepta un carrusel con piezas de proporciones distintas.';
+    anotar('video de antes', { pieza: i + 1,
+      medidas: `${medidas.ancho}x${medidas.alto}`,
+      pasa_a: `${ANCHO_FEED}x${altoDe(ANCHO_FEED)}`, nivel: 'aviso' });
+    trabajo(rotulo, 0, pista);
+    const alto = altoDe(ANCHO_FEED);
+    const u = ANCHO_FEED / LIENZO;
+    let listo = null;
+    if(hayCodecs()){
+      try{
+        listo = await quemarConCodecs(lam.video,
+          (ctx, cuadro) => {
+            ctx.clearRect(0, 0, ANCHO_FEED, alto);
+            dibujarFoto(ctx, cuadro, 0, 0, ANCHO_FEED, alto, 'completa', 50, 50, u);
+          },
+          (b) => trabajo(rotulo, b, pista), ANCHO_FEED, alto);
+      }catch(e){
+        if(String(e.message) === 'Cancelado') throw e;
+        anotar('no se pudo acomodar el video', { porque: String(e.message).slice(0, 120),
+          nivel: 'mal' });
+      }
+    }
+    if(!listo){
+      throw new Error(`El video ${i + 1} es de antes y mide ${medidas.ancho}x${medidas.alto}, `
+        + 'que no combina con el resto del carrusel, y este navegador no puede '
+        + 'reacomodarlo. Cambialo por uno nuevo desde el carrusel.');
+    }
+    trabajo(rotulo, 1, 'Subiéndolo.');
+    const sub = await guardarFoto(new File([listo], 'lamina.mp4', { type: 'video/mp4' }),
+      (b) => trabajo(rotulo, b, 'Subiéndolo.'));
+    quemados.set(lam.video, { firma: 'reencuadrado', ruta: sub.ruta });
+    return { tipo: 'video', ruta: sub.ruta };
+  }
 
   const firma = JSON.stringify([lam.crudo, lam.ajuste, lam.x, lam.y, placa.color_fondo]);
   const guardado = quemados.get(lam.crudo);
