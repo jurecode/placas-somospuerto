@@ -385,6 +385,21 @@
   .publicar:disabled{ filter:grayscale(.7); cursor:default }
   .publicar svg{ width:19px; height:19px; flex:none }
   .pie-previa{ font-size:12px; color:var(--suave); margin-top:-6px }
+  /* ---------- lo que está subido ---------- */
+  .archivos ul{ list-style:none; display:grid; gap:8px; margin-top:12px; padding:0 }
+  .archivos li{
+    display:grid; grid-template-columns:96px minmax(0,1fr); gap:10px;
+    background:var(--hueco); border:1px solid var(--linea); border-radius:9px; padding:8px;
+  }
+  .archivos video, .archivos img{
+    width:96px; height:120px; object-fit:cover; border-radius:6px;
+    background:#000; display:block; border:1px solid var(--linea);
+  }
+  .archivos b{ font-size:12px; font-weight:600; word-break:break-all; display:block }
+  .archivos small{ font-size:11px; color:var(--suave); display:block; margin-top:3px }
+  .archivos small.mal{ color:var(--mal) }
+  .archivos a{ font-size:11px }
+
   /* ---------- bitácora ---------- */
   .bitacora ul{ list-style:none; display:grid; gap:5px; max-height:340px; overflow-y:auto }
   .bitacora li{
@@ -712,6 +727,20 @@
       lo que armes acá a mano no se toca.
     </p>
     <a href="feeds.php"><button class="descarga" style="width:100%">Abrir el panel de feeds</button></a>
+  </fieldset>
+
+  <fieldset data-seccion="mas" class="archivos">
+    <legend>Lo que está subido</legend>
+    <p class="nota" style="margin-top:0">
+      Los archivos que se mandaron al servidor, del último al primero. Es lo
+      que Instagram descarga: si rechaza un video, acá se puede abrir y ver
+      qué se le mandó, con sus medidas.
+    </p>
+    <div class="fila">
+      <button class="descarga" id="ver_archivos">Ver los archivos</button>
+      <span class="nota" id="cuantos_archivos" style="margin:0"></span>
+    </div>
+    <ul id="archivos"></ul>
   </fieldset>
 
   <fieldset data-seccion="mas" class="bitacora">

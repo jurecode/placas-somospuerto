@@ -429,6 +429,54 @@ $('#calidad')?.addEventListener('click', (ev) => {
 });
 pintarCalidad();
 
+/* Lo que está subido en el servidor.
+   La carpeta está cerrada al público —pedirla de frente devuelve 403— y así
+   tiene que seguir, pero cuando Instagram rechaza un video lo primero que uno
+   quiere es abrirlo y mirar qué se le mandó. Acá se listan los archivos y
+   cada video se puede reproducir en el momento.
+   Las medidas se miden en el navegador y no en el servidor: son el dato que
+   más importa —Instagram no acepta un carrusel con piezas de proporciones
+   distintas— y para saberlas en PHP haría falta leer el contenedor a mano. */
+$('#ver_archivos')?.addEventListener('click', async () => {
+  const boton = $('#ver_archivos');
+  boton.disabled = true;
+  boton.textContent = 'Buscando…';
+  try{
+    const { archivos, total } = await api('api/fotos.php?tarea=listar&cuantos=40');
+    $('#cuantos_archivos').textContent = `${archivos.length} de ${total}`;
+    $('#archivos').innerHTML = archivos.map((f) => `
+      <li data-archivo="${esc(f.url)}">
+        ${f.tipo === 'video'
+          ? `<video src="${esc(f.url)}" preload="metadata" controls muted playsinline></video>`
+          : `<img src="${esc(f.url)}" alt="" loading="lazy">`}
+        <div>
+          <b>${esc(f.nombre)}</b>
+          <small>${mb(f.bytes)} · ${new Date(f.cuando).toLocaleString('es-CL')}</small>
+          <small data-medidas>${f.tipo === 'video' ? 'midiendo…' : ''}</small>
+          <a href="${esc(f.url)}" target="_blank" rel="noopener">abrirlo en otra pestaña</a>
+        </div>
+      </li>`).join('') || '<li><div><b>No hay nada subido todavía.</b></div></li>';
+
+    /* La proporción de la salida, para poder comparar de un vistazo. */
+    const buena = altoDe(ANCHO_FEED) / ANCHO_FEED;
+    for(const li of $('#archivos').children){
+      const v = li.querySelector('video');
+      const donde = li.querySelector('[data-medidas]');
+      if(!v || !donde) continue;
+      await new Promise((ok) => { v.onloadedmetadata = ok; v.onerror = ok; setTimeout(ok, 6000); });
+      if(!v.videoWidth){ donde.textContent = 'no se pudo leer'; continue; }
+      const suya = v.videoHeight / v.videoWidth;
+      const cuadra = Math.abs(suya - buena) < 0.01;
+      donde.textContent = `${v.videoWidth}x${v.videoHeight} · ${seg((v.duration || 0) * 1000)}`
+        + (cuadra ? ' · la proporción del carrusel'
+                  : ` · OJO: el carrusel va en ${ANCHO_FEED}x${altoDe(ANCHO_FEED)}`);
+      donde.classList.toggle('mal', !cuadra);
+    }
+  }catch(e){ $('#cuantos_archivos').textContent = e.message; }
+  boton.disabled = false;
+  boton.textContent = 'Actualizar la lista';
+});
+
 /* Copiar sirve para mandármela: lo que se copia es texto plano, una línea
    por evento, que se pega en cualquier lado. */
 $('#copiar_bitacora')?.addEventListener('click', async () => {

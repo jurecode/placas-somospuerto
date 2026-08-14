@@ -14,6 +14,40 @@ require_once __DIR__ . '/lib.php';
 cargar_config();
 exigir_clave();
 
+/* Listar lo que hay subido. La carpeta está cerrada al público —el hosting
+ * devuelve 403 si se pide el directorio— y así tiene que seguir, pero desde
+ * el panel hace falta poder mirar un archivo concreto: cuando Instagram
+ * rechaza un video, lo primero que uno quiere es abrirlo y ver qué se mandó.
+ * Va detrás de la clave, igual que subir. */
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET' && ($_GET['tarea'] ?? '') === 'listar') {
+    [$dir, $base] = carpeta('fotos');
+    $cuantos = min(200, max(1, (int) ($_GET['cuantos'] ?? 60)));
+
+    $lista = [];
+    foreach (scandir($dir) ?: [] as $n) {
+        if ($n === '.' || $n === '..' || $n[0] === '.') continue;
+        $ruta = $dir . '/' . $n;
+        if (!is_file($ruta)) continue;
+        /* Solo lo que se puede mirar. Se listan las extensiones permitidas en
+         * vez de descartar las que molestan: en la carpeta puede haber pedazos
+         * a medio subir, y cualquier cosa que llegue mañana quedaría afuera
+         * sola en vez de aparecer en la lista sin que nadie lo note. */
+        $ext = strtolower(pathinfo($n, PATHINFO_EXTENSION));
+        $mirables = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'mov', 'm4v'];
+        if (!in_array($ext, $mirables, true)) continue;
+        $lista[] = [
+            'nombre' => $n,
+            'url'    => $base . '/' . rawurlencode($n),
+            'bytes'  => filesize($ruta) ?: 0,
+            'cuando' => date('c', filemtime($ruta) ?: 0),
+            'tipo'   => in_array($ext, ['mp4', 'mov', 'm4v'], true) ? 'video' : 'imagen',
+        ];
+    }
+    // lo último primero, que es lo que se está por mirar
+    usort($lista, static fn($x, $y) => strcmp($y['cuando'], $x['cuando']));
+    responder(['archivos' => array_slice($lista, 0, $cuantos), 'total' => count($lista)]);
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') responder(['error' => 'Solo POST'], 405);
 
 /* 300 MB es lo que acepta Instagram en un reel; con la subida por pedazos el
