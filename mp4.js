@@ -233,13 +233,19 @@ export function armarMp4(pistas){
              duracionEnSuReloj: total, duracion: total / p.reloj };
   });
 
-  // el ftyp va delante, así que las posiciones se corren por su largo
   const ftyp = caja('ftyp',
     new Cinta().texto('isom').u32(512).texto('isomiso2avc1mp41').unir());
-  const desplazamiento = ftyp.length + encabezadoMdat;
-  for(const p of preparadas){
-    p.posiciones = p.posiciones.map((x) => x + desplazamiento);
-  }
+  /* Las posiciones de cada muestra son absolutas dentro del archivo, así que
+     hay que saber dónde va a empezar el mdat. Con el índice al final eso era
+     directo: ftyp más la cabecera del mdat.
+     Pero el índice va adelante —ver abajo—, y su largo depende de cuántas
+     muestras hay. Se arma una vez para medirlo y se vuelve a armar con las
+     posiciones corridas: el segundo armado mide exactamente igual, porque
+     cada posición ocupa cuatro bytes fijos gane o pierda dígitos. */
+  const correr = (cuanto) => {
+    for(const p of preparadas) p.posiciones = p.posiciones.map((x) => x + cuanto);
+  };
+  correr(ftyp.length + encabezadoMdat);
 
   const duracionTotal = Math.max(...preparadas.map((p) => p.duracion), 0);
   const mvhd = cajaV('mvhd', 0, 0, new Cinta()
@@ -255,14 +261,30 @@ export function armarMp4(pistas){
     .u32(0).u32(0).u32(0).u32(0).u32(0).u32(0)
     .u32(preparadas.length + 1));
 
-  const moov = caja('moov', mvhd, ...preparadas.map(pista));
+  /* El índice va delante del contenido, no detrás.
+     Instagram lo pide por escrito en su documentación para publicar video
+     —«moov atom at the front of the file»— y sin eso rechaza el archivo con
+     un ERROR pelado, sin explicar cuál es el problema. Lo mismo vale para
+     cualquiera que quiera empezar a reproducir sin bajarlo entero: con el
+     índice al final hay que tener todo el archivo antes de mostrar nada.
+     Se arma dos veces: la primera para saber cuánto ocupa, la segunda ya con
+     las posiciones corridas por ese tanto. */
+  const armarMoov = () => caja('moov', mvhd, ...preparadas.map(pista));
+  const largoMoov = armarMoov().length;
+  correr(largoMoov);
+  const moov = armarMoov();
+  if(moov.length !== largoMoov){
+    // no debería pasar nunca, y si pasara el archivo saldría corrido
+    throw new Error('el índice cambió de tamaño al recolocarlo');
+  }
+
   const datos = cuerpo.unir();
   const mdat = caja('mdat', datos);
 
-  const todo = new Uint8Array(ftyp.length + mdat.length + moov.length);
+  const todo = new Uint8Array(ftyp.length + moov.length + mdat.length);
   todo.set(ftyp, 0);
-  todo.set(mdat, ftyp.length);
-  todo.set(moov, ftyp.length + mdat.length);
+  todo.set(moov, ftyp.length);
+  todo.set(mdat, ftyp.length + moov.length);
   return new Blob([todo], { type: 'video/mp4' });
 }
 
