@@ -397,6 +397,9 @@ function verVista(mostrar){
 /* La calidad es del aparato, no de la placa: quien publica desde el teléfono
    con datos quiere rápida y desde la oficina quiere alta. */
 function pintarCalidad(){
+  document.querySelectorAll('[data-marca-video]').forEach((b) => {
+    b.classList.toggle('activo', b.dataset.marcaVideo === (marcaEnVideo() ? 'si' : 'no'));
+  });
   document.querySelectorAll('[data-camino]').forEach((b) => {
     const cual = localStorage.getItem('codecs_rapido') === '0' ? 'compatible' : 'rapido';
     b.classList.toggle('activo', b.dataset.camino === cual);
@@ -408,6 +411,17 @@ function pintarCalidad(){
 /* La salida de emergencia, a mano y no escondida en el almacenamiento del
    navegador: si Instagram rechaza un video, hay que poder volver al camino de
    antes sin esperar a que alguien toque el código. */
+$('#marca_video')?.addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-marca-video]');
+  if(!b) return;
+  localStorage.setItem('marca_en_video', b.dataset.marcaVideo === 'no' ? '0' : '1');
+  quemados.clear();   // lo grabado antes ya no vale
+  pintarCalidad();
+  estado(b.dataset.marcaVideo === 'no'
+    ? 'Los videos se van a subir tal cual, sin recomprimir. Pesan mucho menos.'
+    : 'A los videos se les va a quemar el degradado y el logo encima.');
+});
+
 $('#camino')?.addEventListener('click', (ev) => {
   const c = ev.target.closest('[data-camino]');
   if(!c) return;
@@ -1620,6 +1634,11 @@ async function mantenerDespierto(){
 /* Declaradas como función y no como constante a propósito: se usan más
    arriba, al pintar el control, y una constante todavía no existiría. */
 function calidadVideo(){ return localStorage.getItem('calidad_video') || 'alta'; }
+
+/* Si los videos del carrusel llevan el logo y el degradado quemados encima.
+   Viene puesto, que es como funcionó siempre. Apagarlo cambia mucho el peso
+   —ver videoDeLamina— a cambio de que el video no lleve la marca. */
+function marcaEnVideo(){ return localStorage.getItem('marca_en_video') !== '0'; }
 function tasaDeVideo(){
   return calidadVideo() === 'rapida'
     ? 2_500_000
@@ -2566,6 +2585,58 @@ async function videoDeLamina(lam, i){
       (b) => trabajo(rotulo, b, 'Subiéndolo.'));
     quemados.set(lam.video, { firma: 'reencuadrado', ruta: sub.ruta });
     return { tipo: 'video', ruta: sub.ruta };
+  }
+
+  /* Sin marca encima no hay nada que dibujar, y sin nada que dibujar no hay
+     que recomprimir: el video se manda tal cual llegó.
+     Es la diferencia más grande de todas. Con los cuatro videos de la
+     bitácora: 90 MB de salida contra 17 de original, o sea un 81% menos, sin
+     esperar el procesado y sin perder una sola vez la calidad —recomprimir
+     siempre pierde algo—.
+     Lo que se resigna es el logo sobre el video. La placa del carrusel lo
+     lleva igual, así que el post sigue estando firmado. */
+  if(!marcaEnVideo()){
+    const medidas = await medidasDeVideo(lam.crudo);
+    const quiere = altoDe(ANCHO_FEED) / ANCHO_FEED;
+    if(medidas && Math.abs(medidas.alto / medidas.ancho - quiere) < 0.01){
+      anotar('video sin retocar', { pieza: i + 1,
+        medidas: `${medidas.ancho}x${medidas.alto}`,
+        porque: 'ya viene en la proporción del carrusel y no lleva marca' });
+      return { tipo: 'video', ruta: lam.crudo };
+    }
+    // no cuadra la proporción: se reencuadra, pero sin dibujarle nada
+    const rotulo = `Acomodando el video ${i + 1}`;
+    const pista = medidas
+      ? `Viene en ${medidas.ancho}x${medidas.alto} y el carrusel va en `
+        + `${ANCHO_FEED}x${altoDe(ANCHO_FEED)}.`
+      : 'Se lo lleva a la proporción del carrusel.';
+    trabajo(rotulo, 0, pista);
+    const altoSalida = altoDe(ANCHO_FEED);
+    const u = ANCHO_FEED / LIENZO;
+    let solo = null;
+    if(hayCodecs()){
+      try{
+        solo = await quemarConCodecs(lam.crudo,
+          (ctx, cuadro) => {
+            ctx.clearRect(0, 0, ANCHO_FEED, altoSalida);
+            dibujarFoto(ctx, cuadro, 0, 0, ANCHO_FEED, altoSalida,
+              lam.ajuste || 'completa', lam.x ?? 50, lam.y ?? 50, u);
+          },
+          (b) => trabajo(rotulo, b, pista), ANCHO_FEED, altoSalida);
+      }catch(e){
+        if(String(e.message) === 'Cancelado') throw e;
+        anotar('no se pudo acomodar el video', { porque: String(e.message).slice(0, 120), nivel: 'aviso' });
+      }
+    }
+    if(solo){
+      trabajo(rotulo, 1, 'Subiéndolo.');
+      const sub = await guardarFoto(new File([solo], 'lamina.mp4', { type: 'video/mp4' }),
+        (b) => trabajo(rotulo, b, 'Subiéndolo.'));
+      return { tipo: 'video', ruta: sub.ruta };
+    }
+    // si no se pudo, se sigue por el camino de siempre y se le dibuja encima
+    anotar('se vuelve a grabar con marca', { pieza: i + 1,
+      porque: 'no se pudo reencuadrar sin dibujar', nivel: 'aviso' });
   }
 
   const firma = JSON.stringify([lam.crudo, lam.ajuste, lam.x, lam.y, placa.color_fondo]);
