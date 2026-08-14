@@ -736,7 +736,7 @@ async function abrirEnElEditor(n, art){
     });
     // el editor abre la que diga 'placa' en el almacenamiento del navegador
     localStorage.setItem('placa', String(id));
-    location.href = 'index.html';
+    location.href = './';
   }catch(e){ liberar(art, e.message, 'mal'); }
 }
 
