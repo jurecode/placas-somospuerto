@@ -397,10 +397,27 @@ function verVista(mostrar){
 /* La calidad es del aparato, no de la placa: quien publica desde el teléfono
    con datos quiere rápida y desde la oficina quiere alta. */
 function pintarCalidad(){
+  document.querySelectorAll('[data-camino]').forEach((b) => {
+    const cual = localStorage.getItem('codecs_rapido') === '0' ? 'compatible' : 'rapido';
+    b.classList.toggle('activo', b.dataset.camino === cual);
+  });
   document.querySelectorAll('[data-calidad]').forEach((b) => {
     b.classList.toggle('activo', b.dataset.calidad === calidadVideo());
   });
 }
+/* La salida de emergencia, a mano y no escondida en el almacenamiento del
+   navegador: si Instagram rechaza un video, hay que poder volver al camino de
+   antes sin esperar a que alguien toque el código. */
+$('#camino')?.addEventListener('click', (ev) => {
+  const c = ev.target.closest('[data-camino]');
+  if(!c) return;
+  localStorage.setItem('codecs_rapido', c.dataset.camino === 'compatible' ? '0' : '1');
+  pintarCalidad();
+  estado(c.dataset.camino === 'compatible'
+    ? 'Los videos se van a armar con el navegador, como antes.'
+    : 'Los videos se arman acá: más rápido y sin perder cuadros.');
+});
+
 $('#calidad')?.addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-calidad]');
   if(!b) return;

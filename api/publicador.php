@@ -138,7 +138,12 @@ function publicar_ahora(array $carga): array {
 
         // Instagram tarda bastante más en procesar video que imagen
         $espera = $hayVideo ? 150 : 20;
-        foreach ($hijos as $id) esperar_contenedor((string) $id, $espera);
+        foreach ($hijos as $n => $id) {
+            $tipo = $medios[$n]['tipo'] ?? 'pieza';
+            esperar_contenedor((string) $id, $espera,
+                sprintf('%s %d de %d', $tipo === 'imagen' ? 'la imagen' : "el $tipo",
+                        $n + 1, count($hijos)));
+        }
 
         // 3. si son varias, el contenedor del carrusel
         $contenedor = (string) $hijos[0];
@@ -155,7 +160,7 @@ function publicar_ahora(array $carga): array {
                 $contenedor = (string) $armar(false);
                 $aviso = 'no se pudieron agregar los colaboradores (' . $e->getMessage() . ')';
             }
-            esperar_contenedor($contenedor, $espera);
+            esperar_contenedor($contenedor, $espera, 'el carrusel armado');
         }
 
         // 4. publicar

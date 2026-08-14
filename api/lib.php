@@ -243,19 +243,33 @@ function graph(string $ruta, array $cuerpo): array {
     return pedir(host_ig() . '/' . $ruta, $cuerpo);
 }
 
-/* Instagram descarga la imagen en segundo plano: hay que esperar a que el
-   contenedor quede FINISHED antes de publicarlo. */
-function esperar_contenedor(string $id, int $intentos = 20): void {
+/* Instagram descarga la pieza en segundo plano: hay que esperar a que el
+   contenedor quede FINISHED antes de publicarlo.
+   Se pide también `status`, que es donde viene el motivo escrito. Antes se
+   pedía solo `status_code` y el aviso terminaba siendo «rechazó una de las
+   imágenes (ERROR)», que no dice qué arreglar: puede ser la proporción, el
+   largo del video, el códec o que no alcanzó a bajar el archivo. El motivo
+   lo manda Instagram y lo estábamos tirando.
+   `$cual` es para nombrar la pieza —«la 2 de 4»—, que en un carrusel es la
+   mitad del problema: sin eso hay que adivinar cuál de todas falló. */
+function esperar_contenedor(string $id, int $intentos = 20, string $cual = ''): void {
     $token = ajuste('ig_access_token');
     $host  = host_ig();
+    $quien = $cual !== '' ? $cual : 'una de las piezas';
     for ($i = 0; $i < $intentos; $i++) {
-        $d = pedir($host . '/' . $id . '?fields=status_code&access_token=' . urlencode($token));
+        $d = pedir($host . '/' . $id . '?fields=status_code,status&access_token=' . urlencode($token));
         $estado = $d['status_code'] ?? '';
         if ($estado === 'FINISHED') return;
         if ($estado === 'ERROR' || $estado === 'EXPIRED') {
-            throw new RuntimeException("Instagram rechazó una de las imágenes ($estado)");
+            /* Viene como «Error: <motivo>» o con un número de los suyos.
+               Se manda tal cual: traducirlo a mano sería adivinar, y el texto
+               de ellos es lo que se puede buscar. */
+            $motivo = trim((string) ($d['status'] ?? ''));
+            $motivo = preg_replace('/\s+/u', ' ', $motivo);
+            throw new RuntimeException(
+                "Instagram rechazó $quien" . ($motivo !== '' ? ": $motivo" : " ($estado)"));
         }
         sleep(2);
     }
-    throw new RuntimeException('Instagram tardó demasiado en procesar las imágenes');
+    throw new RuntimeException("Instagram tardó demasiado en procesar $quien");
 }
