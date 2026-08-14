@@ -453,7 +453,12 @@ $('#ver_archivos')?.addEventListener('click', async () => {
           <b>${esc(f.nombre)}</b>
           <small>${mb(f.bytes)} · ${new Date(f.cuando).toLocaleString('es-CL')}</small>
           <small data-medidas>${f.tipo === 'video' ? 'midiendo…' : ''}</small>
-          <a href="${esc(f.url)}" target="_blank" rel="noopener">abrirlo en otra pestaña</a>
+          <input class="enlace" type="text" readonly value="${esc(f.url)}"
+                 aria-label="Dirección del archivo">
+          <div class="fila" style="margin-top:6px">
+            <button class="descarga" data-copiar-enlace="${esc(f.url)}">Copiar el link</button>
+            <a href="${esc(f.url)}" target="_blank" rel="noopener">abrirlo aparte</a>
+          </div>
         </div>
       </li>`).join('') || '<li><div><b>No hay nada subido todavía.</b></div></li>';
 
@@ -475,6 +480,26 @@ $('#ver_archivos')?.addEventListener('click', async () => {
   }catch(e){ $('#cuantos_archivos').textContent = e.message; }
   boton.disabled = false;
   boton.textContent = 'Actualizar la lista';
+});
+
+/* La dirección completa, para poder pegarla en otro lado: probarla en el
+   navegador de otra persona, mandarla, o pasarla por el depurador de
+   Instagram, que es lo que sirve cuando rechaza un video sin decir por qué.
+   El campo se puede seleccionar entero con un toque, y el botón la copia. */
+$('#archivos')?.addEventListener('click', async (ev) => {
+  const caja = ev.target.closest('.enlace');
+  if(caja){ caja.select(); return; }
+  const boton = ev.target.closest('[data-copiar-enlace]');
+  if(!boton) return;
+  try{
+    await navigator.clipboard.writeText(boton.dataset.copiarEnlace);
+    boton.textContent = 'Copiado';
+  }catch(e){
+    // sin permiso para el portapapeles queda seleccionado, que alcanza
+    boton.closest('div').parentNode.querySelector('.enlace')?.select();
+    boton.textContent = 'Seleccionado: copialo';
+  }
+  setTimeout(() => { boton.textContent = 'Copiar el link'; }, 2500);
 });
 
 /* Copiar sirve para mandármela: lo que se copia es texto plano, una línea

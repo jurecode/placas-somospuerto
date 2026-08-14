@@ -398,7 +398,13 @@
   .archivos b{ font-size:12px; font-weight:600; word-break:break-all; display:block }
   .archivos small{ font-size:11px; color:var(--suave); display:block; margin-top:3px }
   .archivos small.mal{ color:var(--mal) }
-  .archivos a{ font-size:11px }
+  .archivos a{ font-size:11px; align-self:center }
+  .archivos .enlace{
+    width:100%; margin-top:6px; font-size:10.5px; padding:5px 7px;
+    font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
+    color:var(--suave); background:var(--bg); border-color:var(--linea);
+  }
+  .archivos .fila button{ font-size:11px; padding:4px 9px }
 
   /* ---------- bitácora ---------- */
   .bitacora ul{ list-style:none; display:grid; gap:5px; max-height:340px; overflow-y:auto }
