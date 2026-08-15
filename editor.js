@@ -414,7 +414,7 @@ function pintarCalidad(){
 $('#marca_video')?.addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-marca-video]');
   if(!b) return;
-  localStorage.setItem('marca_en_video', b.dataset.marcaVideo === 'no' ? '0' : '1');
+  localStorage.setItem('marca_en_video_2', b.dataset.marcaVideo === 'no' ? '0' : '1');
   quemados.clear();   // lo grabado antes ya no vale
   pintarCalidad();
   repintar();         // la previa muestra lo que se va a subir, así que cambia
@@ -1773,7 +1773,12 @@ function calidadVideo(){ return localStorage.getItem('calidad_video') || 'alta';
    manda tal cual llegó, que es como se ve bien.
    La placa del carrusel lleva el logo igual, así que el post sigue firmado.
    Se puede volver a encender desde el panel cuando convenga. */
-function marcaEnVideo(){ return localStorage.getItem('marca_en_video') === '1'; }
+/* La clave cambió de nombre a propósito. Al probar los dos modos, el
+   navegador de quien probó quedó con «con logo» guardado, y eso le ganaba al
+   valor por omisión: seguía quemando la marca aunque el editor viniera
+   configurado para no hacerlo. Con un nombre nuevo, lo guardado antes deja de
+   contar y todos arrancan sin marca; el que la quiera la vuelve a encender. */
+function marcaEnVideo(){ return localStorage.getItem('marca_en_video_2') === '1'; }
 function tasaDeVideo(){
   return calidadVideo() === 'rapida'
     ? 2_500_000
@@ -2790,7 +2795,8 @@ async function videoDeLamina(lam, i){
     if(medidas && Math.abs(medidas.alto / medidas.ancho - quiere) < 0.01){
       anotar('video sin retocar', { pieza: i + 1,
         medidas: `${medidas.ancho}x${medidas.alto}`,
-        porque: 'ya viene en la proporción del carrusel y no lleva marca' });
+        archivo: String(lam.crudo).split('/').pop(),
+        porque: 'va tal cual: no se le dibuja nada y no se recomprime' });
       return { tipo: 'video', ruta: lam.crudo };
     }
     // no cuadra la proporción: se reencuadra, pero sin dibujarle nada
@@ -2836,6 +2842,12 @@ async function videoDeLamina(lam, i){
   const lento = espera + ' La grabación es en tiempo real: tarda lo que dura '
     + 'el video. Dejá esta pantalla a la vista.';
   const rotulo = `Grabando el video ${i + 1}`;
+  /* Si se llegó hasta acá con la marca apagada es porque hubo que reencuadrar
+     y no se pudo sin dibujar. Queda anotado: si alguien ve la marca en un
+     video y no esperaba verla, la bitácora dice por qué apareció. */
+  anotar('se le dibuja encima', { pieza: i + 1,
+    porque: marcaEnVideo() ? 'está pedido con logo' : 'no se pudo acomodar sin dibujar',
+    nivel: marcaEnVideo() ? 'ok' : 'aviso' });
   trabajo(rotulo, 0, espera);
 
   let video = null;
