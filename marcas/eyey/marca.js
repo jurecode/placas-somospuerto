@@ -27,6 +27,7 @@ export const MARCA = {
     { nombre: 'Amarillo', fondo: '#ffd400', filete: '#ffd400' },
     { nombre: 'Menta',    fondo: '#0ae7ae', filete: '#0ae7ae' },
     { nombre: 'Azul',     fondo: '#0b3fd4', filete: '#0b3fd4' },
+    { nombre: 'Fucsia',   fondo: '#ff0060', filete: '#ff0060' },
   ],
 
   etiquetas: ['Musica', 'Farándula', 'Policial', 'Deportes',
