@@ -32,6 +32,15 @@
     --radio:18px;          /* el redondeo de las tarjetas */
   }
   *{ box-sizing:border-box; margin:0 }
+  /* `hidden` es un display:none de la hoja del navegador, y cualquier regla
+     nuestra que ponga display se lo lleva por delante. Pasó tantas veces que
+     abajo hay media docena de parches sueltos —.barra[hidden], #previa[hidden],
+     .trabajando[hidden]— cada uno tapando el mismo agujero en un lugar.
+     Los botones de descarga eran el caso que faltaba: «Bajar el video» se veía
+     en los carruseles y «Compartir al teléfono» en navegadores que no
+     comparten, los dos con el atributo puesto. Con esta regla, esconder algo
+     desde el JavaScript funciona siempre, sin acordarse de agregar el parche. */
+  [hidden]{ display:none !important }
   body{
     background:var(--bg); color:var(--texto); font:14px/1.5 system-ui, sans-serif;
     display:grid; grid-template-columns:minmax(340px, 430px) 1fr; height:100svh;
@@ -854,12 +863,19 @@
     <div class="campo fila" style="margin-top:10px">
       <button class="descarga" id="bajar_carrusel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>Bajar imágenes</button>
       <button class="descarga" id="bajar_reel" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>Bajar el video</button>
+      <button class="descarga" id="bajar_videos" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m6 10 6 6 6-6"/><path d="M4 20h16"/></svg>Bajar los videos</button>
       <button class="descarga" id="compartir" hidden>Compartir al teléfono</button>
     </div>
     <p class="nota">
       Salidas manuales, por si querés subirlas vos: el carrusel sale en JPEG
       1080 y los PNG son para archivo. Para publicar directo está el botón de
       colores al lado de la vista previa.
+    </p>
+    <p class="nota">
+      <b>Bajar los videos</b> y <b>Bajar el video</b> traen el archivo exacto
+      que va a recibir Instagram, byte por byte. Miralo en tu reproductor
+      antes de publicar: si acá se ve fluido y en Instagram no, el problema es
+      de ellos al recomprimirlo, no nuestro.
     </p>
   </fieldset>
 

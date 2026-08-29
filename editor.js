@@ -985,10 +985,14 @@ async function pintarTira(){
     tira.innerHTML = '';
     const compartirR = $('#compartir');
     if(compartirR) compartirR.hidden = true;
+    // en el reel el video se baja con su propio botón, no con el del carrusel
+    $('#bajar_videos').hidden = true;
     return;
   }
   const compartir = $('#compartir');
   if(compartir) compartir.hidden = !navigator.canShare;
+  // solo tiene sentido ofrecerlo si hay algún video que mirar
+  $('#bajar_videos').hidden = !laminas.some((l) => l.tipo === 'video');
 
   // el cierre va siempre al final, y se muestra acá para que no sea una
   // sorpresa al publicar: lo que se ve en la tira es lo que sale
@@ -1086,6 +1090,35 @@ async function archivosDelCarrusel(){
     dibujarCierre(ctx, placa, await arteDelCierre(), ANCHO_FEED);
     archivos.push(new File([await jpeg()], `${baseNombre()}-cierre.jpg`, { type: 'image/jpeg' }));
   }
+  return archivos;
+}
+
+/* Los videos del carrusel, exactamente como los va a recibir Instagram.
+   No se vuelve a armar nada acá: se llama a la misma videoDeLamina que usa
+   publicar y después se baja del servidor la dirección que devolvió, que es
+   la que Instagram lee. Por eso no puede diferir de lo publicado ni aunque
+   alguien cambie el camino de grabado: es literalmente el mismo archivo.
+   Sirve para mirar en el reproductor de uno si quedó cortado o pegado antes
+   de que salga al aire, que desde adentro del editor no se puede ver.
+   Con la marca apagada varios videos se mandan tal cual llegaron, así que lo
+   que baja es el original sin tocar: eso también es una respuesta. */
+async function videosDelCarrusel(avisar){
+  const conVideo = (placa.laminas || [])
+    .map((lam, i) => ({ lam, i }))
+    .filter(({ lam }) => lam.tipo === 'video');
+
+  const archivos = [];
+  for(const [n, { lam, i }] of conVideo.entries()){
+    avisar?.(n / conVideo.length);
+    const { ruta } = await videoDeLamina(lam, i);
+    if(!ruta) continue;
+    const r = await fetch(ruta);
+    if(!r.ok) throw new Error(`No se pudo bajar el video ${i + 2}: el servidor dijo ${r.status}`);
+    // el número es el lugar que ocupa en el post: la placa es la 1
+    archivos.push(new File([await r.blob()],
+      `${baseNombre()}-${i + 2}.mp4`, { type: 'video/mp4' }));
+  }
+  avisar?.(1);
   return archivos;
 }
 
@@ -1645,6 +1678,36 @@ $('#bajar_carrusel').addEventListener('click', async (ev) => {
     estado(`Listas ${n} imagen${n > 1 ? 'es' : ''} en JPEG ${ANCHO_FEED}×${altoDe(ANCHO_FEED)}`);
   }catch(e){ estado(e.message, true); }
   finally{ cerrarTrabajo(); congelar(false); ev.target.disabled = false; }
+});
+
+/* Los videos del carrusel tal cual se suben. Es el mismo trabajo que hace
+   publicar —grabar si hay que grabar, subir, y quedarse con la dirección—,
+   así que lo que quede en la caché lo aprovecha publicar después: mirar el
+   video antes no cuesta una segunda grabación. */
+$('#bajar_videos').addEventListener('click', async (ev) => {
+  ev.target.disabled = true;
+  const despierto = await mantenerDespierto();
+  abrirTrabajo();
+  congelar(true);   // se graba con lo que la placa tiene ahora
+  trabajo('Preparando los videos', 0, 'Quedan igual que al publicar.');
+  try{
+    const archivos = await videosDelCarrusel(
+      (a) => trabajo('Preparando los videos', a, 'Quedan igual que al publicar.'));
+    if(!archivos.length) throw new Error('El carrusel no tiene ningún video');
+    cerrarTrabajo(); congelar(false);
+    for(const a of archivos){
+      bajar(a, a.name);
+      await new Promise((r) => setTimeout(r, 350));   // de golpe el navegador los bloquea
+    }
+    estado(`Se ${archivos.length > 1 ? 'descargaron' : 'descargó'} `
+      + `${archivos.length} video${archivos.length > 1 ? 's' : ''}, `
+      + 'igual que como van a subir');
+  }catch(e){ estado(e.message, true); }
+  finally{
+    cerrarTrabajo(); congelar(false); terminarActividad();
+    despierto?.release().catch(() => {});
+    ev.target.disabled = false;
+  }
 });
 
 /* El reel terminado, para tenerlo en el teléfono o subirlo a mano. Si ya se
