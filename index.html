@@ -9,24 +9,27 @@
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@500;900&family=Poppins:ital,wght@0,700;0,900;1,800&display=swap" rel="stylesheet">
 <style>
   :root{
-    /* Paleta del editor. Los cuatro colores de marca son el morado claro y
-       oscuro y el durazno claro y oscuro; el resto son escalones entre el
-       fondo y el texto, para que nada quede a ojo. */
-    --marca-morado:#804A8A; --marca-morado-hondo:#3A0353;
-    --marca-durazno:#F8D299; --marca-naranja:#F59E51;
-
-    --bg:#1B0328;          /* el fondo de la página */
-    --panel:#26073A;       /* la superficie del formulario */
-    --hueco:#150220;       /* lo hundido: campos de texto */
-    --boton:#3A1152;       /* botones normales */
-    --boton-claro:#4B1C68; /* y su estado al pasar por encima */
-    --linea:#452060;
-    --texto:#F4EAF8;
-    --suave:#B79BC6;
-    --acento:var(--marca-naranja);
-    --activo:#43184F;      /* lo elegido: fondo, con el borde en el acento */
-    --mal:#FF9B8A;
+    /* Gris neutro y oscuro, al estilo de un panel de control. El editor
+       muestra placas de colores muy saturados: con el marco en morado los dos
+       competían, y el color de la placa dejaba de leerse como una decisión.
+       En gris, lo único con color en pantalla es lo que se va a publicar.
+       Los escalones van del fondo al texto para que nada quede a ojo. */
+    --bg:#0E0E10;          /* el fondo de la página, casi negro */
+    --panel:#171719;       /* la superficie de las tarjetas */
+    --hueco:#101012;       /* lo hundido: campos de texto */
+    --boton:#232326;       /* botones normales */
+    --boton-claro:#2E2E33; /* y su estado al pasar por encima */
+    --linea:#26262A;       /* separaciones, apenas visibles */
+    --texto:#F2F2F4;
+    --suave:#8B8B94;
+    /* Lo principal va en blanco, que en gris destaca más que cualquier color
+       y no compite con la placa. */
+    --acento:#FFFFFF;
+    --activo:#232326;      /* lo elegido: la superficie se aclara */
+    --mal:#FF6B6B;
     --ok:#3DE0B4;
+    --aviso:#F5B942;       /* lo que hay que mirar sin que sea un error */
+    --radio:18px;          /* el redondeo de las tarjetas */
   }
   *{ box-sizing:border-box; margin:0 }
   body{
@@ -36,22 +39,28 @@
   @media (max-width:900px){ body{ grid-template-columns:1fr; height:auto } }
 
   /* ---------- panel de controles ---------- */
-  .panel{ overflow-y:auto; border-right:1px solid var(--linea); background:var(--panel) }
+  /* Cada sección es una tarjeta suelta sobre el fondo, en vez de bloques
+     pegados separados por una línea. Se leen como cosas distintas sin que
+     haga falta dibujar ninguna raya. */
+  .panel{ overflow-y:auto; background:var(--bg); padding:12px 12px 4px }
   .panel > header{
-    position:sticky; top:0; z-index:2; background:var(--panel);
-    border-bottom:1px solid var(--linea); padding:14px 18px;
+    position:sticky; top:0; z-index:2; background:var(--bg);
+    padding:6px 6px 14px; display:flex; gap:10px; align-items:center;
   }
-  h1{ font-size:15px; letter-spacing:.02em; flex:1; min-width:0 }
+  h1{ font-size:16px; letter-spacing:-.01em; flex:1; min-width:0; font-weight:650 }
   h1 small{
     color:var(--suave); font-weight:400; display:block; font-size:12px;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .panel > header button{ padding:6px 10px; font-size:12px; flex:none }
+  .panel > header button{ padding:7px 13px; font-size:12px; flex:none }
 
-  fieldset{ border:0; border-bottom:1px solid var(--linea); padding:16px 18px }
+  fieldset{
+    border:0; background:var(--panel); border-radius:var(--radio);
+    padding:16px 18px; margin-bottom:12px;
+  }
   legend{
-    font-size:11px; text-transform:uppercase; letter-spacing:.09em;
-    color:var(--suave); padding:0; margin-bottom:12px;
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.12em;
+    color:var(--suave); padding:0; margin-bottom:14px; font-weight:600;
   }
   label{ display:block; font-size:12px; color:var(--suave); margin-bottom:5px }
   .campo{ margin-bottom:14px }
@@ -59,14 +68,14 @@
 
   input[type=text], input[type=number], textarea, select{
     width:100%; background:var(--hueco); color:var(--texto); font:inherit;
-    border:1px solid var(--linea); border-radius:7px; padding:8px 10px;
+    border:1px solid var(--linea); border-radius:12px; padding:10px 12px;
   }
   input:focus, textarea:focus, select:focus{ outline:2px solid var(--acento); outline-offset:-1px }
   textarea{ resize:vertical; min-height:120px; line-height:1.45 }
   input[type=range]{ width:100%; accent-color:var(--acento) }
   input[type=color]{
-    width:44px; height:34px; padding:2px; background:var(--hueco);
-    border:1px solid var(--linea); border-radius:7px; flex:none;
+    width:44px; height:36px; padding:2px; background:var(--hueco);
+    border:1px solid var(--linea); border-radius:10px; flex:none;
   }
 
   .fila{ display:flex; gap:10px; align-items:center }
@@ -75,23 +84,27 @@
 
   button{
     font:inherit; color:var(--texto); background:var(--boton); cursor:pointer;
-    border:1px solid var(--linea); border-radius:7px; padding:8px 12px;
+    border:1px solid transparent; border-radius:99px; padding:8px 14px;
+    transition:background .12s, border-color .12s;
   }
   button:hover{ background:var(--boton-claro) }
-    /* el texto va oscuro: blanco sobre este naranja da 2,1 de contraste y no
-     se lee; oscuro da 9,3 */
-  button.principal{ background:var(--acento); border-color:var(--acento); color:var(--bg); font-weight:700 }
-  button.principal:hover{ filter:brightness(1.1) }
+  /* Lo principal en blanco con el texto oscuro: sobre gris destaca más que
+     cualquier color, y deja el color para la placa. */
+  button.principal{ background:var(--acento); border-color:var(--acento); color:#111; font-weight:650 }
+  button.principal:hover{ background:#e6e6e8 }
 
   /* diseños de foto */
   .disenos{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px }
-  .disenos button{ display:grid; gap:6px; justify-items:center; padding:10px 6px; font-size:11px; line-height:1.25; text-align:center }
+  .disenos button{
+    display:grid; gap:6px; justify-items:center; padding:12px 6px; font-size:11px;
+    line-height:1.25; text-align:center; border-radius:14px;
+  }
   .disenos button.activo{ border-color:var(--acento); background:var(--activo) }
   .disenos svg{ width:44px; height:30px }
 
   /* paleta */
   .paleta{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px }
-  .muestra{ display:grid; gap:6px; justify-items:center; padding:8px 4px; font-size:11px }
+  .muestra{ display:grid; gap:6px; justify-items:center; padding:9px 5px; font-size:11px; border-radius:14px }
   .muestra .par{ display:flex; width:100%; height:22px; border-radius:6px; overflow:hidden }
   .muestra .par i{ flex:1 }
   .muestra .par i:last-child{ flex:0 0 28% }
@@ -105,7 +118,7 @@
 
   /* ajuste de foto */
   .ajuste{ display:flex; gap:6px; margin-top:8px }
-  .ajuste button{ flex:1; font-size:11px; padding:4px 6px }
+  .ajuste button{ flex:1; font-size:11px; padding:6px 8px }
   .ajuste button.activo{ border-color:var(--acento); background:var(--activo) }
 
   .foto{ display:flex; gap:12px; align-items:flex-start; margin-bottom:16px }
@@ -126,7 +139,7 @@
     border-radius:10px; transition:outline-color .12s, background .12s;
     outline:2px dashed transparent; outline-offset:4px;
   }
-  .soltar{ outline-color:var(--acento); background:#43184f66 }
+  .soltar{ outline-color:var(--acento); background:#ffffff14 }
   #zona_carrusel{ padding:2px }
   .archivo{ font-size:12px; padding:5px 10px }
 
@@ -139,7 +152,7 @@
   #estado_video{ color:var(--texto) }
   #estado_video:empty{ display:none }
   #estado_video.mal{ color:var(--mal) }
-  #estado{ font-size:11px; color:var(--suave); min-height:16px; padding:0 18px 16px }
+  #estado{ font-size:11.5px; color:var(--suave); min-height:16px; padding:2px 8px 16px }
   #estado.error{ color:var(--mal) }
 
 
@@ -149,7 +162,8 @@
     .barra{
       position:fixed; left:0; right:0; bottom:0; z-index:20;
       display:grid; grid-auto-flow:column; grid-auto-columns:1fr;
-      background:#20052F; border-top:1px solid var(--linea);
+      background:#171719ee; backdrop-filter:blur(12px);
+      border-top:1px solid var(--linea);
       padding-bottom:env(safe-area-inset-bottom);
     }
     .barra[hidden]{ display:none }
@@ -162,6 +176,10 @@
     .barra svg{ width:21px; height:21px }
     .barra i{ font-style:normal; font-size:9.5px; letter-spacing:.02em }
     .barra button.activa{ color:var(--acento) }
+    .barra button.activa svg{
+      background:var(--boton); border-radius:99px;
+      padding:3px 10px; box-sizing:content-box; margin-bottom:-3px;
+    }
     /* un punto en la sección que tiene algo sin llenar */
     .barra button.falta::after{
       content:''; position:absolute; top:6px; right:calc(50% - 18px);
@@ -189,7 +207,8 @@
     body[data-formato="reel"] [data-sin-reel]{ display:none }
 
     /* la barra tapa el final del formulario si no se le hace lugar */
-    .panel{ padding-bottom:calc(64px + env(safe-area-inset-bottom)) }
+    .panel{ padding:10px 10px calc(70px + env(safe-area-inset-bottom)) }
+    fieldset{ padding:15px 16px; margin-bottom:10px }
   }
 
   /* ---------- trabajando: una franja abajo, que no tapa nada ---------- */
@@ -225,7 +244,7 @@
   .trabajando__riel[hidden]{ display:none }
   .trabajando__riel i{
     display:block; height:100%; width:0; border-radius:99px;
-    background:linear-gradient(90deg, var(--marca-durazno), var(--marca-naranja), var(--marca-morado));
+    background:linear-gradient(90deg, var(--suave), var(--texto), var(--acento));
     transition:width .25s ease;
   }
   /* sin porcentaje que mostrar, la barra va y viene para que se note que
@@ -305,7 +324,7 @@
 
   /* pantalla de arranque fallido */
   .portada .fallo{
-    background:#3A1B2E; border-left:3px solid var(--acento); border-radius:0 8px 8px 0;
+    background:var(--hueco); border-left:3px solid var(--acento); border-radius:0 8px 8px 0;
     padding:12px 16px; font-family:ui-monospace, monospace; font-size:13px;
     max-width:52ch; line-height:1.5;
   }
@@ -332,8 +351,8 @@
 
   /* ---------- vista previa ---------- */
   .previa{
-    display:grid; align-content:center; justify-items:center; gap:14px;
-    padding:24px; overflow:auto; min-height:0;
+    display:grid; align-content:center; justify-items:center; gap:16px;
+    padding:24px; overflow:auto; min-height:0; background:var(--bg);
   }
   /* se descuenta lo que ocupan la tira, el botón y su pie: si no, la tira
      quedaba empujada fuera de la ventana en pantallas bajas */
@@ -342,16 +361,16 @@
      reel se salía de la ventana. */
   #previa{
     width:auto; height:auto; max-width:100%; max-height:calc(100svh - 300px);
-    border-radius:10px; background:#000; position:relative; z-index:1;
+    border-radius:14px; background:#000; position:relative; z-index:1;
   }
   /* El marco toma el tamaño del lienzo y el video se estira por debajo: en el
      reel el lienzo es transparente y solo lleva el texto, que así se puede
      redibujar mientras se escribe sin tocar el video. */
   .marco{ position:relative; display:grid; min-width:0;
-          border-radius:10px; box-shadow:0 12px 40px #0008 }
+          border-radius:14px; box-shadow:0 20px 60px #000a }
   #previa_video{
     position:absolute; inset:0; width:100%; height:100%;
-    object-fit:cover; border-radius:10px; background:#000; z-index:0;
+    object-fit:cover; border-radius:14px; background:#000; z-index:0;
   }
   body[data-formato="reel"] #previa{ background:transparent }
   #previa[hidden], #previa_video[hidden]{ display:none }
@@ -369,8 +388,8 @@
     position:relative; flex:none; padding:0; border-radius:9px; overflow:hidden;
     line-height:0; border:2px solid var(--linea); background:none; cursor:pointer;
   }
-  .tira button:hover{ border-color:var(--marca-morado) }
-  .tira button.activa{ border-color:var(--acento); box-shadow:0 0 0 3px #f59e5133 }
+  .tira button:hover{ border-color:var(--boton-claro) }
+  .tira button.activa{ border-color:var(--acento); box-shadow:0 0 0 3px #ffffff2e }
   /* 4:5, la misma forma que la placa */
   .tira canvas{ width:80px; height:100px; display:block }
   .tira i{
@@ -436,9 +455,9 @@
   .bitacora li span{ min-width:0; overflow-wrap:anywhere }
   .bitacora li i{ font-style:normal; font-weight:600; color:var(--texto) }
   /* el color dice de un vistazo si eso estuvo bien */
-  .bitacora li.mal{ border-color:#7a2a2a }
+  .bitacora li.mal{ border-color:var(--mal) }
   .bitacora li.mal i{ color:var(--mal) }
-  .bitacora li.aviso i{ color:var(--marca-durazno) }
+  .bitacora li.aviso i{ color:var(--aviso) }
 
   /* ---------- programar ---------- */
   .programar .cuando{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:stretch }
@@ -470,8 +489,10 @@
   .programar li::before{
     content:''; width:7px; height:7px; border-radius:50%; flex:none; background:var(--suave);
   }
-  .programar li.pendiente::before{ background:var(--marca-durazno) }
-  .programar li.publicando::before{ background:var(--marca-morado) }
+  .programar li.pendiente::before{ background:var(--aviso) }
+  /* la que está saliendo ahora va en blanco: es lo más brillante de la lista,
+     que es justo lo que hay que mirar */
+  .programar li.publicando::before{ background:var(--acento) }
   .programar li.publicada::before{ background:var(--ok) }
   .programar li.error::before{ background:var(--mal) }
   .programar li.error{ color:var(--mal) }
@@ -544,7 +565,7 @@
     .encoger{
       position:absolute; top:6px; left:8px; z-index:6;
       display:inline-flex; align-items:center;
-      background:#26073Acc; border:1px solid var(--linea); color:var(--suave);
+      background:#171719cc; border:1px solid var(--linea); color:var(--suave);
       font-size:11px; padding:0 9px; border-radius:99px; min-height:26px;
     }
     body.escribiendo .previa{ padding:6px 10px }
@@ -688,7 +709,7 @@
   <fieldset data-seccion="texto">
     <legend>Texto para Instagram</legend>
     <div class="campo">
-      <label for="descripcion">Descripción <b style="color:var(--acento)">·  obligatoria</b></label>
+      <label for="descripcion">Descripción <b style="color:var(--aviso)">·  obligatoria</b></label>
       <textarea id="descripcion" data-campo="descripcion" style="min-height:90px"
                 placeholder="El texto que va debajo de la publicación"></textarea>
     </div>
