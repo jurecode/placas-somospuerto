@@ -131,6 +131,37 @@
     <small id="de_quien">esta página no está enlazada desde el editor</small></h1>
 
   <section>
+    <h2>Actualizaciones</h2>
+    <p id="version">Revisando…</p>
+    <div class="fila" style="margin-top:14px">
+      <button class="principal" id="actualizar" disabled>Actualizar el sitio</button>
+    </div>
+
+    <h3 class="titulillo">Qué cambió</h3>
+    <div id="novedades"><p class="nota">Revisando…</p></div>
+
+    <details style="margin-top:16px">
+      <summary>Token de GitHub</summary>
+      <div class="campo" style="margin-top:12px">
+        <input type="password" id="gh_token" placeholder="Token con permiso de lectura sobre el repo" autocomplete="off">
+      </div>
+      <button id="guardar_gh">Guardar token</button>
+      <p class="nota">
+        Este sitio se actualiza desde <code id="el_repo">…</code>. Si el
+        repositorio es público no hace falta token; si es privado, se crea uno
+        en GitHub → Settings → Developer settings → Fine-grained tokens, con
+        permiso <b>Contents: read</b> sobre ese repositorio y nada más. Queda
+        en la base, igual que el de Instagram.
+      </p>
+    </details>
+    <p class="nota">
+      Baja el zip de la última versión publicada y lo descomprime encima.
+      <b>Nunca toca <code>api/config.php</code></b>, así que tus credenciales
+      quedan donde están.
+    </p>
+  </section>
+
+  <section>
     <h2>Clave</h2>
     <div class="fila">
       <input type="password" id="clave" placeholder="La que pusiste en api/config.php" autocomplete="off">
@@ -344,37 +375,6 @@
     <p class="nota">
       Lleva tu clave adentro, así que no la compartas. Si la cambiás, hay que
       actualizar también el cron.
-    </p>
-  </section>
-
-  <section>
-    <h2>Actualizaciones</h2>
-    <p id="version">Revisando…</p>
-    <div class="fila" style="margin-top:14px">
-      <button class="principal" id="actualizar" disabled>Actualizar el sitio</button>
-    </div>
-
-    <h3 class="titulillo">Qué cambió</h3>
-    <div id="novedades"><p class="nota">Revisando…</p></div>
-
-    <details style="margin-top:16px">
-      <summary>Token de GitHub</summary>
-      <div class="campo" style="margin-top:12px">
-        <input type="password" id="gh_token" placeholder="Token con permiso de lectura sobre el repo" autocomplete="off">
-      </div>
-      <button id="guardar_gh">Guardar token</button>
-      <p class="nota">
-        Este sitio se actualiza desde <code id="el_repo">…</code>. Si el
-        repositorio es público no hace falta token; si es privado, se crea uno
-        en GitHub → Settings → Developer settings → Fine-grained tokens, con
-        permiso <b>Contents: read</b> sobre ese repositorio y nada más. Queda
-        en la base, igual que el de Instagram.
-      </p>
-    </details>
-    <p class="nota">
-      Baja el zip de la última versión publicada y lo descomprime encima.
-      <b>Nunca toca <code>api/config.php</code></b>, así que tus credenciales
-      quedan donde están.
     </p>
   </section>
 
