@@ -68,6 +68,11 @@ try {
     if (trim((string) ($carga['caption'] ?? '')) === '') {
         responder(['error' => 'Falta la descripción de la publicación'], 400);
     }
+    // si pide Facebook y la página no está conectada, se dice ahora y no a la hora de salir
+    if (in_array('facebook', redes_pedidas($carga), true) && !facebook_conectado()) {
+        responder(['error' => 'Falta conectar la página de Facebook en el panel privado'], 400);
+    }
+    $carga['redes'] = redes_pedidas($carga);
     /* Quién la programó lo pone el servidor, de la sesión, y no lo que
        diga el navegador: si no, cualquiera podría publicar a nombre de otro.
        Cuando el cron la publique, queda anotada a su nombre. */

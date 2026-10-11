@@ -1545,6 +1545,62 @@ $('#compartir').addEventListener('click', async (ev) => {
   finally{ ev.target.disabled = false; }
 });
 
+/* ------------------------------------------------------------------ */
+/* en qué redes se publica                                             */
+/* ------------------------------------------------------------------ */
+
+const NOMBRE_RED = { instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok' };
+// Instagram siempre: es la cuenta con la que arranca todo. Las otras, según el servidor
+const conectadas = { instagram: true, facebook: false, tiktok: false };
+
+/* «Instagram», «Instagram y Facebook», «Instagram, Facebook y TikTok». */
+function enRedes(redes){
+  const n = redes.map((r) => NOMBRE_RED[r] || r);
+  return n.length > 1 ? n.slice(0, -1).join(', ') + ' y ' + n.at(-1) : (n[0] || '');
+}
+
+function redesElegidas(){
+  return [...document.querySelectorAll('#redes input:checked:not(:disabled)')].map((i) => i.value);
+}
+
+function pintarRedes(){
+  for(const input of document.querySelectorAll('#redes input')){
+    const red = input.value;
+    input.disabled = !conectadas[red];
+    if(!conectadas[red]) input.checked = false;
+    const nota = input.parentElement.querySelector('small');
+    if(nota && red === 'facebook') nota.textContent = conectadas.facebook ? '' : 'sin conectar';
+    input.parentElement.title = conectadas[red] ? '' : red === 'tiktok'
+      ? 'Muy pronto' : 'Se conecta desde el panel privado';
+  }
+  const elegidas = redesElegidas();
+  $('#publicar span').textContent = elegidas.length
+    ? 'Publicar en ' + enRedes(elegidas) : 'Elegí dónde publicar';
+}
+
+/* Qué hay conectado, y lo que se eligió la última vez en este navegador.
+   La primera vez van marcadas todas las conectadas: un clic y sale en todas. */
+async function cargarRedes(){
+  try{
+    const d = await api('api/redes.php');
+    conectadas.facebook = !!d.facebook?.conectado;
+  }catch(e){ /* sin respuesta queda solo Instagram, como antes */ }
+  let guardadas = null;
+  try{ guardadas = JSON.parse(localStorage.getItem('redes_publicar') || 'null'); }catch(e){}
+  for(const input of document.querySelectorAll('#redes input')){
+    input.checked = conectadas[input.value]
+      && (Array.isArray(guardadas) ? guardadas.includes(input.value) : true);
+  }
+  // si lo guardado quedó sin nada que valga (desconectaron Facebook), Instagram
+  if(!redesElegidas().length) $('#redes input[value="instagram"]').checked = true;
+  pintarRedes();
+}
+
+$('#redes').addEventListener('change', () => {
+  try{ localStorage.setItem('redes_publicar', JSON.stringify(redesElegidas())); }catch(e){}
+  pintarRedes();
+});
+
 $('#publicar').addEventListener('click', async (ev) => {
   // sin descripción no se publica: un post vacío no se puede editar después
   // sin borrarlo y volver a subirlo
@@ -1576,11 +1632,13 @@ $('#publicar').addEventListener('click', async (ev) => {
       + `hace ${hace} segundos: «${o.que}». Publicar dos cosas a la vez las hace `
       + 'chocar. ¿Seguimos igual?')) return;
   }
+  const redes = redesElegidas();
+  if(!redes.length) return estado('Elegí al menos una red, arriba de Publicar.', true);
   const laminas = (placa.laminas || []).length + 1;
   // el reel y la placa con voz son un video solo, no un carrusel
   const queSale = ['reel', 'voz'].includes(placa.formato) ? 'un video'
     : `un carrusel de ${laminas} imagen${laminas > 1 ? 'es' : ''}`;
-  if(!confirm(`Se va a publicar en Instagram ${queSale}. ¿Seguimos?`)) return;
+  if(!confirm(`Se va a publicar en ${enRedes(redes)} ${queSale}. ¿Seguimos?`)) return;
   ev.target.disabled = true;
   // publicar puede llevar minutos; si la pantalla se apaga, se corta todo
   const despierto = await mantenerDespierto();
@@ -1605,8 +1663,8 @@ $('#publicar').addEventListener('click', async (ev) => {
     anotar('publicando', { piezas: items.length,
       tipos: items.map((x) => x.tipo).join(', ') });
     const arranquePublicar = Date.now();
-    trabajo('Publicando en Instagram', null,
-      'Instagram tiene que recibir y procesar cada pieza. Con video puede tardar unos minutos. No cierres esta ventana.');
+    trabajo('Publicando en ' + enRedes(redes), null,
+      'Cada red tiene que recibir y procesar cada pieza. Con video puede tardar unos minutos. No cierres esta ventana.');
     const res = await fetch('api/publicar.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1615,6 +1673,7 @@ $('#publicar').addEventListener('click', async (ev) => {
         caption: armarCaption(),
         colaboradores: placa.colaboradores || '',
         etiquetados: placa.etiquetados || '',
+        redes,
         // para el historial del equipo: qué fue. Quién, lo sabe el servidor
         placa: { placa_id: placa.id, nombre: placa.nombre, formato: placa.formato },
       }),
@@ -1626,7 +1685,11 @@ $('#publicar').addEventListener('click', async (ev) => {
     }
     anotar('publicado', { tardo: seg(Date.now() - arranquePublicar),
       aviso: datos.aviso ? String(datos.aviso).slice(0, 80) : 'sin avisos' });
-    estado('Publicado' + (datos.aviso ? ' — ' + datos.aviso : ''));
+    // dónde salió de verdad: si una red falló, las otras igual salieron
+    const salio = Object.entries(datos.redes || { instagram: datos })
+      .filter(([, r]) => r.ok).map(([red]) => red);
+    estado('Publicado en ' + enRedes(salio) + (datos.aviso ? ' — ' + datos.aviso : ''),
+      salio.length < redes.length);
     if(datos.enlace) window.open(datos.enlace, '_blank');
   }catch(e){ estado(e.message, true); }
   finally{
@@ -1706,6 +1769,8 @@ $('#programar').addEventListener('click', async (ev) => {
       + `hace ${hace} segundos: «${o.que}». Publicar dos cosas a la vez las hace `
       + 'chocar. ¿Seguimos igual?')) return;
   }
+  const redes = redesElegidas();
+  if(!redes.length) return estado('Elegí al menos una red, arriba de Publicar.', true);
   ev.target.disabled = true;
   const despierto = await mantenerDespierto();
   abrirTrabajo();
@@ -1723,10 +1788,10 @@ $('#programar').addEventListener('click', async (ev) => {
         publicar_en: new Date(cuando).toISOString(),
         carga: { ...carga, caption: armarCaption(),
                  colaboradores: placa.colaboradores || '',
-                 etiquetados: placa.etiquetados || '' },
+                 etiquetados: placa.etiquetados || '', redes },
       }),
     });
-    estado('Programado');
+    estado('Programado para ' + enRedes(redes));
     await pintarCola();
   }catch(e){ estado(e.message, true); }
   finally{
@@ -3641,6 +3706,7 @@ $('#portada').addEventListener('click', async (ev) => {
   }catch(e){
     return pantallaError(e.message);
   }
+  cargarRedes();
   // por si el hosting no tiene cron: al abrir, se publica lo que ya venció
   api('api/programar.php?tarea=vaciar&clave=' + encodeURIComponent(clave()))
     .catch(() => {});

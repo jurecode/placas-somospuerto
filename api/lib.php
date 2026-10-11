@@ -157,6 +157,8 @@ function crear_tablas(PDO $pdo): void {
         ig_id       VARCHAR(40)  NULL,
         programada  TINYINT(1)   NOT NULL DEFAULT 0,
         publicada   DATETIME     NOT NULL,
+        red         VARCHAR(12)  NOT NULL DEFAULT 'instagram',
+        envio       VARCHAR(16)  NULL,
         INDEX (usuario_id, publicada),
         INDEX (publicada)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
@@ -170,12 +172,25 @@ function crear_tablas(PDO $pdo): void {
         INDEX (llave, cuando)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 
+    /* Cambios a tablas que ya existían antes de que se agregara algo. En
+       una base nueva la columna ya viene en el CREATE y el ALTER falla por
+       repetido: por eso cada uno se intenta y, si ya estaba, se sigue. */
+    $cambios = [
+        // en qué red salió cada publicación, y qué publicaciones salieron
+        // juntas del mismo clic (una en Instagram y Facebook es un solo post)
+        "ALTER TABLE publicaciones ADD COLUMN red VARCHAR(12) NOT NULL DEFAULT 'instagram'",
+        "ALTER TABLE publicaciones ADD COLUMN envio VARCHAR(16) NULL",
+    ];
+
     // la base va en la cuenta: otra base en el mismo sitio es otra marca
-    $firma = substr(md5(BD_HOST . '|' . BD_NOMBRE . '|' . implode(';', $tablas)), 0, 16);
+    $firma = substr(md5(BD_HOST . '|' . BD_NOMBRE . '|' . implode(';', $tablas) . '|' . implode(';', $cambios)), 0, 16);
     $marca = __DIR__ . '/.tablas-' . $firma;
     if (is_file($marca)) return;
 
     foreach ($tablas as $sql) $pdo->exec($sql);
+    foreach ($cambios as $sql) {
+        try { $pdo->exec($sql); } catch (Throwable $e) { /* ya estaba hecho */ }
+    }
     @file_put_contents($marca, date('c') . "\n");
 }
 
@@ -289,12 +304,15 @@ function exigir_admin(?array $cuerpo = null): array {
 
 /* Anota una publicación en el historial del equipo. Si falla no rompe
    nada: el post ya está en Instagram, y el registro es un extra. */
-function registrar_publicacion(?int $usuarioId, array $meta, array $resultado, bool $programada = false): void {
+/* `$red` es dónde salió; `$envio`, un código que comparten las que salieron
+   del mismo clic en varias redes, para contarlas como un solo post. */
+function registrar_publicacion(?int $usuarioId, array $meta, array $resultado, bool $programada = false,
+                               string $red = 'instagram', ?string $envio = null): void {
     try {
         $st = bd()->prepare(
             'INSERT INTO publicaciones
-               (usuario_id, placa_id, nombre, formato, piezas, enlace, ig_id, programada, publicada)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+               (usuario_id, placa_id, nombre, formato, piezas, enlace, ig_id, programada, publicada, red, envio)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         $st->execute([
             $usuarioId,
             isset($meta['placa_id']) && $meta['placa_id'] !== null ? (int) $meta['placa_id'] : null,
@@ -305,6 +323,8 @@ function registrar_publicacion(?int $usuarioId, array $meta, array $resultado, b
             isset($resultado['id']) ? mb_substr((string) $resultado['id'], 0, 40) : null,
             $programada ? 1 : 0,
             ahora_utc(),
+            mb_substr($red, 0, 12),
+            $envio,
         ]);
     } catch (Throwable $e) {
         error_log('no se pudo anotar la publicación: ' . $e->getMessage());
@@ -358,11 +378,13 @@ function pedir_http(string $url, array $cabeceras = [], ?string $guardarEn = nul
     return ['codigo' => $codigo, 'cuerpo' => is_string($cuerpo) ? $cuerpo : ''];
 }
 
-function pedir(string $url, ?array $post = null): array {
+/* $espera: los segundos que se le aguantan. Facebook baja el video entero
+   antes de contestar, y con uno largo 30 no alcanzan. */
+function pedir(string $url, ?array $post = null, int $espera = 30): array {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 30,
+        CURLOPT_TIMEOUT        => $espera,
         CURLOPT_FOLLOWLOCATION => true,
     ]);
     if ($post !== null) {

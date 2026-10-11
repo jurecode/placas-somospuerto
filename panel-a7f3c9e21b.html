@@ -106,7 +106,9 @@
   #version.aldia::after{ content:' · el botón se enciende cuando haya una nueva'; color:var(--suave); font-weight:400 }
   #resultado{ margin-top:14px; font-size:14px; min-height:20px }
   #resultado.error{ color:var(--mal) }
-  #resultado.bien{ color:var(--ok) }
+  #resultado.bien, #fb_resultado.bien{ color:var(--ok) }
+  #fb_resultado.error{ color:var(--mal) }
+  #fb_resultado{ margin-top:12px }
 </style>
 </head>
 <body>
@@ -170,6 +172,52 @@
         guardado empieza con <code>EAA</code>, la app es de las de Facebook Login: ese se
         saca en el <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">Explorador de la Graph API</a>
         y se alarga en el <a href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank" rel="noopener noreferrer">Depurador de tokens</a>.
+      </p>
+    </details>
+  </section>
+
+  <section>
+    <h2>Página de Facebook</h2>
+    <p id="fb_estado" class="nota" style="margin-top:0">Escribí la clave y tocá Revisar.</p>
+    <div class="campo" style="margin-top:14px">
+      <label for="fb_token">Token de Facebook</label>
+      <input type="password" id="fb_token" placeholder="Empieza con EAA · se guarda en la base, no se muestra nunca más" autocomplete="off">
+    </div>
+    <div class="fila">
+      <button class="principal" id="conectar_fb">Conectar</button>
+      <button id="desconectar_fb" hidden>Desconectar</button>
+    </div>
+    <div id="fb_paginas" hidden style="margin-top:14px">
+      <p class="nota" style="margin:0 0 8px">Ese token maneja varias páginas. ¿En cuál se publica?</p>
+      <div class="fila" style="flex-wrap:wrap" id="fb_lista"></div>
+    </div>
+    <div id="fb_resultado" class="nota"></div>
+
+    <!-- Pasos según la documentación de Meta de octubre de 2026 (Pages API).
+         Si los menús dejan de coincidir, hay que actualizar esto. -->
+    <details class="guia" open>
+      <summary>Cómo conectar la página, paso a paso</summary>
+      <ol>
+        <li>Abrí el <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">Explorador de la Graph API</a>
+          con una cuenta de Facebook que administre la página del medio.</li>
+        <li>A la derecha, en <b>Meta App</b>, elegí la misma app de publicación. En
+          <b>User or Page</b> elegí <b>Get User Access Token</b> (token de usuario).</li>
+        <li>En <b>Permissions</b> agregá estos tres: <code>pages_show_list</code>,
+          <code>pages_manage_posts</code> y <code>pages_read_engagement</code>.
+          Si no aparecen, en la app andá a <b>Casos de uso</b> y agregá el de administrar páginas.</li>
+        <li>Tocá <b>Generate Access Token</b>. Se abre Facebook: marcá la página del medio
+          y aceptá todos los permisos.</li>
+        <li>Copiá el token con el botón de copiar y pegalo en el
+          <a href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank" rel="noopener noreferrer">Depurador de tokens</a>.
+          Tocá <b>Debug</b> y abajo de todo <b>Extend Access Token</b>. Copiá el token nuevo
+          que aparece: ese es el que dura.</li>
+        <li>Pegalo arriba, en <b>Token de Facebook</b>, y tocá <b>Conectar</b>. Si manejás
+          varias páginas, elegí la del medio.</li>
+      </ol>
+      <p class="nota">
+        Con el token extendido, el de la página que se guarda no vence: no hay que
+        repetir esto cada 60 días como con Instagram. Solo deja de andar si
+        cambiás la contraseña de Facebook o te sacan de administrador de la página.
       </p>
     </details>
   </section>
@@ -373,6 +421,7 @@ async function revisar(){
     }
     if(clave) localStorage.setItem('clave_publicar', clave);
     pintar(datos);
+    revisarRedes();
     const faltan = datos.faltan || [];
     res.className = datos.listo ? 'bien' : 'error';
     if(datos.listo){
@@ -413,6 +462,75 @@ $('#guardar').addEventListener('click', async () => {
       res.textContent += ` (Al guardarlo se le sacó lo que venía pegado: ${d.token.limpiado.join(', ')}.)`;
     }
   }catch(e){ res.className = 'error'; res.textContent = e.message; }
+});
+
+/* Facebook: si está conectada, a qué página, y si el token sigue andando. */
+function pintarFacebook(fb){
+  const el = $('#fb_estado');
+  $('#desconectar_fb').hidden = !fb?.conectado;
+  if(!fb?.conectado){
+    el.innerHTML = '<span class="no">✕</span> Sin conectar: el editor publica solo en Instagram.';
+    return;
+  }
+  const nombre = esc(fb.pagina?.nombre || fb.pagina?.id || '');
+  el.innerHTML = fb.funciona === false
+    ? `<span class="no">✕</span> Conectada a <b>${nombre}</b>, pero el token no anda: ${esc(fb.error || '')}${pistaToken(fb.error || '')}`
+    : `<span class="si">✓</span> Conectada a <b>${nombre}</b>: el editor ya puede publicar ahí.`;
+}
+
+async function revisarRedes(){
+  try{
+    const r = await fetch('api/redes.php?revisar=1', { headers: { 'x-clave': $('#clave').value.trim() } });
+    if(r.ok) pintarFacebook((await r.json()).facebook);
+  }catch(e){ /* sin esto el resto del panel igual sirve */ }
+}
+
+async function redes(cuerpo){
+  const r = await fetch('api/redes.php', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clave: $('#clave').value.trim(), ...cuerpo }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
+  return d;
+}
+
+function conectada(d){
+  const res = $('#fb_resultado');
+  $('#fb_paginas').hidden = true;
+  $('#fb_token').value = '';
+  pintarFacebook(d.facebook);
+  res.className = 'nota ' + (d.aviso ? 'error' : 'bien');
+  res.textContent = d.aviso || 'Listo. En el editor, arriba de Publicar, ya aparece Facebook.';
+}
+
+$('#conectar_fb').addEventListener('click', async () => {
+  const res = $('#fb_resultado');
+  res.className = 'nota'; res.textContent = 'Conectando…';
+  try{
+    const d = await redes({ tarea: 'conectar', token: $('#fb_token').value });
+    if(d.elegir){
+      res.textContent = '';
+      $('#fb_lista').innerHTML = d.elegir.map((p) =>
+        `<button data-pagina="${esc(p.id)}">${esc(p.nombre || p.id)}</button>`).join('');
+      $('#fb_paginas').hidden = false;
+      return;
+    }
+    conectada(d);
+  }catch(e){ res.className = 'nota error'; res.textContent = e.message + pistaToken(e.message); }
+});
+
+$('#fb_lista').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-pagina]');
+  if(!b) return;
+  try{ conectada(await redes({ tarea: 'elegir', id: b.dataset.pagina })); }
+  catch(e){ $('#fb_resultado').className = 'nota error'; $('#fb_resultado').textContent = e.message; }
+});
+
+$('#desconectar_fb').addEventListener('click', async () => {
+  if(!confirm('¿Desconectar la página? El editor deja de publicar en Facebook.')) return;
+  try{ pintarFacebook((await redes({ tarea: 'desconectar' })).facebook); $('#fb_resultado').textContent = ''; }
+  catch(e){ $('#fb_resultado').className = 'nota error'; $('#fb_resultado').textContent = e.message; }
 });
 
 async function revisarVersion(){

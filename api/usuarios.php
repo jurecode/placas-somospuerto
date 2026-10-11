@@ -53,11 +53,15 @@ try {
     if ($metodo === 'GET') {
         $semana = gmdate('Y-m-d H:i:s', time() - 7 * 86400);
         $mes    = gmdate('Y-m-d H:i:s', time() - 30 * 86400);
+        /* Una publicación que salió en Instagram y en Facebook son dos filas
+           con el mismo `envio`, pero cuenta como un post. Las de antes de
+           que hubiera redes no tienen envio: cada fila es una. */
+        $post = "COALESCE(p.envio, CONCAT('#', p.id))";
         $st = bd()->prepare(
             "SELECT u.id, u.usuario, u.nombre, u.foto, u.rol, u.activo, u.creado, u.ultimo_ingreso,
-                    COUNT(p.id) AS posts,
-                    SUM(CASE WHEN p.publicada >= ? THEN 1 ELSE 0 END) AS semana,
-                    SUM(CASE WHEN p.publicada >= ? THEN 1 ELSE 0 END) AS mes,
+                    COUNT(DISTINCT $post) AS posts,
+                    COUNT(DISTINCT CASE WHEN p.publicada >= ? THEN $post END) AS semana,
+                    COUNT(DISTINCT CASE WHEN p.publicada >= ? THEN $post END) AS mes,
                     MAX(p.publicada) AS ultimo_post
              FROM usuarios u LEFT JOIN publicaciones p ON p.usuario_id = u.id
              GROUP BY u.id, u.usuario, u.nombre, u.foto, u.rol, u.activo, u.creado, u.ultimo_ingreso
@@ -73,26 +77,45 @@ try {
 
         $filtro = isset($_GET['usuario']) && $_GET['usuario'] !== '' ? (int) $_GET['usuario'] : null;
         $sql = "SELECT p.id, p.usuario_id, p.nombre, p.formato, p.piezas, p.enlace, p.programada, p.publicada,
-                       u.nombre AS quien, u.foto
+                       p.red, p.envio, u.nombre AS quien, u.foto
                 FROM publicaciones p LEFT JOIN usuarios u ON u.id = p.usuario_id"
              . ($filtro !== null ? ' WHERE p.usuario_id = ?' : '')
-             . ' ORDER BY p.publicada DESC, p.id DESC LIMIT 300';
+             . ' ORDER BY p.publicada DESC, p.id DESC LIMIT 900';
         $st = bd()->prepare($sql);
         $st->execute($filtro !== null ? [$filtro] : []);
-        $publicaciones = array_map(static fn($p) => [
-            'id' => (int) $p['id'], 'usuarioId' => $p['usuario_id'] !== null ? (int) $p['usuario_id'] : null,
-            'quien' => $p['quien'], 'foto' => $p['foto'], 'nombre' => $p['nombre'],
-            'formato' => $p['formato'], 'piezas' => (int) $p['piezas'], 'enlace' => $p['enlace'],
-            'programada' => (bool) $p['programada'], 'publicada' => iso_utc($p['publicada']),
-        ], $st->fetchAll());
+        // las filas de un mismo envío se juntan en una, con sus redes
+        $publicaciones = [];
+        foreach ($st->fetchAll() as $p) {
+            $clave = $p['envio'] ?? ('#' . $p['id']);
+            $red = ['red' => $p['red'] ?: 'instagram', 'enlace' => $p['enlace']];
+            if (isset($publicaciones[$clave])) {
+                array_unshift($publicaciones[$clave]['redes'], $red);
+                // el enlace principal es el de Instagram, como siempre
+                if ($red['red'] === 'instagram') {
+                    if ($p['enlace']) $publicaciones[$clave]['enlace'] = $p['enlace'];
+                    // en Facebook los videos del carrusel salen aparte: cuenta el de Instagram
+                    $publicaciones[$clave]['piezas'] = (int) $p['piezas'];
+                }
+                continue;
+            }
+            if (count($publicaciones) >= 300) continue;
+            $publicaciones[$clave] = [
+                'id' => (int) $p['id'], 'usuarioId' => $p['usuario_id'] !== null ? (int) $p['usuario_id'] : null,
+                'quien' => $p['quien'], 'foto' => $p['foto'], 'nombre' => $p['nombre'],
+                'formato' => $p['formato'], 'piezas' => (int) $p['piezas'], 'enlace' => $p['enlace'],
+                'programada' => (bool) $p['programada'], 'publicada' => iso_utc($p['publicada']),
+                'redes' => [$red],
+            ];
+        }
+        $publicaciones = array_values($publicaciones);
 
         // los totales del equipo, para los números de arriba del panel
         $tot = bd()->prepare(
-            'SELECT COUNT(*) AS total,
-                    SUM(CASE WHEN publicada >= ? THEN 1 ELSE 0 END) AS semana,
-                    SUM(CASE WHEN publicada >= ? THEN 1 ELSE 0 END) AS mes,
-                    SUM(CASE WHEN usuario_id IS NULL THEN 1 ELSE 0 END) AS sin_cuenta
-             FROM publicaciones');
+            "SELECT COUNT(DISTINCT $post) AS total,
+                    COUNT(DISTINCT CASE WHEN p.publicada >= ? THEN $post END) AS semana,
+                    COUNT(DISTINCT CASE WHEN p.publicada >= ? THEN $post END) AS mes,
+                    COUNT(DISTINCT CASE WHEN p.usuario_id IS NULL THEN $post END) AS sin_cuenta
+             FROM publicaciones p");
         $tot->execute([$semana, $mes]);
         $t = $tot->fetch();
 

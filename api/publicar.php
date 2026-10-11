@@ -20,9 +20,10 @@ try {
         'caption'       => $entrada['caption'] ?? '',
         'colaboradores' => $entrada['colaboradores'] ?? '',
         'etiquetados'   => $entrada['etiquetados'] ?? '',
+        'redes'         => $entrada['redes'] ?? ['instagram'],
     ]);
     // a nombre de quien entró; con la clave del sitio queda sin nombre
-    registrar_publicacion($quien['id'], (array) ($entrada['placa'] ?? []), $r);
+    registrar_redes($quien['id'], (array) ($entrada['placa'] ?? []), $r);
     responder($r);
 } catch (Throwable $e) {
     responder(['error' => $e->getMessage()], 502);

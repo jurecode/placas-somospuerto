@@ -494,6 +494,25 @@
   .publicar:disabled{ filter:grayscale(.7); cursor:default }
   .publicar svg{ width:19px; height:19px; flex:none }
   .pie-previa{ font-size:12px; color:var(--suave); margin-top:-6px }
+  /* las redes donde sale: pastillas que se prenden con el color de cada una */
+  .redes{ display:flex; gap:6px; flex-wrap:wrap; justify-content:center }
+  .red{
+    position:relative; display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+    font-size:12.5px; font-weight:600; color:var(--suave); min-height:32px;
+    border:1px solid var(--linea); background:var(--boton); border-radius:99px; padding:5px 12px 5px 10px;
+    user-select:none; -webkit-user-select:none;
+  }
+  .red input{ position:absolute; inset:0; margin:0; opacity:0; cursor:inherit }
+  .red::before{ content:''; width:8px; height:8px; border-radius:50%; background:var(--boton-claro); flex:none }
+  .red small{ font-size:11px; font-weight:400 }
+  .red small:empty{ display:none }
+  .red:has(input:checked){ color:var(--texto); border-color:#ffffff38 }
+  .red--instagram:has(input:checked)::before{ background:#ee2a7b }
+  .red--facebook:has(input:checked)::before{ background:#1877F2 }
+  .red--tiktok:has(input:checked)::before{ background:#25F4EE }
+  .red:has(input:disabled){ opacity:.45; cursor:default }
+  .red:has(input:focus-visible){ outline:2px solid var(--acento); outline-offset:2px }
+  body.congelado .redes{ opacity:.5; pointer-events:none }
   /* ---------- qué se está subiendo ahora ---------- */
   .ahora ul{ list-style:none; display:grid; gap:7px; margin-top:10px; padding:0 }
   .ahora li{
@@ -620,6 +639,7 @@
     body.escribiendo[data-formato="reel"] #previa_video{ max-height:16svh }
     body.escribiendo .carrusel-vista,
     body.escribiendo .publicar,
+    body.escribiendo .redes,
     body.escribiendo .pie-previa,
     body.escribiendo #estado{ display:none }
 
@@ -927,8 +947,15 @@
     <p id="rotulo_tira"></p>
     <div class="tira" id="tira"></div>
   </div>
+  <!-- dónde sale: se marca una vez y queda; las que no están conectadas
+       se ven apagadas, para que se sepa que existen -->
+  <div class="redes" id="redes" role="group" aria-label="Dónde se publica">
+    <label class="red red--instagram"><input type="checkbox" value="instagram" checked><span>Instagram</span></label>
+    <label class="red red--facebook"><input type="checkbox" value="facebook" disabled><span>Facebook</span><small></small></label>
+    <label class="red red--tiktok"><input type="checkbox" value="tiktok" disabled><span>TikTok</span><small>pronto</small></label>
+  </div>
   <button class="publicar" id="publicar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg><span>Publicar en Instagram</span></button>
-  <p class="pie-previa">Publica de verdad, en la cuenta real.</p>
+  <p class="pie-previa">Publica de verdad, en las cuentas reales.</p>
 </div>
 
 <script type="module" src="editor.js"></script>
