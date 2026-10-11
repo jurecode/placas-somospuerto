@@ -350,6 +350,62 @@ function pedazo(buffer, desde, largo){
   return new Uint8Array(buffer, ini, Math.max(0, Math.min(largo, buffer.byteLength - ini)));
 }
 
+/* Un descriptor del esds: etiqueta, y dónde empieza y termina lo suyo.
+ * El largo ocupa de 1 a 4 bytes: cada uno aporta 7 bits, y mientras tenga
+ * prendido el de arriba sigue el próximo. Apple escribe siempre los 4
+ * (80 80 80 02). */
+function descriptor(d, i){
+  if(i >= d.length) return null;
+  const etiqueta = d[i++];
+  let largo = 0;
+  for(let n = 0; n < 4 && i < d.length; n++){
+    const b = d[i++];
+    largo = (largo << 7) | (b & 0x7f);
+    if(!(b & 0x80)) break;
+  }
+  return { etiqueta, desde: i, hasta: Math.min(d.length, i + largo) };
+}
+
+/* La configuración del AAC, de adentro del esds: ES (0x03) → configuración
+ * del decodificador (0x04) → lo específico (0x05).
+ * Antes se buscaba el primer byte 0x05 y se tomaba el siguiente como largo.
+ * Con los archivos de Apple, donde el largo ocupa cuatro bytes, salían once
+ * bytes de basura en vez de los dos de la configuración, y el audio del
+ * video armado quedaba sin poder reproducirse —pasaba en los reels hechos
+ * con videos de iPhone—. Y un 0x05 cualquiera de más adelante también
+ * podía confundirlo. */
+function configuracionAac(d){
+  const es = descriptor(d, 0);
+  if(!es || es.etiqueta !== 0x03) return null;
+  let i = es.desde + 2;                 // el número del stream
+  const banderas = d[i++];
+  if(banderas & 0x80) i += 2;           // depende de otro stream
+  if(banderas & 0x40) i += 1 + d[i];    // una dirección
+  if(banderas & 0x20) i += 2;           // otro reloj
+  const dc = descriptor(d, i);
+  if(!dc || dc.etiqueta !== 0x04) return null;
+  // tipo de objeto, tipo de stream, búfer y dos tasas: 13 bytes
+  for(let j = dc.desde + 13; j < dc.hasta;){
+    const x = descriptor(d, j);
+    if(!x || x.hasta <= j) break;
+    if(x.etiqueta === 0x05) return d.slice(x.desde, x.hasta);
+    j = x.hasta;
+  }
+  return null;
+}
+
+/* Lo que dicen los primeros bits de la configuración del AAC. */
+function leerConfiguracionAac(c){
+  if(!c || c.length < 2) return {};
+  const bits = (c[0] << 8) | c[1];
+  const tipo = bits >> 11;
+  const indice = (bits >> 7) & 15;
+  // 31 y 15 son «sigue en los bits de después»: rarísimo, se deja la cabecera
+  if(tipo === 31 || indice === 15) return {};
+  const tabla = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+  return { muestreo: tabla[indice], canales: (bits >> 3) & 15 };
+}
+
 export function leerMp4(buffer){
   const vista = new DataView(buffer);
   const pistas = [];
@@ -400,16 +456,26 @@ export function leerMp4(buffer){
         }else if(n === 'mp4a'){
           actual.canales = vista.getUint16(a + 16);
           actual.muestreo = vista.getUint32(a + 24) >>> 16;
-          recorrer(vista, a + 28, b, hondo);
+          // las versiones 1 y 2 de QuickTime traen 16 y 36 bytes más antes
+          // de las cajas de adentro
+          const version = vista.getUint16(a + 8);
+          recorrer(vista, a + 28 + (version === 1 ? 16 : version === 2 ? 36 : 0), b, hondo);
         }else if(n === 'avcC'){
           actual.descripcion = new Uint8Array(buffer.slice(a, b));
           actual.codec = 'avc1.' + [...actual.descripcion.slice(1, 4)]
             .map((x) => x.toString(16).padStart(2, '0')).join('');
         }else if(n === 'esds'){
-          // dentro del esds, el descriptor 0x05 es la configuración del AAC
-          const d = new Uint8Array(buffer.slice(a + 4, b));
-          for(let k = 0; k < d.length - 2; k++){
-            if(d[k] === 0x05){ actual.descripcion = d.slice(k + 2, k + 2 + d[k + 1]); break; }
+          const config = configuracionAac(new Uint8Array(buffer.slice(a + 4, b)));
+          if(config){
+            actual.descripcion = config;
+            /* Canales y frecuencia, de la configuración y no de la cabecera:
+               QuickTime pone 2 canales en la cabecera aunque el audio sea
+               mono, y lo que mira el reproductor es la configuración. Si
+               las dos no coinciden en el archivo que se arma, hay
+               reproductores que no lo abren. */
+            const { canales, muestreo } = leerConfiguracionAac(config);
+            if(canales) actual.canales = canales;
+            if(muestreo) actual.muestreo = muestreo;
           }
           actual.codec = 'mp4a.40.2';
         }else if(['wave', 'esds '].includes(n)){
