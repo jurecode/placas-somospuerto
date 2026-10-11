@@ -235,8 +235,59 @@ function pedir(string $url, ?array $post = null): array {
     return $datos;
 }
 
+/* Deja el token como lo espera Meta, y dice qué le sacó.
+   Al copiarlo se cuela de todo: las comillas del explorador de la API, el
+   «Bearer » de un ejemplo, la dirección entera de la redirección con su
+   «access_token=…&expires_in=…», espacios de un salto de línea. Meta
+   contesta a todo eso «Cannot parse access token», igual que a un token de
+   la otra puerta, y no hay forma de darse cuenta mirando el campo, porque
+   es de contraseña. Un token de verdad es una sola tira de letras y números:
+   lo que no sea eso, sobra. */
+function limpiar_token(string $crudo): array {
+    $t = trim($crudo);
+    $saco = [];
+    // pegaron la dirección, o un pedazo con access_token=: solo el valor
+    if (preg_match('/access_token=([^&#\s"\']+)/', $t, $m)) {
+        $t = $m[1];
+        $saco[] = 'access_token=';
+    }
+    $antes = $t;
+    $t = trim($t, " \t\n\r\"'`“”‘’");
+    if ($t !== $antes) $saco[] = 'comillas';
+    if (preg_match('/^bearer\s+/i', $t)) {
+        $t = preg_replace('/^bearer\s+/i', '', $t);
+        $saco[] = 'Bearer';
+    }
+    if (strpos($t, '%') !== false && rawurldecode($t) !== $t) {
+        $t = rawurldecode($t);
+        $saco[] = 'codificación de dirección';
+    }
+    $sinEspacios = (string) preg_replace('/\s+/u', '', $t);
+    if ($sinEspacios !== $t) {
+        $t = $sinEspacios;
+        $saco[] = 'espacios';
+    }
+    return [$t, $saco];
+}
+
+/* De qué puerta es el token, por cómo empieza: los de Instagram Login
+   arrancan con IG y los de Facebook Login con EAA. Vacío si no se sabe. */
+function tipo_token(string $token): string {
+    if (strncmp($token, 'IG', 2) === 0) return 'instagram';
+    if (strncmp($token, 'EAA', 3) === 0) return 'facebook';
+    return '';
+}
+
 /* Devuelve el host que funciona con el token guardado, probándolos si hace
-   falta. La respuesta queda anotada para no probar en cada llamada. */
+   falta. La respuesta queda anotada para no probar en cada llamada.
+
+   Si no funciona en ninguno, el error que se muestra es el de la puerta a
+   la que pertenece el token. Antes se mostraba el de la última probada,
+   que era siempre Facebook, y Facebook a cualquier token de Instagram le
+   contesta «Cannot parse access token» —que solo quiere decir «este no es
+   mío»—. Así, un token de Instagram vencido, o uno bueno con el id de la
+   cuenta equivocado, aparecían como «el token está cortado», y el motivo
+   de verdad, el que había dado Instagram, se tiraba. */
 function host_ig(bool $reprobar = false): string {
     $guardado = ajuste('ig_host');
     if ($guardado !== '' && !$reprobar) return $guardado;
@@ -245,17 +296,26 @@ function host_ig(bool $reprobar = false): string {
     $token = ajuste('ig_access_token');
     if ($id === '' || $token === '') throw new RuntimeException('Falta la cuenta de Instagram');
 
-    $ultimo = null;
-    foreach (HOSTS_IG as $host) {
+    // primero la puerta que le corresponde; la otra igual se prueba, por si
+    // algún día Meta cambia cómo empiezan
+    $tipo  = tipo_token($token);
+    $orden = $tipo === 'facebook' ? array_reverse(HOSTS_IG) : HOSTS_IG;
+
+    $errores = [];
+    foreach ($orden as $host) {
         try {
             pedir($host . '/' . $id . '?fields=id,username&access_token=' . urlencode($token));
             guardar_ajuste('ig_host', $host);
             return $host;
         } catch (RuntimeException $e) {
-            $ultimo = $e;
+            $errores[$host] = $e->getMessage();
         }
     }
-    throw new RuntimeException($ultimo ? $ultimo->getMessage() : 'El token no funciona');
+    if ($tipo !== '') throw new RuntimeException(reset($errores));
+    // sin saber de qué puerta es, se dicen las dos respuestas
+    $partes = [];
+    foreach ($errores as $host => $msg) $partes[] = parse_url($host, PHP_URL_HOST) . ': ' . $msg;
+    throw new RuntimeException($partes ? implode(' · ', $partes) : 'El token no funciona');
 }
 
 function graph(string $ruta, array $cuerpo): array {

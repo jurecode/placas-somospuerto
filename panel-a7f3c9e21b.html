@@ -247,20 +247,51 @@ import('./marca/marca.js')
   })
   .catch(() => {});
 
-/* Los errores de Meta son crípticos; se traduce lo que uno se encuentra. */
+/* Los errores de Meta son crípticos; se traduce lo que uno se encuentra.
+   Medido contra Meta con tokens inventados de cada forma:
+   - cortado, con un carácter cambiado o con un espacio en el medio: en su
+     puerta da «Failed to decrypt» (Instagram) o «Malformed» (Facebook);
+   - «Cannot parse» es otra cosa: lo dice una puerta cuando el token es de
+     la otra, o cuando tiene algo pegado delante —comillas, «Bearer »,
+     «access_token=»—. Antes esto se traducía como «está cortado», y no lo
+     estaba: había que buscar en otro lado. */
 function pistaToken(error){
   const e = String(error).toLowerCase();
-  if(e.includes('decrypt') || e.includes('cannot parse')){
-    return ' — el token está cortado o es de otra app. Copialo entero de nuevo ' +
-           'desde Meta; suelen tener más de 150 caracteres.';
+  if(e.includes('decrypt') || e.includes('malformed')){
+    return ' — Meta no puede leerlo: está incompleto o se le cambió algún carácter al ' +
+           'copiarlo. Copialo entero de nuevo desde Meta.';
+  }
+  if(e.includes('cannot parse')){
+    return ' — Meta no reconoce el formato. No es que esté cortado: suele ser un token de ' +
+           'otro tipo de app que la de esta cuenta, o con algo pegado que no es parte de él.';
   }
   if(e.includes('expired') || e.includes('session has expired')){
     return ' — el token venció. Generá uno nuevo en Meta y pegalo acá.';
   }
-  if(e.includes('does not exist') || e.includes('nonexisting field')){
-    return ' — revisá que el id de la cuenta sea el correcto.';
+  if(e.includes('does not exist') || e.includes('nonexisting field') || e.includes('unsupported get request')){
+    return ' — el token anda, pero no con esa cuenta: revisá que el id de la cuenta sea el ' +
+           'de la misma cuenta con la que se generó el token.';
+  }
+  if(e.includes('permission') || e.includes('scope')){
+    return ' — al token le faltan permisos: al generarlo hay que autorizar leer la cuenta ' +
+           'y publicar contenido.';
   }
   return '';
+}
+
+/* Lo que se sabe del token guardado sin mostrarlo: de qué tipo es, cuánto
+   mide, y qué se le sacó si venía con algo pegado. Con esto se ve de un
+   vistazo si se copió entero —los de Meta pasan de 150 caracteres— y si es
+   del tipo de app que se esperaba. */
+function describirToken(t){
+  if(!t) return '';
+  const tipo = t.tipo === 'instagram' ? 'de Instagram Login (empieza con IG)'
+    : t.tipo === 'facebook' ? 'de Facebook Login (empieza con EAA)'
+    : 'de un tipo que no se reconoce (no empieza con IG ni con EAA)';
+  let txt = `Token guardado: ${tipo}, ${t.largo} caracteres`;
+  if(t.largo < 120) txt += ' — es corto para un token de Meta: parece incompleto';
+  if(t.limpiado?.length) txt += `. Venía con cosas de más que se le sacaron: ${t.limpiado.join(', ')}`;
+  return txt + '.';
 }
 
 function pintar(datos){
@@ -283,7 +314,11 @@ function pintar(datos){
       <span>cuenta ${String(datos.cuenta.account_type || '').toLowerCase()} — el token funciona</span></li>`);
   }else if(datos.tokenError){
     filas.push(`<li><span class="marca no">✕</span><b>Token</b>
-      <span>${datos.tokenError}${pistaToken(datos.tokenError)}</span></li>`);
+      <span>${esc(datos.tokenError)}${pistaToken(datos.tokenError)}</span></li>`);
+  }
+  if(datos.token){
+    filas.push(`<li><span class="marca ${datos.cuenta ? 'si' : 'no'}">${datos.cuenta ? '✓' : '·'}</span>
+      <b>Token</b><span>${esc(describirToken(datos.token))}</span></li>`);
   }
   if(datos.cuenta && datos.host){
     filas.push(`<li><span class="marca si">✓</span><b>${datos.host}</b>
@@ -339,7 +374,11 @@ $('#guardar').addEventListener('click', async () => {
     const d = await r.json();
     if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
     $('#ig_token').value = '';
-    revisar();
+    await revisar();
+    // lo que se le sacó al pegarlo: al revisar ya no aparece, porque ya está limpio
+    if(d.token?.limpiado?.length){
+      res.textContent += ` (Al guardarlo se le sacó lo que venía pegado: ${d.token.limpiado.join(', ')}.)`;
+    }
   }catch(e){ res.className = 'error'; res.textContent = e.message; }
 });
 

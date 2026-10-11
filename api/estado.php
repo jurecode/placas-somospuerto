@@ -43,13 +43,20 @@ try { bd(); } catch (Throwable $e) { $bdOk = false; $bdError = $e->getMessage();
 
 if ($metodo === 'POST') {
     if (!$bdOk) responder(['error' => 'Sin base de datos no se puede guardar: ' . $bdError], 500);
-    foreach (['ig_user_id', 'ig_access_token'] as $c) {
-        if (isset($cuerpo[$c]) && trim((string) $cuerpo[$c]) !== '') {
-            guardar_ajuste($c, trim((string) $cuerpo[$c]));
-        }
+    // el id es un número: los espacios de copiarlo no son parte de él
+    $id = (string) preg_replace('/\s+/', '', (string) ($cuerpo['ig_user_id'] ?? ''));
+    if ($id !== '') guardar_ajuste('ig_user_id', $id);
+
+    $token = null;
+    if (trim((string) ($cuerpo['ig_access_token'] ?? '')) !== '') {
+        [$limpio, $saco] = limpiar_token((string) $cuerpo['ig_access_token']);
+        guardar_ajuste('ig_access_token', $limpio);
+        // el token no vuelve nunca; solo de qué tipo es, cuánto mide y qué
+        // se le sacó, que alcanza para ver si se copió mal
+        $token = ['tipo' => tipo_token($limpio), 'largo' => strlen($limpio), 'limpiado' => $saco];
     }
     guardar_ajuste('ig_host', '');   // que se vuelva a detectar con el token nuevo
-    responder(['ok' => true]);
+    responder(['ok' => true, 'token' => $token]);
 }
 
 [$dirFotos] = carpeta('fotos');
@@ -57,6 +64,20 @@ if ($metodo === 'POST') {
 
 $igUser  = $bdOk ? ajuste('ig_user_id') : '';
 $igToken = $bdOk ? ajuste('ig_access_token') : '';
+
+/* Un token guardado antes de que existiera la limpieza puede tener pegadas
+   comillas o un «Bearer »: se arregla acá mismo, sin tener que ir a Meta a
+   buscarlo de nuevo. Solo se toca si de verdad sobraba algo. */
+$tokenArreglado = [];
+if ($igToken !== '') {
+    [$limpio, $saco] = limpiar_token($igToken);
+    if ($saco) {
+        guardar_ajuste('ig_access_token', $limpio);
+        guardar_ajuste('ig_host', '');
+        $igToken = $limpio;
+        $tokenArreglado = $saco;
+    }
+}
 
 $variables = [
     'BD'              => $bdOk,
@@ -83,4 +104,7 @@ responder([
     'variables' => $variables, 'faltan' => $faltan,
     'cuenta' => $cuenta, 'tokenError' => $tokenError,
     'host' => $host ? parse_url($host, PHP_URL_HOST) : null,
+    'token' => $igToken !== ''
+        ? ['tipo' => tipo_token($igToken), 'largo' => strlen($igToken), 'limpiado' => $tokenArreglado]
+        : null,
 ]);
