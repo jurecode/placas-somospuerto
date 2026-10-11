@@ -204,8 +204,38 @@
   #estado.error{ color:var(--mal) }
 
 
-  /* ---------- barra de secciones (solo en el teléfono) ---------- */
+  /* ---------- barra de secciones ---------- */
+  /* En el teléfono va abajo, para el pulgar (ver el bloque de abajo). En la
+     computadora es una columna angosta a la izquierda del formulario, con
+     los mismos íconos. Antes ahí no había nada: el formulario era una sola
+     columna larga, y para llegar a la descripción —que es obligatoria— había
+     que bajar a ciegas por siete secciones. */
   .barra{ display:none }
+  @media (min-width:901px){
+    body{ grid-template-columns:78px minmax(340px, 430px) 1fr }
+    .barra{
+      grid-column:1; grid-row:1; display:flex; flex-direction:column; align-items:center;
+      gap:4px; padding:14px 0; height:100svh; position:sticky; top:0; overflow-y:auto;
+      background:var(--bg); border-right:1px solid var(--linea);
+    }
+    .panel{ grid-column:2; grid-row:1 }
+    .previa{ grid-column:3; grid-row:1 }
+    .barra button{
+      width:62px; padding:10px 0 8px; border:0; border-radius:14px;
+      background:none; color:var(--suave);
+      display:grid; justify-items:center; gap:4px; position:relative;
+    }
+    .barra button:hover{ background:var(--boton); color:var(--texto) }
+    .barra button.activa{ background:var(--boton); color:var(--acento) }
+    .barra svg{ width:20px; height:20px }
+    .barra i{ font-style:normal; font-size:10px; letter-spacing:.02em }
+    .barra button.falta::after{
+      content:''; position:absolute; top:7px; right:13px;
+      width:7px; height:7px; border-radius:50%; background:var(--mal);
+    }
+    /* al saltar a una sección, que no quede tapada por el encabezado del panel */
+    fieldset[data-seccion]{ scroll-margin-top:72px }
+  }
   @media (max-width:900px){
     .barra{
       position:fixed; left:0; right:0; bottom:0; z-index:20;
@@ -475,44 +505,6 @@
   .ahora li small{ font-size:11px; color:var(--suave) }
   .ahora li.libre{ color:var(--suave); border-style:dashed }
 
-  /* ---------- lo que está subido ---------- */
-  .archivos ul{ list-style:none; display:grid; gap:8px; margin-top:12px; padding:0 }
-  .archivos li{
-    display:grid; grid-template-columns:96px minmax(0,1fr); gap:10px;
-    background:var(--hueco); border:1px solid var(--linea); border-radius:9px; padding:8px;
-  }
-  .archivos video, .archivos img{
-    width:96px; height:120px; object-fit:cover; border-radius:6px;
-    background:#000; display:block; border:1px solid var(--linea);
-  }
-  .archivos b{ font-size:12px; font-weight:600; word-break:break-all; display:block }
-  .archivos small{ font-size:11px; color:var(--suave); display:block; margin-top:3px }
-  .archivos small.mal{ color:var(--mal) }
-  .archivos a{ font-size:11px; align-self:center }
-  .archivos .enlace{
-    width:100%; margin-top:6px; font-size:10.5px; padding:5px 7px;
-    font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
-    color:var(--suave); background:var(--bg); border-color:var(--linea);
-  }
-  .archivos .fila button{ font-size:11px; padding:4px 9px }
-
-  /* ---------- bitácora ---------- */
-  .bitacora ul{ list-style:none; display:grid; gap:5px; max-height:340px; overflow-y:auto }
-  .bitacora li{
-    display:flex; gap:8px; align-items:baseline; font-size:11.5px; line-height:1.45;
-    background:var(--hueco); border:1px solid var(--linea); border-radius:7px;
-    padding:6px 9px;
-  }
-  .bitacora li b{
-    font-weight:600; font-variant-numeric:tabular-nums; color:var(--suave); flex:none;
-  }
-  .bitacora li span{ min-width:0; overflow-wrap:anywhere }
-  .bitacora li i{ font-style:normal; font-weight:600; color:var(--texto) }
-  /* el color dice de un vistazo si eso estuvo bien */
-  .bitacora li.mal{ border-color:var(--mal) }
-  .bitacora li.mal i{ color:var(--mal) }
-  .bitacora li.aviso i{ color:var(--aviso) }
-
   /* ---------- programar ---------- */
   .programar .cuando{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:stretch }
   /* color-scheme oscuro: sin esto el calendario que abre el sistema sale
@@ -635,7 +627,8 @@
     body.sin_vista .previa{ display:none }
     body.sin_vista .mostrar_vista{ display:inline-flex }
     .panel{ border-right:0; overflow:visible; padding-bottom:env(safe-area-inset-bottom) }
-    .panel > header{ top:0 }
+    /* en el teléfono lo que queda fijo arriba es la placa, no este encabezado */
+    .panel > header{ position:static }
 
     /* iOS hace zoom al tocar cualquier campo cuya letra mida menos de 16px,
        y después la página queda corrida y más ancha que la pantalla. Se
@@ -645,7 +638,13 @@
 
     /* Y por si algo igual se pasa de ancho, que no arrastre la página: en
        una grilla los hijos no se achican solos, hay que decírselo. */
-    html, body{ max-width:100%; overflow-x:hidden }
+    /* `clip` y no `hidden` en el body: con `hidden` el body pasa a ser una
+       caja con desplazamiento propio, y eso anula el `sticky` de la vista
+       previa. Por eso la placa se iba de la pantalla al bajar, y se movían
+       la X o los colores sin ver qué cambiaba. `clip` corta lo que se pasa
+       de ancho igual, sin armar esa caja. */
+    html{ overflow-x:hidden }
+    body{ max-width:100%; overflow-x:clip }
     .panel, .previa{ min-width:0 }
     fieldset, .campo, .fila{ min-width:0; max-width:100% }
     textarea, input{ max-width:100% }
@@ -708,6 +707,7 @@
             <button class="principal" type="submit">Guardar</button>
             <small id="clave_estado" aria-live="polite"></small>
           </form>
+          <button type="button" id="copiar_registro">Copiar registro técnico</button>
           <button type="button" id="salir">Salir</button>
         </div>
       </div>
@@ -808,67 +808,6 @@
     </p>
   </fieldset>
 
-  <fieldset data-seccion="mas">
-    <legend>Marca sobre los videos</legend>
-    <div class="ajuste" id="marca_video">
-      <button data-marca-video="si">Con logo</button>
-      <button data-marca-video="no">Sin nada encima</button>
-    </div>
-    <p class="nota">
-      <b>Sin nada encima</b> es lo que viene puesto: el video se sube tal cual
-      vino, sin recomprimir, sin esperar y sin perder un solo cuadro. La placa
-      del carrusel lleva el logo igual, así que el post sigue firmado. Solo se
-      procesa si el video no viene en la proporción del carrusel.
-    </p>
-    <p class="nota">
-      Con logo se le queman encima el degradado y el logo, y para eso hay que
-      recomprimir el video entero. Ahí aparecen el peso, la espera y el riesgo
-      de que salga a tirones. La previa de arriba muestra cuál de los dos vas
-      a publicar.
-    </p>
-  </fieldset>
-
-  <fieldset data-seccion="mas">
-    <legend>Cómo se procesa el video</legend>
-    <div class="ajuste" id="camino">
-      <button data-camino="rapido">Rápido</button>
-      <button data-camino="compatible">Compatible</button>
-    </div>
-    <p class="nota">
-      En rápido el video se arma acá mismo: tarda una décima parte y no pierde
-      ningún cuadro. En compatible lo arma el navegador, que tarda lo que dura
-      el video y puede perder cuadros, pero produce un archivo más estándar.
-      Si Instagram rechaza un video, probá en compatible y avisame.
-    </p>
-  </fieldset>
-
-  <fieldset data-seccion="mas">
-    <legend>Calidad del video</legend>
-    <div class="ajuste" id="calidad">
-      <button data-calidad="alta">Alta</button>
-      <button data-calidad="rapida">Rápida</button>
-    </div>
-    <p class="nota">
-      En rápida el archivo pesa un tercio menos y sube más rápido, que en
-      datos móviles se nota. Instagram recomprime todo igual, así que la
-      diferencia apenas se ve.
-    </p>
-    <p class="nota">
-      El peso ya no sale de un número fijo: se calcula sobre el video que
-      elegiste, así que uno de teléfono no se infla al doble por las dudas.
-    </p>
-  </fieldset>
-
-  <fieldset data-seccion="mas">
-    <legend>Noticias de otros medios</legend>
-    <p class="nota" style="margin-top:0">
-      Los feeds de BioBio, ADN y los que quieras agregar, en una tabla, con un
-      botón para publicar cada uno con este mismo diseño. Es una página aparte:
-      lo que armes acá a mano no se toca.
-    </p>
-    <a href="feeds.php"><button class="descarga" style="width:100%">Abrir el panel de feeds</button></a>
-  </fieldset>
-
   <fieldset data-seccion="mas" class="ahora">
     <legend>Qué se está subiendo ahora</legend>
     <p class="nota" style="margin-top:0">
@@ -877,34 +816,6 @@
       los dos. Publicar dos cosas al mismo tiempo las hace chocar.
     </p>
     <ul id="en_curso"></ul>
-  </fieldset>
-
-  <fieldset data-seccion="mas" class="archivos">
-    <legend>Lo que está subido</legend>
-    <p class="nota" style="margin-top:0">
-      Los archivos que se mandaron al servidor, del último al primero. Es lo
-      que Instagram descarga: si rechaza un video, acá se puede abrir y ver
-      qué se le mandó, con sus medidas.
-    </p>
-    <div class="fila">
-      <button class="descarga" id="ver_archivos">Ver los archivos</button>
-      <span class="nota" id="cuantos_archivos" style="margin:0"></span>
-    </div>
-    <ul id="archivos"></ul>
-  </fieldset>
-
-  <fieldset data-seccion="mas" class="bitacora">
-    <legend>Qué pasó</legend>
-    <p class="nota" style="margin-top:0">
-      Lo que ocurre al preparar y subir queda anotado acá: cuánto pesaba el
-      video, cuántos cuadros se lograron dibujar de los que hacían falta, a qué
-      velocidad subió y en qué paso se cortó si algo falló.
-    </p>
-    <ul id="bitacora"></ul>
-    <div class="fila" style="margin-top:12px">
-      <button class="descarga" id="copiar_bitacora">Copiar</button>
-      <button class="descarga" id="limpiar_bitacora">Borrar</button>
-    </div>
   </fieldset>
 
   <fieldset data-seccion="mas" class="programar">

@@ -420,7 +420,11 @@ export function dibujarFirma(ctx, firma, k, x, y, color = '#0ae7ae'){
 function cajaFoto(u, altoLienzo){
   const M = MEDIDAS.media;
   const x = M.x * u, y = M.y * u, ancho = M.ancho * u;
-  return { x, y, ancho, alto: altoLienzo - y - M.abajo * u, radio: M.radio * u };
+  /* El borde de abajo, en un píxel entero. A 1080 de ancho caía en 1033,2:
+     la fila de ese borde quedaba tapada a medias dos veces —por la foto y
+     por el fundido—, y se veía una raya oscura de un píxel de lado a lado,
+     también en lo publicado. */
+  return { x, y, ancho, alto: Math.round(altoLienzo - y - M.abajo * u), radio: M.radio * u };
 }
 
 /* La foto de la placa —el collage y el círculo—, sin el fundido ni nada

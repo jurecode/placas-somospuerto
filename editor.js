@@ -382,10 +382,19 @@ const esc = (s) => String(s).replace(/[&<>"]/g,
 /* Con el teclado abierto, la vista previa entera no dejaba lugar para el
    campo que se estaba escribiendo. Mientras se escribe se achica y se guarda
    lo que no sirve en ese momento; al terminar, vuelve. */
-const esCampo = (el) => el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+/* Solo los campos donde se escribe, que son los que abren el teclado.
+   Antes entraba cualquier INPUT, controles deslizantes incluidos: al tocar
+   el de X o el de Y, la vista se achicaba y el panel se corría para
+   centrarlo, y el control se iba de abajo del dedo mientras se arrastraba. */
+const TIPOS_DE_TEXTO = ['text', 'search', 'email', 'url', 'tel', 'number', 'password'];
+const esCampo = (el) => !!el && (el.tagName === 'TEXTAREA'
+  || (el.tagName === 'INPUT' && TIPOS_DE_TEXTO.includes(el.type)));
+// el teclado que tapa el campo es cosa del teléfono: en la computadora no hay nada que esquivar
+const enTelefono = () => matchMedia('(max-width: 900px)').matches;
 
 document.addEventListener('focusin', (ev) => {
   if(!esCampo(ev.target)) return;
+  if(!enTelefono()) return;
   document.body.classList.add('escribiendo');
   // ya achicada la vista, el campo puede haber quedado debajo del teclado
   setTimeout(() => ev.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);
@@ -418,7 +427,6 @@ function anotar(evento, datos = {}){
     const libro = leerBitacora();
     libro.push(linea);
     localStorage.setItem(BITACORA, JSON.stringify(libro.slice(-TOPE_BITACORA)));
-    if(document.getElementById('bitacora')) pintarBitacora();
   }catch(e){ /* si no hay lugar, se sigue sin anotar */ }
 }
 
@@ -429,27 +437,6 @@ function leerBitacora(){
 
 const mb = (bytes) => (bytes / 1048576).toFixed(2) + ' MB';
 const seg = (ms) => (ms / 1000).toFixed(1) + 's';
-
-/* Lo que se muestra: una línea por evento, la más nueva arriba. */
-function pintarBitacora(){
-  const caja = document.getElementById('bitacora');
-  if(!caja) return;
-  const libro = leerBitacora();
-  if(!libro.length){
-    caja.innerHTML = '<p class="nota">Todavía no hay nada anotado. Se llena sola al subir o publicar.</p>';
-    return;
-  }
-  const hora = (t) => new Date(t).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  caja.innerHTML = libro.slice().reverse().map((l) => {
-    const { t, evento, nivel, ...resto } = l;
-    const detalle = Object.entries(resto)
-      .map(([k, v]) => `${k}: ${v}`).join(' · ');
-    return `<li class="${esc(nivel || 'ok')}">
-      <b>${esc(hora(t))}</b>
-      <span><i>${esc(evento)}</i>${detalle ? ' — ' + esc(detalle) : ''}</span>
-    </li>`;
-  }).join('');
-}
 
 /* ------------------------------------------------------------------ */
 /* secciones, en el teléfono                                           */
@@ -476,15 +463,50 @@ function loQueFalta(){
   return falta;
 }
 
-function irA(seccion){
-  document.body.dataset.seccion = seccion;
+function marcarSeccion(seccion){
   document.querySelectorAll('[data-ir]').forEach((b) => {
     b.classList.toggle('activa', b.dataset.ir === seccion);
   });
-  // al cambiar de sección se vuelve arriba: si no, se entra a la mitad
-  document.querySelector('.panel')?.scrollTo({ top: 0 });
-  localStorage.setItem('seccion', seccion);
 }
+
+/* En el teléfono se ve una sección por vez; en la computadora están todas,
+   una debajo de otra, y la barra de la izquierda lleva hasta cada una. */
+function irA(seccion, suave = false){
+  document.body.dataset.seccion = seccion;
+  marcarSeccion(seccion);
+  localStorage.setItem('seccion', seccion);
+  if(enTelefono()){
+    /* al cambiar de sección se vuelve arriba: si no, se entra a la mitad.
+       Es la página la que se mueve —la placa queda fija arriba—, no el panel. */
+    window.scrollTo({ top: 0 });
+    return;
+  }
+  const destino = [...document.querySelectorAll(`.panel fieldset[data-seccion="${seccion}"]`)]
+    .find((f) => f.offsetParent !== null);
+  if(destino) destino.scrollIntoView({ block: 'start', behavior: suave ? 'smooth' : 'auto' });
+}
+
+/* En la computadora la barra marca en qué sección se está mientras se baja:
+   la última que ya pasó por arriba. Al llegar al final del panel, la última. */
+/* Se calcula en el momento y no esperando al próximo cuadro de pantalla: el
+   navegador ya manda el evento a lo sumo una vez por cuadro, y esperar otro
+   más dejaba la marca atrasada una sección —o dos, en un equipo cargado—. */
+document.querySelector('.panel')?.addEventListener('scroll', (ev) => {
+  if(enTelefono()) return;
+  const panel = ev.target;
+  const visibles = [...panel.querySelectorAll('fieldset[data-seccion]')].filter((f) => f.offsetParent !== null);
+  if(!visibles.length) return;
+  let actual = visibles[0].dataset.seccion;
+  const tope = panel.getBoundingClientRect().top + 90;
+  for(const f of visibles){
+    if(f.getBoundingClientRect().top <= tope) actual = f.dataset.seccion;
+    else break;
+  }
+  if(panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 4){
+    actual = visibles[visibles.length - 1].dataset.seccion;
+  }
+  marcarSeccion(actual);
+}, { passive: true });
 
 /* La barra muestra solo las secciones que este formato usa, y marca las que
    tienen algo sin llenar. */
@@ -511,64 +533,13 @@ function pintarBarra(){
 
 $('#barra')?.addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-ir]');
-  if(b) irA(b.dataset.ir);
+  if(b) irA(b.dataset.ir, true);
 });
 
 function verVista(mostrar){
   document.body.classList.toggle('sin_vista', !mostrar);
   localStorage.setItem('sin_vista', mostrar ? '' : '1');
 }
-/* La calidad es del aparato, no de la placa: quien publica desde el teléfono
-   con datos quiere rápida y desde la oficina quiere alta. */
-function pintarCalidad(){
-  document.querySelectorAll('[data-marca-video]').forEach((b) => {
-    b.classList.toggle('activo', b.dataset.marcaVideo === (marcaEnVideo() ? 'si' : 'no'));
-  });
-  document.querySelectorAll('[data-camino]').forEach((b) => {
-    const cual = localStorage.getItem('codecs_rapido') === '0' ? 'compatible' : 'rapido';
-    b.classList.toggle('activo', b.dataset.camino === cual);
-  });
-  document.querySelectorAll('[data-calidad]').forEach((b) => {
-    b.classList.toggle('activo', b.dataset.calidad === calidadVideo());
-  });
-}
-/* La salida de emergencia, a mano y no escondida en el almacenamiento del
-   navegador: si Instagram rechaza un video, hay que poder volver al camino de
-   antes sin esperar a que alguien toque el código. */
-$('#marca_video')?.addEventListener('click', (ev) => {
-  const b = ev.target.closest('[data-marca-video]');
-  if(!b) return;
-  localStorage.setItem('marca_en_video_2', b.dataset.marcaVideo === 'no' ? '0' : '1');
-  quemados.clear();   // lo grabado antes ya no vale
-  pintarCalidad();
-  repintar();         // la previa muestra lo que se va a subir, así que cambia
-  pintarLaminas();
-  estado(b.dataset.marcaVideo === 'no'
-    ? 'Los videos se van a subir tal cual, sin recomprimir. Pesan mucho menos.'
-    : 'A los videos se les va a quemar el degradado y el logo encima.');
-});
-
-$('#camino')?.addEventListener('click', (ev) => {
-  const c = ev.target.closest('[data-camino]');
-  if(!c) return;
-  localStorage.setItem('codecs_rapido', c.dataset.camino === 'compatible' ? '0' : '1');
-  pintarCalidad();
-  estado(c.dataset.camino === 'compatible'
-    ? 'Los videos se van a armar con el navegador, como antes.'
-    : 'Los videos se arman acá: más rápido y sin perder cuadros.');
-});
-
-$('#calidad')?.addEventListener('click', (ev) => {
-  const b = ev.target.closest('[data-calidad]');
-  if(!b) return;
-  localStorage.setItem('calidad_video', b.dataset.calidad);
-  pintarCalidad();
-  estado(b.dataset.calidad === 'rapida'
-    ? 'Los videos van a pesar un tercio menos y subir más rápido.'
-    : 'Los videos van a salir con la mejor calidad posible.');
-});
-pintarCalidad();
-
 /* La lista de lo que hay en curso. Devuelve cuántas cosas hay, que es lo
    que decide cada cuánto volver a preguntar. */
 async function pintarEnCurso(){
@@ -628,100 +599,6 @@ if($('#en_curso')){
     if(!document.hidden) vigilarEnCurso();
   });
 }
-
-/* Lo que está subido en el servidor.
-   La carpeta está cerrada al público —pedirla de frente devuelve 403— y así
-   tiene que seguir, pero cuando Instagram rechaza un video lo primero que uno
-   quiere es abrirlo y mirar qué se le mandó. Acá se listan los archivos y
-   cada video se puede reproducir en el momento.
-   Las medidas se miden en el navegador y no en el servidor: son el dato que
-   más importa —Instagram no acepta un carrusel con piezas de proporciones
-   distintas— y para saberlas en PHP haría falta leer el contenedor a mano. */
-$('#ver_archivos')?.addEventListener('click', async () => {
-  const boton = $('#ver_archivos');
-  boton.disabled = true;
-  boton.textContent = 'Buscando…';
-  try{
-    const { archivos, total } = await api('api/fotos.php?tarea=listar&cuantos=40');
-    $('#cuantos_archivos').textContent = `${archivos.length} de ${total}`;
-    $('#archivos').innerHTML = archivos.map((f) => `
-      <li data-archivo="${esc(f.url)}">
-        ${f.tipo === 'video'
-          ? `<video src="${esc(f.url)}" preload="metadata" controls muted playsinline></video>`
-          : `<img src="${esc(f.url)}" alt="" loading="lazy">`}
-        <div>
-          <b>${esc(f.nombre)}</b>
-          <small>${mb(f.bytes)} · ${new Date(f.cuando).toLocaleString('es-CL')}</small>
-          <small data-medidas>${f.tipo === 'video' ? 'midiendo…' : ''}</small>
-          <input class="enlace" type="text" readonly value="${esc(f.url)}"
-                 aria-label="Dirección del archivo">
-          <div class="fila" style="margin-top:6px">
-            <button class="descarga" data-copiar-enlace="${esc(f.url)}">Copiar el link</button>
-            <a href="${esc(f.url)}" target="_blank" rel="noopener">abrirlo aparte</a>
-          </div>
-        </div>
-      </li>`).join('') || '<li><div><b>No hay nada subido todavía.</b></div></li>';
-
-    /* La proporción de la salida, para poder comparar de un vistazo. */
-    const buena = altoDe(ANCHO_FEED) / ANCHO_FEED;
-    for(const li of $('#archivos').children){
-      const v = li.querySelector('video');
-      const donde = li.querySelector('[data-medidas]');
-      if(!v || !donde) continue;
-      await new Promise((ok) => { v.onloadedmetadata = ok; v.onerror = ok; setTimeout(ok, 6000); });
-      if(!v.videoWidth){ donde.textContent = 'no se pudo leer'; continue; }
-      const suya = v.videoHeight / v.videoWidth;
-      const cuadra = Math.abs(suya - buena) < 0.01;
-      donde.textContent = `${v.videoWidth}x${v.videoHeight} · ${seg((v.duration || 0) * 1000)}`
-        + (cuadra ? ' · la proporción del carrusel'
-                  : ` · OJO: el carrusel va en ${ANCHO_FEED}x${altoDe(ANCHO_FEED)}`);
-      donde.classList.toggle('mal', !cuadra);
-    }
-  }catch(e){ $('#cuantos_archivos').textContent = e.message; }
-  boton.disabled = false;
-  boton.textContent = 'Actualizar la lista';
-});
-
-/* La dirección completa, para poder pegarla en otro lado: probarla en el
-   navegador de otra persona, mandarla, o pasarla por el depurador de
-   Instagram, que es lo que sirve cuando rechaza un video sin decir por qué.
-   El campo se puede seleccionar entero con un toque, y el botón la copia. */
-$('#archivos')?.addEventListener('click', async (ev) => {
-  const caja = ev.target.closest('.enlace');
-  if(caja){ caja.select(); return; }
-  const boton = ev.target.closest('[data-copiar-enlace]');
-  if(!boton) return;
-  try{
-    await navigator.clipboard.writeText(boton.dataset.copiarEnlace);
-    boton.textContent = 'Copiado';
-  }catch(e){
-    // sin permiso para el portapapeles queda seleccionado, que alcanza
-    boton.closest('div').parentNode.querySelector('.enlace')?.select();
-    boton.textContent = 'Seleccionado: copialo';
-  }
-  setTimeout(() => { boton.textContent = 'Copiar el link'; }, 2500);
-});
-
-/* Copiar sirve para mandármela: lo que se copia es texto plano, una línea
-   por evento, que se pega en cualquier lado. */
-$('#copiar_bitacora')?.addEventListener('click', async () => {
-  const libro = leerBitacora();
-  const texto = libro.map((l) => {
-    const { t, evento, nivel, ...resto } = l;
-    const detalle = Object.entries(resto).map(([k, v]) => `${k}=${v}`).join(' ');
-    return `${new Date(t).toLocaleString('es-CL')}  ${evento}${detalle ? '  ' + detalle : ''}`;
-  }).join('\n');
-  try{
-    await navigator.clipboard.writeText(texto || 'sin nada anotado');
-    estado(`Copiadas ${libro.length} líneas`);
-  }catch(e){ estado('No se pudo copiar: ' + e.message, true); }
-});
-
-$('#limpiar_bitacora')?.addEventListener('click', () => {
-  localStorage.removeItem(BITACORA);
-  pintarBitacora();
-  estado('Bitácora borrada');
-});
 
 $('#encoger')?.addEventListener('click', () => verVista(false));
 $('#mostrar_vista')?.addEventListener('click', () => verVista(true));
@@ -1522,7 +1399,6 @@ async function cargar(id){
   await volcarControles();
   irA(localStorage.getItem('seccion') || 'titular');
   pintarBarra();
-  pintarBitacora();
   await pintarSelector();
   $('#portada').hidden = true;
   repintar();
@@ -2065,7 +1941,14 @@ async function despiertoMientras(promesa){
    pérdida casi no se ve y se sube un tercio menos. */
 /* Declaradas como función y no como constante a propósito: se usan más
    arriba, al pintar el control, y una constante todavía no existiría. */
-function calidadVideo(){ return localStorage.getItem('calidad_video') || 'alta'; }
+/* La calidad, el camino y la marca del video se elegían en «Más». Se
+   sacaron del panel y quedan fijos en lo que ya se usaba: calidad alta,
+   camino rápido y sin nada encima. Lo guardado de antes en este navegador
+   se borra al arrancar, para que nadie quede atado a una elección que ya no
+   puede cambiar. */
+for(const k of ['calidad_video', 'codecs_rapido', 'marca_en_video_2']) localStorage.removeItem(k);
+
+function calidadVideo(){ return 'alta'; }
 
 /* Si los videos del carrusel llevan el logo y el degradado quemados encima.
    Viene apagado. Dibujarles algo obliga a recomprimirlos enteros, y de ahí
@@ -2079,7 +1962,7 @@ function calidadVideo(){ return localStorage.getItem('calidad_video') || 'alta';
    valor por omisión: seguía quemando la marca aunque el editor viniera
    configurado para no hacerlo. Con un nombre nuevo, lo guardado antes deja de
    contar y todos arrancan sin marca; el que la quiera la vuelve a encender. */
-function marcaEnVideo(){ return localStorage.getItem('marca_en_video_2') === '1'; }
+function marcaEnVideo(){ return false; }
 function tasaDeVideo(){
   return calidadVideo() === 'rapida'
     ? 2_500_000
@@ -2128,9 +2011,7 @@ function tasaDeSalida(ancho, alto){
    Va encendido salvo que se lo apague a mano, y si el navegador no lo tiene
    —o si algo falla en el medio— se graba a la antigua sin que nadie se entere.
    Guardar un '0' es la salida de emergencia si aparece un video que lo rompa. */
-const hayCodecs = () =>
-  localStorage.getItem('codecs_rapido') !== '0' &&
-  typeof VideoEncoder === 'function' && typeof VideoDecoder === 'function';
+const hayCodecs = () => typeof VideoEncoder === 'function' && typeof VideoDecoder === 'function';
 
 async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
   const buffer = typeof fuente === 'string'
@@ -3604,6 +3485,23 @@ $('#yo')?.addEventListener('click', (ev) => {
 document.addEventListener('click', (ev) => {
   const menu = $('#menu_yo');
   if(menu && !menu.hidden && !ev.target.closest('#cuenta')) menu.hidden = true;
+});
+
+/* El registro técnico —lo que antes se veía en «Qué pasó»— se sigue
+   anotando en este navegador, y se copia desde acá para mandarlo cuando
+   algo falla: cuánto pesaba el video, qué camino tomó, en qué paso se cortó. */
+$('#copiar_registro')?.addEventListener('click', async (ev) => {
+  const libro = leerBitacora();
+  const texto = libro.map((l) => {
+    const { t, evento, nivel, ...resto } = l;
+    const detalle = Object.entries(resto).map(([k, v]) => `${k}=${v}`).join(' ');
+    return `${new Date(t).toLocaleString('es-CL')}  ${evento}${detalle ? '  ' + detalle : ''}`;
+  }).join('\n');
+  try{
+    await navigator.clipboard.writeText(texto || 'sin nada anotado');
+    ev.target.textContent = `Copiado: ${libro.length} líneas`;
+  }catch(e){ ev.target.textContent = 'No se pudo copiar'; }
+  setTimeout(() => { ev.target.textContent = 'Copiar registro técnico'; }, 2500);
 });
 
 $('#salir')?.addEventListener('click', async () => {
