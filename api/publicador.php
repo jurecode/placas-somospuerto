@@ -281,24 +281,39 @@ function esperar_tiktok(string $publishId, string $token, int $segundos = ESPERA
     return ['status' => 'PROCESSING', 'demorado' => true];
 }
 
-/* TikTok: la cuenta conectada, con la privacidad que se eligió en el panel.
+/* TikTok: la cuenta conectada, con lo que se eligió en el paso de TikTok
+   del editor ($elegido): privacidad, texto, qué se permite y si es contenido
+   comercial. TikTok exige que eso lo decida quien publica en cada post, sin
+   valores puestos de antemano. Lo programado antes de que existiera ese paso
+   no lo trae: sale con la privacidad del panel y todo apagado.
    - Fotos: una publicación de fotos (TikTok las baja del sitio, por eso
      pide el dominio verificado).
    - Video: se sube directo desde el servidor, en pedazos.
    Como Facebook, no junta fotos y videos: los videos van aparte. */
-function publicar_en_tiktok(array $medios, string $texto): array {
+function publicar_en_tiktok(array $medios, string $texto, ?array $elegido = null): array {
     $creador = creador_tiktok();
     $token = token_tiktok();
     $opciones = $creador['privacy_level_options'] ?? [];
-    $privacidad = ajuste('tt_privacidad', 'SELF_ONLY');
+    $elegido = $elegido ?? [];
+    $privacidad = (string) ($elegido['privacidad'] ?? ajuste('tt_privacidad', 'SELF_ONLY'));
     if (!in_array($privacidad, $opciones, true)) {
-        throw new RuntimeException('TikTok no acepta la privacidad elegida para esta cuenta ('
-            . strtolower($privacidad) . '): elegí otra en el panel');
+        throw new RuntimeException('TikTok no acepta esa privacidad para esta cuenta ('
+            . strtolower($privacidad) . '): elegí otra en el paso de TikTok');
     }
+    $marcaPropia = !empty($elegido['marca_propia']);
+    $marcaPagada = !empty($elegido['marca_pagada']);
+    if ($marcaPagada && $privacidad === 'SELF_ONLY') {
+        throw new RuntimeException('El contenido de marca no puede salir en privado en TikTok');
+    }
+    if (trim((string) ($elegido['texto'] ?? '')) !== '') $texto = (string) $elegido['texto'];
+    // lo que no se marcó queda apagado; y lo que la cuenta tiene apagado, también
+    $sinComentarios = empty($elegido['comentarios']) || !empty($creador['comment_disabled']);
+    $sinDuo = empty($elegido['duo']) || !empty($creador['duet_disabled']);
+    $sinStitch = empty($elegido['stitch']) || !empty($creador['stitch_disabled']);
+    $comercial = ['brand_content_toggle' => $marcaPagada, 'brand_organic_toggle' => $marcaPropia];
     $usuario = (string) ($creador['creator_username'] ?? ajuste('tt_usuario'));
     $fotos  = array_values(array_filter($medios, static fn($m) => $m['tipo'] === 'imagen'));
     $videos = array_values(array_filter($medios, static fn($m) => $m['tipo'] !== 'imagen'));
-    $sinComentarios = !empty($creador['comment_disabled']);
     $ids = [];
     $demorado = false;
 
@@ -308,7 +323,7 @@ function publicar_en_tiktok(array $medios, string $texto): array {
         $r = pedir_tiktok(TIKTOK . '/post/publish/content/init/', [
             'post_info' => ['title' => $titulo, 'description' => recortar_utf16($texto, 4000),
                             'privacy_level' => $privacidad, 'disable_comment' => $sinComentarios,
-                            'auto_add_music' => true],
+                            'auto_add_music' => !empty($elegido['musica'])] + $comercial,
             'source_info' => ['source' => 'PULL_FROM_URL', 'photo_cover_index' => 0,
                               'photo_images' => array_column($fotos, 'url')],
             'post_mode' => 'DIRECT_POST', 'media_type' => 'PHOTO',
@@ -328,9 +343,8 @@ function publicar_en_tiktok(array $medios, string $texto): array {
         $r = pedir_tiktok(TIKTOK . '/post/publish/video/init/', [
             'post_info' => ['title' => recortar_utf16($texto, 2200), 'privacy_level' => $privacidad,
                             'disable_comment' => $sinComentarios,
-                            'disable_duet' => !empty($creador['duet_disabled']),
-                            'disable_stitch' => !empty($creador['stitch_disabled']),
-                            'video_cover_timestamp_ms' => (int) round(((float) ($m['portadaEn'] ?? 1.5)) * 1000)],
+                            'disable_duet' => $sinDuo, 'disable_stitch' => $sinStitch,
+                            'video_cover_timestamp_ms' => (int) round(((float) ($m['portadaEn'] ?? 1.5)) * 1000)] + $comercial,
             'source_info' => ['source' => 'FILE_UPLOAD', 'video_size' => $peso,
                               'chunk_size' => $trozo, 'total_chunk_count' => $cuantos],
         ], $token);
@@ -396,7 +410,8 @@ function publicar_ahora(array $carga): array {
             try {
                 $resultados[$red] = match ($red) {
                     'facebook' => publicar_en_facebook($medios, $caption),
-                    'tiktok'   => publicar_en_tiktok($medios, $caption),
+                    'tiktok'   => publicar_en_tiktok($medios, $caption,
+                                      is_array($carga['tiktok'] ?? null) ? $carga['tiktok'] : null),
                     default    => publicar_en_instagram($medios, $carga),
                 };
             } catch (Throwable $e) {

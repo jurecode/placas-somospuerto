@@ -274,10 +274,10 @@
     <h2>Cuenta de TikTok</h2>
     <p id="tt_estado" class="nota" style="margin-top:0">Escribí la clave y tocá Revisar.</p>
     <div id="tt_conectada" hidden style="margin-top:14px">
-      <div class="campo">
-        <label for="tt_privacidad">Quién ve lo que se publica</label>
-        <select id="tt_privacidad"></select>
-      </div>
+      <p class="nota" style="margin:0 0 12px">
+        Quién ve cada publicación se elige en el editor, en el paso de TikTok que
+        aparece al publicar: TikTok exige que se decida cada vez.
+      </p>
       <div class="fila">
         <button id="reconectar_tt">Conectar otra vez</button>
         <button id="desconectar_tt">Desconectar</button>
@@ -346,7 +346,7 @@
         La conexión se renueva sola: dura un año sin tocar nada. Mientras la app no esté
         aprobada, todo sale en privado («Solo yo»). Para publicar a la vista de todos,
         en la ficha de la app tocá <b>Submit for review</b>; cuando TikTok la apruebe,
-        sacá la cuenta de privado y elegí <b>Todos</b> arriba.
+        sacá la cuenta de privado y, al publicar, elegí <b>Todos</b> en el paso de TikTok.
       </p>
     </details>
   </section>
@@ -642,10 +642,6 @@ $('#desconectar_fb').addEventListener('click', async () => {
 });
 
 /* TikTok: el estado, las direcciones para copiar y la privacidad. */
-const PRIVACIDAD = {
-  PUBLIC_TO_EVERYONE: 'Todos', FOLLOWER_OF_CREATOR: 'Seguidores',
-  MUTUAL_FOLLOW_FRIENDS: 'Amigos (se siguen mutuamente)', SELF_ONLY: 'Solo yo (privado)',
-};
 let direcciones = {};
 
 function pintarTiktok(tt){
@@ -670,13 +666,6 @@ function pintarTiktok(tt){
   el.innerHTML = tt.funciona === false
     ? `<span class="no">✕</span> Conectada a <b>${quien}</b>, pero TikTok no contesta bien: ${esc(tt.error || '')}`
     : `<span class="si">✓</span> Conectada a <b>${quien}</b>: el editor ya puede publicar ahí.`;
-  const opciones = tt.opciones?.length ? tt.opciones : [tt.privacidad];
-  $('#tt_privacidad').innerHTML = opciones.map((o) =>
-    `<option value="${esc(o)}" ${o === tt.privacidad ? 'selected' : ''}>${esc(PRIVACIDAD[o] || o)}</option>`).join('');
-  if(!opciones.includes(tt.privacidad)){
-    $('#tt_privacidad').insertAdjacentHTML('afterbegin',
-      `<option value="" selected disabled>${esc(PRIVACIDAD[tt.privacidad] || tt.privacidad)} — esta cuenta ya no la acepta, elegí otra</option>`);
-  }
 }
 
 async function tiktok(cuerpo){
@@ -727,12 +716,6 @@ async function conectarTiktok(){
 $('#conectar_tt').addEventListener('click', conectarTiktok);
 $('#reconectar_tt').addEventListener('click', conectarTiktok);
 
-$('#tt_privacidad').addEventListener('change', async (ev) => {
-  try{
-    await tiktok({ tarea: 'privacidad', valor: ev.target.value });
-    avisoTt(`Desde ahora sale para: ${PRIVACIDAD[ev.target.value] || ev.target.value}.`, true);
-  }catch(e){ avisoTt(e.message); }
-});
 
 $('#desconectar_tt').addEventListener('click', async () => {
   if(!confirm('¿Desconectar TikTok? El editor deja de publicar ahí.')) return;

@@ -98,6 +98,18 @@ function guardar_pagina(array $p): array {
 }
 
 try {
+    /* Para el paso de TikTok del editor: la cuenta y lo que permite, recién
+       pedido a TikTok cada vez que se abre, como piden sus reglas. Si TikTok
+       dice que ahora no se puede publicar, el error llega tal cual. */
+    if ($metodo === 'GET' && ($_GET['creador'] ?? '') === 'tiktok') {
+        $c = creador_tiktok();
+        responder([
+            'usuario' => (string) ($c['creator_username'] ?? ''), 'nombre' => (string) ($c['creator_nickname'] ?? ''),
+            'foto' => (string) ($c['creator_avatar_url'] ?? ''), 'opciones' => $c['privacy_level_options'] ?? [],
+            'sinComentarios' => !empty($c['comment_disabled']), 'sinDuo' => !empty($c['duet_disabled']),
+            'sinStitch' => !empty($c['stitch_disabled']), 'maxSegundos' => (int) ($c['max_video_post_duration_sec'] ?? 0),
+        ]);
+    }
     if ($metodo === 'GET') {
         responder([
             'facebook' => estado_facebook(isset($_GET['revisar'])),

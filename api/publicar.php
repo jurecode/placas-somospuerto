@@ -21,6 +21,8 @@ try {
         'colaboradores' => $entrada['colaboradores'] ?? '',
         'etiquetados'   => $entrada['etiquetados'] ?? '',
         'redes'         => $entrada['redes'] ?? ['instagram'],
+        // lo que se eligió en el paso de TikTok del editor
+        'tiktok'        => is_array($entrada['tiktok'] ?? null) ? $entrada['tiktok'] : null,
     ]);
     // a nombre de quien entró; con la clave del sitio queda sin nombre
     registrar_redes($quien['id'], (array) ($entrada['placa'] ?? []), $r);
