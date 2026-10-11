@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Equipo</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  /* Los mismos colores del editor: gris oscuro, tarjetas sueltas, lo
+     principal en blanco. */
+  :root{
+    --bg:#0E0E10; --panel:#171719; --hueco:#101012;
+    --boton:#232326; --boton-claro:#2E2E33; --linea:#26262A;
+    --texto:#F2F2F4; --suave:#8B8B94; --acento:#FFFFFF;
+    --mal:#FF6B6B; --ok:#3DE0B4; --aviso:#F5B942; --radio:18px;
+  }
+  *{ box-sizing:border-box; margin:0 }
+  [hidden]{ display:none !important }
+  body{
+    background:var(--bg); color:var(--texto);
+    font:14px/1.5 system-ui, sans-serif; min-height:100svh;
+  }
+  button, .boton{
+    font:inherit; color:var(--texto); background:var(--boton); cursor:pointer;
+    border:1px solid transparent; border-radius:99px; padding:8px 14px; text-decoration:none;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  button:hover, .boton:hover{ background:var(--boton-claro) }
+  button:disabled{ opacity:.5; cursor:default }
+  .principal{ background:var(--acento); color:#111; font-weight:650 }
+  .principal:hover{ background:#e6e6e8 }
+  input, select{
+    width:100%; background:var(--hueco); color:var(--texto); font:inherit;
+    border:1px solid var(--linea); border-radius:12px; padding:10px 12px;
+  }
+  input:focus, select:focus{ outline:2px solid var(--acento); outline-offset:-1px }
+  a{ color:var(--texto) }
+
+  main{ max-width:1180px; margin:0 auto; padding:20px 16px 60px; display:grid; gap:18px }
+  .cabeza{ display:flex; align-items:center; gap:12px; flex-wrap:wrap }
+  .cabeza h1{ font-size:22px; letter-spacing:-.01em; flex:1; min-width:200px }
+  .cabeza h1 small{ display:block; font-size:13px; font-weight:400; color:var(--suave) }
+  .tarjeta{ background:var(--panel); border-radius:var(--radio); padding:18px }
+  .titulillo{ font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--suave); font-weight:600 }
+  .nota{ color:var(--suave); font-size:13px }
+  .error{ color:var(--mal) }
+
+  /* los números de arriba */
+  .numeros{ display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px }
+  .numero b{ display:block; font:900 34px/1.1 "Inter Tight", system-ui; margin-top:6px }
+  .numero small{ color:var(--suave); font-size:12px }
+  @media (max-width:760px){ .numeros{ grid-template-columns:repeat(2, minmax(0, 1fr)) } }
+
+  /* las personas */
+  .fila-titulo{ display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap }
+  .fila-titulo .titulillo{ flex:1 }
+  .personas{ display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px }
+  .persona{
+    background:var(--hueco); border:1px solid var(--linea); border-radius:16px; padding:14px;
+    display:grid; gap:12px; cursor:pointer; text-align:left; color:inherit; font:inherit;
+  }
+  .persona:hover{ border-color:var(--boton-claro) }
+  .persona.elegida{ border-color:var(--acento) }
+  .persona.apagada{ opacity:.55 }
+  .persona__arriba{ display:flex; gap:12px; align-items:center }
+  .avatar{
+    width:52px; height:52px; border-radius:50%; overflow:hidden; flex:none;
+    border:2px solid #fff; background:var(--boton-claro);
+    display:grid; place-items:center; font-weight:700; font-size:16px;
+  }
+  .avatar img{ width:100%; height:100%; object-fit:cover; display:block }
+  .avatar.chico{ width:28px; height:28px; font-size:11px; border-width:1.5px }
+  .persona__nombre{ min-width:0 }
+  .persona__nombre b{ display:block; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .persona__nombre small{ color:var(--suave); font-size:12px }
+  .chip{ font-size:11px; border-radius:99px; padding:2px 8px; background:var(--boton); color:var(--suave); white-space:nowrap }
+  .chip.admin{ background:#ffffff1a; color:var(--texto) }
+  .chip.apagada{ background:#ff6b6b22; color:var(--mal) }
+  .chip.prog{ background:#f5b94222; color:var(--aviso) }
+  .persona__numeros{ display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; text-align:center }
+  .persona__numeros div{ background:var(--panel); border-radius:10px; padding:8px 4px }
+  .persona__numeros b{ display:block; font:900 20px/1 "Inter Tight", system-ui }
+  .persona__numeros small{ font-size:11px; color:var(--suave) }
+  .persona__pie{ display:flex; justify-content:space-between; gap:8px; align-items:center; font-size:12px; color:var(--suave) }
+  .persona__pie button{ padding:5px 11px; font-size:12px }
+
+  /* las publicaciones */
+  .lista{ display:grid; gap:2px }
+  .pub{
+    display:grid; grid-template-columns:150px minmax(150px, 210px) minmax(0, 1fr) auto auto;
+    gap:12px; align-items:center; padding:10px 8px; border-bottom:1px solid var(--linea);
+  }
+  .pub:last-child{ border-bottom:0 }
+  .pub__cuando b{ display:block; font-size:13px }
+  .pub__cuando small{ color:var(--suave); font-size:12px }
+  .pub__quien{ display:flex; align-items:center; gap:8px; min-width:0 }
+  .pub__quien span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .pub__que{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .pub__chips{ display:flex; gap:6px }
+  .pub a{ font-size:12px; color:var(--ok); white-space:nowrap }
+  @media (max-width:760px){
+    .pub{ grid-template-columns:1fr auto; gap:6px 10px }
+    .pub__quien{ grid-column:1 }
+    .pub__que{ grid-column:1 / -1; white-space:normal }
+    .pub__chips{ grid-column:1 }
+  }
+  .vacio{ padding:26px 8px; text-align:center; color:var(--suave) }
+
+  /* la ventana para crear o editar */
+  .velo{ position:fixed; inset:0; z-index:50; display:grid; place-items:center; background:#0e0e10d9; padding:16px }
+  .caja{ width:min(100%, 440px); max-height:92svh; overflow:auto; background:var(--panel);
+         border:1px solid var(--linea); border-radius:var(--radio); padding:22px; display:grid; gap:12px }
+  .caja h2{ font-size:17px }
+  .campo label{ display:block; font-size:12px; color:var(--suave); margin-bottom:5px }
+  .foto-cuenta{ display:flex; gap:14px; align-items:center }
+  .foto-cuenta .avatar{ width:76px; height:76px; font-size:22px }
+  .botones{ display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap }
+  .con-boton{ display:flex; gap:6px }
+  .con-boton input{ flex:1 }
+  .interruptor{ display:flex; align-items:center; gap:10px; font-size:13px }
+  .interruptor input{ width:auto }
+  .datos-para-pasar{ background:var(--hueco); border-radius:12px; padding:12px; font:13px/1.7 ui-monospace, monospace; white-space:pre-wrap }
+
+  .entrada{ max-width:420px; margin:12vh auto 0; display:grid; gap:12px }
+</style>
+</head>
+<body>
+<main id="principal" hidden>
+  <div class="cabeza">
+    <h1>Equipo <small id="de_quien"></small></h1>
+    <a class="boton" href="./">Volver al editor</a>
+  </div>
+
+  <section class="numeros" id="numeros"></section>
+
+  <section class="tarjeta">
+    <div class="fila-titulo">
+      <span class="titulillo">Personas</span>
+      <button class="principal" id="nueva" type="button">+ Nueva cuenta</button>
+    </div>
+    <div class="personas" id="personas"></div>
+  </section>
+
+  <section class="tarjeta">
+    <div class="fila-titulo">
+      <span class="titulillo" id="titulo_lista">Publicaciones</span>
+      <select id="filtro" style="width:auto"></select>
+    </div>
+    <div class="lista" id="lista"></div>
+    <p class="nota" id="sin_cuenta" hidden style="margin-top:10px"></p>
+  </section>
+</main>
+
+<!-- sin cuenta, o sin permiso, o la primera vez -->
+<div class="entrada tarjeta" id="afuera" hidden></div>
+
+<div class="velo" id="velo" hidden>
+  <form class="caja" id="form_cuenta" autocomplete="off">
+    <h2 id="form_titulo">Nueva cuenta</h2>
+    <div class="foto-cuenta">
+      <div class="avatar" id="form_avatar"></div>
+      <div>
+        <button type="button" id="elegir_foto">Elegir foto…</button>
+        <input type="file" id="archivo_foto" accept="image/*" hidden>
+        <p class="nota" style="margin-top:6px">Es la que va en «Publicado por». Se recorta cuadrada.</p>
+      </div>
+    </div>
+    <div class="campo"><label for="f_nombre">Nombre, como va a salir en las placas</label>
+      <input id="f_nombre" required maxlength="80" placeholder="Fernanda Schell"></div>
+    <div class="campo"><label for="f_usuario">Usuario, para entrar</label>
+      <input id="f_usuario" required maxlength="40" placeholder="fernanda" autocapitalize="none" spellcheck="false"></div>
+    <div class="campo"><label for="f_rol">Qué puede hacer</label>
+      <select id="f_rol">
+        <option value="editor">Editor: arma y publica</option>
+        <option value="admin">Administración: además ve este panel y maneja las cuentas</option>
+      </select></div>
+    <div class="campo"><label for="f_clave" id="f_clave_etiqueta">Contraseña</label>
+      <div class="con-boton">
+        <input id="f_clave" type="text" minlength="8" maxlength="200" autocomplete="new-password">
+        <button type="button" id="generar">Inventar una</button>
+      </div></div>
+    <label class="interruptor" id="f_activo_caja"><input type="checkbox" id="f_activo"> Cuenta activa: puede entrar y publicar</label>
+    <p class="nota error" id="form_error" aria-live="polite"></p>
+    <div class="botones">
+      <button type="button" id="cancelar">Cancelar</button>
+      <button class="principal" type="submit" id="guardar">Guardar</button>
+    </div>
+  </form>
+</div>
+
+<script type="module">
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// la sesión es la misma del editor: se entra allá y queda en este navegador
+const clave = () => localStorage.getItem('clave_publicar') || '';
+
+async function api(ruta, opciones = {}){
+  const r = await fetch(ruta, { ...opciones, headers: { 'x-clave': clave(), ...(opciones.headers || {}) } });
+  const d = await r.json().catch(() => ({}));
+  if(!r.ok){ const e = new Error(d.error || `Error ${r.status}`); e.status = r.status; throw e; }
+  return d;
+}
+
+const iniciales = (n) => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
+const avatar = (foto, nombre, chico = false) =>
+  `<span class="avatar${chico ? ' chico' : ''}">${foto ? `<img src="${esc(foto)}" alt="">` : esc(iniciales(nombre))}</span>`;
+
+const FORMATOS = { noticia: 'Noticia', urgente: 'Urgente', reel: 'Reel', voz: 'Voz' };
+
+/* Las fechas llegan en UTC y se muestran en la hora de quien mira. */
+function cuando(iso){
+  if(!iso) return { dia: '—', hora: '' };
+  const d = new Date(iso);
+  const hoy = new Date();
+  const ayer = new Date(Date.now() - 86400000);
+  const mismo = (a, b) => a.toDateString() === b.toDateString();
+  const dia = mismo(d, hoy) ? 'Hoy' : mismo(d, ayer) ? 'Ayer'
+    : d.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' });
+  return { dia, hora: d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) };
+}
+function hace(iso){
+  if(!iso) return 'nunca';
+  const s = Math.max(0, (Date.now() - new Date(iso)) / 1000);
+  if(s < 60) return 'recién';
+  if(s < 3600) return `hace ${Math.round(s / 60)} min`;
+  if(s < 86400) return `hace ${Math.round(s / 3600)} h`;
+  const dias = Math.round(s / 86400);
+  return dias === 1 ? 'ayer' : `hace ${dias} días`;
+}
+
+/* ------------------------------------------------------------------ */
+/* entrar                                                              */
+/* ------------------------------------------------------------------ */
+
+function afuera(html){
+  $('#principal').hidden = true;
+  $('#afuera').innerHTML = html;
+  $('#afuera').hidden = false;
+}
+
+/* La primera cuenta del sitio, la de administración. Se crea con la clave
+   de siempre —la de api/config.php—, que prueba que quien la crea es el
+   dueño, y una sola vez. */
+function primeraCuenta(){
+  afuera(`
+    <h1 style="font-size:20px">Crear la cuenta de administración</h1>
+    <p class="nota">El sitio todavía no tiene cuentas. La primera es la tuya: con ella vas a
+      crear las del resto del equipo. Para probar que sos quien maneja el sitio, poné la
+      clave de siempre, la que está en <code>api/config.php</code>.</p>
+    <form id="form_primera" style="display:grid; gap:10px">
+      <input id="p_sitio" type="password" placeholder="Clave del sitio" required autocomplete="off">
+      <input id="p_nombre" placeholder="Tu nombre, como va a salir en las placas" required maxlength="80">
+      <input id="p_usuario" placeholder="Tu usuario, para entrar" required maxlength="40" autocapitalize="none" spellcheck="false">
+      <input id="p_clave" type="password" placeholder="Tu contraseña, al menos 8 caracteres" required minlength="8" autocomplete="new-password">
+      <input id="p_clave2" type="password" placeholder="La contraseña, otra vez" required minlength="8" autocomplete="new-password">
+      <p class="nota error" id="p_error" aria-live="polite"></p>
+      <button class="principal" type="submit">Crear y entrar</button>
+    </form>`);
+  $('#form_primera').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if($('#p_clave').value !== $('#p_clave2').value){ $('#p_error').textContent = 'Las dos contraseñas no son iguales.'; return; }
+    try{
+      const r = await fetch('api/sesion.php', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tarea: 'primera', clave_sitio: $('#p_sitio').value, nombre: $('#p_nombre').value,
+                               usuario: $('#p_usuario').value, contrasena: $('#p_clave').value }) });
+      const d = await r.json().catch(() => ({}));
+      if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
+      localStorage.setItem('clave_publicar', d.token);
+      location.reload();
+    }catch(e){ $('#p_error').textContent = e.message; }
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* el panel                                                            */
+/* ------------------------------------------------------------------ */
+
+let datos = null;
+let filtro = '';   // id de la persona cuya lista se mira; vacío, todas
+
+async function cargar(){
+  const q = filtro ? `?usuario=${encodeURIComponent(filtro)}` : '';
+  datos = await api('api/usuarios.php' + q);
+  pintar();
+}
+
+function pintar(){
+  const { usuarios, publicaciones, totales } = datos;
+  const activas = usuarios.filter((u) => u.activo).length;
+  $('#numeros').innerHTML = [
+    ['Publicaciones', totales.total, 'desde que hay cuentas'],
+    ['Esta semana', totales.semana, 'últimos 7 días'],
+    ['Este mes', totales.mes, 'últimos 30 días'],
+    ['Cuentas activas', activas, `${usuarios.length} en total`],
+  ].map(([t, n, s]) => `<div class="tarjeta numero"><span class="titulillo">${t}</span><b>${n}</b><small>${s}</small></div>`).join('');
+
+  $('#personas').innerHTML = usuarios.map((u) => `
+    <div class="persona${String(u.id) === filtro ? ' elegida' : ''}${u.activo ? '' : ' apagada'}" data-ver="${u.id}" role="button" tabindex="0">
+      <div class="persona__arriba">
+        ${avatar(u.foto, u.nombre)}
+        <div class="persona__nombre">
+          <b>${esc(u.nombre)}</b>
+          <small>@${esc(u.usuario)}</small>
+        </div>
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap">
+        <span class="chip${u.rol === 'admin' ? ' admin' : ''}">${u.rol === 'admin' ? 'Administración' : 'Editor'}</span>
+        ${u.activo ? '' : '<span class="chip apagada">Desactivada</span>'}
+        ${u.id === datos.yo ? '<span class="chip">Vos</span>' : ''}
+      </div>
+      <div class="persona__numeros">
+        <div><b>${u.posts}</b><small>en total</small></div>
+        <div><b>${u.semana}</b><small>semana</small></div>
+        <div><b>${u.mes}</b><small>mes</small></div>
+      </div>
+      <div class="persona__pie">
+        <span>Último post: ${hace(u.ultimoPost)}<br>Entró: ${hace(u.ultimoIngreso)}</span>
+        <button type="button" data-editar="${u.id}">Editar</button>
+      </div>
+    </div>`).join('') || '<p class="vacio">Todavía no hay cuentas.</p>';
+
+  $('#filtro').innerHTML = '<option value="">Todo el equipo</option>'
+    + usuarios.map((u) => `<option value="${u.id}"${String(u.id) === filtro ? ' selected' : ''}>${esc(u.nombre)}</option>`).join('');
+  const elegido = usuarios.find((u) => String(u.id) === filtro);
+  $('#titulo_lista').textContent = elegido ? `Publicaciones de ${elegido.nombre}` : 'Publicaciones';
+
+  $('#lista').innerHTML = publicaciones.map((p) => {
+    const c = cuando(p.publicada);
+    // el nombre sale del titular: sin los asteriscos que marcan el resaltado
+    p = { ...p, nombre: String(p.nombre || '').replace(/\*/g, '').replace(/\s+/g, ' ').trim() };
+    const quien = p.quien
+      ? `${avatar(p.foto, p.quien, true)}<span>${esc(p.quien)}</span>`
+      : '<span class="nota">Sin cuenta · clave del sitio</span>';
+    return `
+      <div class="pub">
+        <div class="pub__cuando"><b>${esc(c.dia)}</b><small>${esc(c.hora)}</small></div>
+        <div class="pub__quien">${quien}</div>
+        <div class="pub__que" title="${esc(p.nombre)}">${esc(p.nombre || 'Sin nombre')}</div>
+        <div class="pub__chips">
+          <span class="chip">${esc(FORMATOS[p.formato] || p.formato || '—')}${p.piezas > 1 ? ` · ${p.piezas}` : ''}</span>
+          ${p.programada ? '<span class="chip prog">Programada</span>' : ''}
+        </div>
+        ${p.enlace ? `<a href="${esc(p.enlace)}" target="_blank" rel="noopener noreferrer">Ver en Instagram</a>` : '<span></span>'}
+      </div>`;
+  }).join('') || '<p class="vacio">Todavía no hay publicaciones anotadas. Se anotan desde que existen las cuentas.</p>';
+
+  const sin = $('#sin_cuenta');
+  sin.hidden = !(totales.sinCuenta > 0) || !!filtro;
+  sin.textContent = `${totales.sinCuenta} publicación${totales.sinCuenta === 1 ? '' : 'es'} salieron con la clave del sitio, sin cuenta. `
+    + 'Mientras alguien la conozca puede publicar sin nombre: conviene cambiarla en api/config.php.';
+}
+
+$('#personas').addEventListener('click', (ev) => {
+  const editar = ev.target.closest('[data-editar]');
+  if(editar){ abrir(datos.usuarios.find((u) => String(u.id) === editar.dataset.editar)); return; }
+  const ver = ev.target.closest('[data-ver]');
+  if(!ver) return;
+  filtro = filtro === ver.dataset.ver ? '' : ver.dataset.ver;
+  cargar().catch((e) => alert(e.message));
+});
+$('#personas').addEventListener('keydown', (ev) => {
+  if(ev.key === 'Enter' && ev.target.matches('[data-ver]')) ev.target.click();
+});
+$('#filtro').addEventListener('change', (ev) => { filtro = ev.target.value; cargar().catch((e) => alert(e.message)); });
+
+/* ------------------------------------------------------------------ */
+/* crear y editar                                                      */
+/* ------------------------------------------------------------------ */
+
+let editando = null;   // la cuenta que se edita; null al crear una
+let fotoNueva = null;  // la ruta ya subida, si se eligió otra
+
+function abrir(u = null){
+  editando = u;
+  fotoNueva = null;
+  $('#form_titulo').textContent = u ? `Editar a ${u.nombre}` : 'Nueva cuenta';
+  $('#f_nombre').value = u?.nombre || '';
+  $('#f_usuario').value = u?.usuario || '';
+  $('#f_usuario').disabled = !!u;   // el usuario no cambia: es con lo que entra
+  $('#f_rol').value = u?.rol || 'editor';
+  $('#f_clave').value = '';
+  $('#f_clave').required = !u;
+  $('#f_clave').placeholder = u ? 'Dejala vacía para no cambiarla' : 'Al menos 8 caracteres';
+  $('#f_clave_etiqueta').textContent = u ? 'Contraseña nueva (opcional)' : 'Contraseña';
+  $('#f_activo_caja').hidden = !u;
+  $('#f_activo').checked = u ? u.activo : true;
+  $('#form_avatar').innerHTML = u?.foto ? `<img src="${esc(u.foto)}" alt="">` : esc(iniciales(u?.nombre || '?'));
+  $('#form_error').textContent = '';
+  $('#velo').hidden = false;
+  $('#f_nombre').focus();
+}
+const cerrar = () => { $('#velo').hidden = true; };
+$('#nueva').addEventListener('click', () => abrir());
+$('#cancelar').addEventListener('click', cerrar);
+$('#velo').addEventListener('click', (ev) => { if(ev.target === ev.currentTarget) cerrar(); });
+
+/* Una contraseña fácil de dictar: tres palabras y un número. */
+$('#generar').addEventListener('click', () => {
+  const palabras = ['puerto', 'cerro', 'ancla', 'gaviota', 'muelle', 'faro', 'marea', 'velero',
+    'ascensor', 'mirador', 'bahia', 'escala', 'muralla', 'brisa', 'farol', 'grua'];
+  const azar = (n) => crypto.getRandomValues(new Uint32Array(1))[0] % n;
+  $('#f_clave').value = [0, 1, 2].map(() => palabras[azar(palabras.length)]).join('-') + '-' + (10 + azar(90));
+});
+
+/* La foto se recorta cuadrada y se achica acá, antes de subirla: en la
+   firma se ve de 70 píxeles, así que subir la original de 12 megapíxeles
+   sería gastar. */
+$('#elegir_foto').addEventListener('click', () => $('#archivo_foto').click());
+$('#archivo_foto').addEventListener('change', async (ev) => {
+  const archivo = ev.target.files?.[0];
+  ev.target.value = '';
+  if(!archivo) return;
+  $('#form_error').textContent = 'Subiendo la foto…';
+  try{
+    const img = await new Promise((ok, mal) => {
+      const i = new Image(); i.onload = () => ok(i); i.onerror = () => mal(new Error('No se pudo abrir esa imagen.'));
+      i.src = URL.createObjectURL(archivo);
+    });
+    const lado = 400, c = document.createElement('canvas');
+    c.width = lado; c.height = lado;
+    const m = Math.min(img.naturalWidth, img.naturalHeight);
+    // un poco más arriba del centro, que es donde suele estar la cara
+    const sx = (img.naturalWidth - m) / 2, sy = Math.max(0, (img.naturalHeight - m) * 0.3);
+    c.getContext('2d').drawImage(img, sx, sy, m, m, 0, 0, lado, lado);
+    URL.revokeObjectURL(img.src);
+    const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.9));
+    const { ruta } = await api('api/fotos.php', { method: 'POST', body: blob, headers: { 'Content-Type': 'application/octet-stream' } });
+    fotoNueva = ruta;
+    $('#form_avatar').innerHTML = `<img src="${esc(ruta)}" alt="">`;
+    $('#form_error').textContent = '';
+  }catch(e){ $('#form_error').textContent = e.message; }
+});
+
+$('#form_cuenta').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const boton = $('#guardar');
+  boton.disabled = true;
+  $('#form_error').textContent = '';
+  try{
+    const cuerpo = editando
+      ? { tarea: 'editar', id: editando.id, nombre: $('#f_nombre').value, rol: $('#f_rol').value,
+          activo: $('#f_activo').checked,
+          ...(fotoNueva ? { foto: fotoNueva } : {}),
+          ...($('#f_clave').value ? { contrasena: $('#f_clave').value } : {}) }
+      : { tarea: 'crear', nombre: $('#f_nombre').value, usuario: $('#f_usuario').value,
+          rol: $('#f_rol').value, contrasena: $('#f_clave').value, foto: fotoNueva || '' };
+    await api('api/usuarios.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+    const nueva = !editando, conClave = !!$('#f_clave').value;
+    const nombre = $('#f_nombre').value, usuario = editando?.usuario || $('#f_usuario').value.trim().toLowerCase();
+    const contrasena = $('#f_clave').value;
+    cerrar();
+    await cargar();
+    // los datos para pasarle a la persona: se muestran una vez y no se guardan en ningún lado
+    if(nueva || conClave){
+      mostrarDatos(nombre, usuario, contrasena, nueva);
+    }
+  }catch(e){
+    $('#form_error').textContent = e.message;
+  }finally{ boton.disabled = false; }
+});
+
+function mostrarDatos(nombre, usuario, contrasena, nueva){
+  const texto = `Editor de placas: ${location.origin}${location.pathname.replace(/equipo(\.php|\.html)?$/, '')}\n`
+    + `Usuario: ${usuario}\nContraseña: ${contrasena}`;
+  const velo = document.createElement('div');
+  velo.className = 'velo';
+  velo.innerHTML = `
+    <div class="caja">
+      <h2>${nueva ? 'Cuenta creada' : 'Contraseña cambiada'}</h2>
+      <p class="nota">Pasale estos datos a ${esc(nombre)}. Esta es la única vez que se ven:
+        la contraseña no se guarda en ningún lado que se pueda leer.</p>
+      <div class="datos-para-pasar">${esc(texto)}</div>
+      <div class="botones">
+        <button type="button" data-copiar>Copiar</button>
+        <button class="principal" type="button" data-listo>Listo</button>
+      </div>
+    </div>`;
+  document.body.appendChild(velo);
+  velo.querySelector('[data-copiar]').addEventListener('click', async (e) => {
+    try{ await navigator.clipboard.writeText(texto); e.target.textContent = 'Copiado'; }
+    catch(err){ e.target.textContent = 'Seleccionalo y copialo a mano'; }
+  });
+  velo.querySelector('[data-listo]').addEventListener('click', () => velo.remove());
+}
+
+/* ------------------------------------------------------------------ */
+/* arranque                                                            */
+/* ------------------------------------------------------------------ */
+
+(async () => {
+  try{
+    import('./marca/marca.js').then(({ MARCA }) => {
+      $('#de_quien').textContent = MARCA.nombre;
+      document.title = 'Equipo — ' + MARCA.nombre;
+    }).catch(() => {});
+
+    const { hayUsuarios } = await (await fetch('api/sesion.php?tarea=estado')).json();
+    if(!hayUsuarios) return primeraCuenta();
+
+    const r = await fetch('api/sesion.php', { headers: { 'x-clave': clave() } });
+    const quien = await r.json().catch(() => ({}));
+    if(r.status === 401 || !quien.usuario){
+      return afuera(`<h1 style="font-size:20px">Entrá con tu cuenta</h1>
+        <p class="nota">Este panel es para quien administra el equipo. Entrá desde el editor
+          con tu usuario y tu contraseña, y volvé acá.</p>
+        <a class="boton principal" href="./">Ir al editor</a>`);
+    }
+    if(quien.usuario.rol !== 'admin'){
+      return afuera(`<h1 style="font-size:20px">Solo administración</h1>
+        <p class="nota">Tu cuenta es de editor: podés armar y publicar desde el editor, pero
+          este panel lo ve solo quien administra el equipo.</p>
+        <a class="boton principal" href="./">Volver al editor</a>`);
+    }
+    $('#principal').hidden = false;
+    await cargar();
+  }catch(e){
+    afuera(`<h1 style="font-size:20px">No se pudo abrir el panel</h1><p class="nota error">${esc(e.message)}</p>`);
+  }
+})();
+</script>
+</body>
+</html>

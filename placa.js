@@ -316,6 +316,103 @@ function dibujarEtiqueta(ctx, datos, u, abajoDe){
 }
 
 /* ------------------------------------------------------------------ */
+/* firma de quien publica                                              */
+/* ------------------------------------------------------------------ */
+
+/* Quién publicó la pieza: su foto en un círculo con un borde blanco fino,
+   y al lado «Publicado por» y su nombre. Va sobre una píldora oscura y
+   translúcida —la misma de la franja de la voz— para que se lea sobre
+   cualquier foto, y arriba a la izquierda: abajo ya están el titular, la
+   etiqueta y el logo, y arriba hay aire. En unidades del arte de 3000. */
+export const FIRMA = {
+  x: 110, y: 110,
+  /* En el feed la placa se ve a un tercio de su tamaño: con «Publicado
+     por» más chico que esto, en el teléfono no se llega a leer. */
+  foto: 204, borde: 9,          // el círculo y su borde blanco
+  relleno: 18,                  // entre el círculo y el borde de la píldora
+  aire: 40,                     // entre el círculo y el texto
+  rotulo: 52, nombre: 90,       // los dos renglones
+  entre: 18,                    // entre un renglón y el otro
+  derecha: 66,                  // después del texto, hasta el final de la píldora
+  maxTexto: 1500,               // un nombre muy largo se achica hasta acá
+};
+
+/* `firma` es { nombre, imagen }: sin imagen van las iniciales sobre el
+   color del filete. `k` es la escala (ancho del lienzo / 3000) y `x`,`y`
+   la esquina, en píxeles. */
+export function dibujarFirma(ctx, firma, k, x, y, color = '#0ae7ae'){
+  const nombre = String(firma?.nombre || '').trim();
+  if(!nombre) return;
+  const F = FIRMA;
+  const rotulo = 'PUBLICADO POR';
+  const pxR = F.rotulo * k;
+  const interR = 0.14 * pxR;
+  let pxN = F.nombre * k;
+  // un nombre muy largo se achica en vez de estirar la píldora sobre la placa
+  const anchoN = anchoDe(ctx, nombre, TIPOS.titular, pxN, 0);
+  if(anchoN > F.maxTexto * k) pxN *= F.maxTexto * k / anchoN;
+
+  const d = F.foto * k;
+  const alto = d + F.relleno * 2 * k;
+  const cx = x + F.relleno * k + d / 2;
+  const cy = y + alto / 2;
+  const x0 = cx + d / 2 + F.aire * k;
+  const anchoTexto = Math.max(anchoDe(ctx, rotulo, TIPOS.etiqueta, pxR, interR),
+                              anchoDe(ctx, nombre, TIPOS.titular, pxN, 0));
+  const ancho = x0 - x + anchoTexto + F.derecha * k;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x, y, ancho, alto, alto / 2);
+  ctx.fillStyle = 'rgba(12,10,16,0.46)';
+  ctx.fill();
+
+  // la foto, recortada en círculo; sin foto, las iniciales
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, d / 2, 0, Math.PI * 2);
+  ctx.clip();
+  if(firma.imagen){
+    dibujarFoto(ctx, firma.imagen, cx - d / 2, cy - d / 2, d, d, 'cubrir', 50, 30, k);
+  }else{
+    ctx.fillStyle = color;
+    ctx.fillRect(cx - d / 2, cy - d / 2, d, d);
+    const iniciales = nombre.split(/\s+/).filter(Boolean).slice(0, 2)
+      .map((p) => p[0].toUpperCase()).join('');
+    const pxI = d * 0.4;
+    ctx.font = fuente(TIPOS.titular, pxI);
+    ctx.letterSpacing = '0px';
+    ctx.fillStyle = textoSobre(color);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(iniciales, cx, cy + metricas(ctx, TIPOS.titular, pxI).mayuscula / 2);
+  }
+  ctx.restore();
+  // el borde blanco fino, que la despega de la píldora
+  ctx.beginPath();
+  ctx.arc(cx, cy, d / 2 - F.borde * k / 2, 0, Math.PI * 2);
+  ctx.lineWidth = F.borde * k;
+  ctx.strokeStyle = '#fff';
+  ctx.stroke();
+
+  // los dos renglones, centrados en alto con el círculo
+  const capR = metricas(ctx, TIPOS.etiqueta, pxR).mayuscula;
+  const capN = metricas(ctx, TIPOS.titular, pxN).mayuscula;
+  const arriba = cy - (capR + F.entre * k + capN) / 2;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = fuente(TIPOS.etiqueta, pxR);
+  ctx.letterSpacing = `${interR}px`;
+  ctx.fillStyle = 'rgba(255,255,255,0.78)';
+  ctx.fillText(rotulo, x0, arriba + capR);
+  ctx.font = fuente(TIPOS.titular, pxN);
+  ctx.letterSpacing = '0px';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(nombre, x0, arriba + capR + F.entre * k + capN);
+  ctx.restore();
+}
+
+/* ------------------------------------------------------------------ */
 /* formatos                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -541,6 +638,7 @@ export function dibujar(ctx, datos, fotos, ancho){
     ctx.drawImage(fotos.logo, (ancho - anchoLogo) / 2,
       alto - (L.abajo * u) - altoLogo, anchoLogo, altoLogo);
   }
+  if(fotos.firma) dibujarFirma(ctx, fotos.firma, u, FIRMA.x * u, FIRMA.y * u, datos.color_filete);
 }
 
 /* Lámina suelta del carrusel: la foto a sangre, ocupando el cuadro entero,
@@ -629,7 +727,7 @@ function entrada(avance, desde, dura){
    titular, filete, etiqueta y logo— sobre fondo transparente. Así la vista
    previa puede poner esta capa arriba del video crudo y el texto se ve
    cambiar mientras se escribe, sin tener que volver a quemar nada. */
-export function dibujarReel(ctx, datos, medio, logo, ancho, alto, avance = 1, soloEncima = false){
+export function dibujarReel(ctx, datos, medio, logo, ancho, alto, avance = 1, soloEncima = false, firma = null){
   const u = ancho / REEL.ancho;
   const R = REEL;
 
@@ -646,6 +744,10 @@ export function dibujarReel(ctx, datos, medio, logo, ancho, alto, avance = 1, so
   // fundido al color del medio, para que el texto se lea
   ctx.fillStyle = degradado(ctx, datos, 0, 0, ancho, alto, R.degradado);
   ctx.fillRect(0, 0, ancho, alto);
+
+  // quién publica: arriba, pero más abajo que en la placa, porque en los
+  // reels Instagram pone su barra encima de la parte de arriba del video
+  if(firma) dibujarFirma(ctx, firma, ancho / LIENZO, R.margen * u, 150 * u, datos.color_filete);
 
   const px = R.titular * u;
   const interlinea = px * R.interlinea;
@@ -939,6 +1041,8 @@ export function prepararVoz(datos, fotos, ancho, duracion){
     const [anchoLogo, altoLogo] = medidaLogo(fotos.logo, u);
     cf.drawImage(fotos.logo, (ancho - anchoLogo) / 2, alto - (L.abajo * u) - altoLogo, anchoLogo, altoLogo);
   }
+
+  if(fotos.firma) dibujarFirma(cf, fotos.firma, u, FIRMA.x * u, FIRMA.y * u, datos.color_filete);
 
   const capaTexto = lienzoNuevo(ancho, alto);
   const lugar = textoNoticia(capaTexto.getContext('2d'), datos, u, alto, VOZ.tituloArriba);

@@ -119,6 +119,57 @@ function crear_tablas(PDO $pdo): void {
         valor  TEXT NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 
+    /* Las cuentas del equipo. La contraseña no se guarda: se guarda su
+       huella (password_hash), que no se puede dar vuelta. */
+    $tablas[] = "CREATE TABLE IF NOT EXISTS usuarios (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        usuario         VARCHAR(40)  NOT NULL UNIQUE,
+        nombre          VARCHAR(80)  NOT NULL DEFAULT '',
+        clave_hash      VARCHAR(255) NOT NULL,
+        foto            VARCHAR(200) NOT NULL DEFAULT '',
+        rol             VARCHAR(12)  NOT NULL DEFAULT 'editor',
+        activo          TINYINT(1)   NOT NULL DEFAULT 1,
+        creado          DATETIME     NOT NULL,
+        ultimo_ingreso  DATETIME     NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
+    /* Una fila por navegador donde alguien entró. Del código de la sesión
+       se guarda la huella, no el código: quien lea la base no puede entrar
+       con lo que ve. */
+    $tablas[] = "CREATE TABLE IF NOT EXISTS sesiones (
+        token       CHAR(64)     PRIMARY KEY,
+        usuario_id  INT          NOT NULL,
+        creada      DATETIME     NOT NULL,
+        usada       DATETIME     NOT NULL,
+        donde       VARCHAR(120) NOT NULL DEFAULT '',
+        INDEX (usuario_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
+    /* Lo que se publicó y quién lo publicó, para el panel del equipo. */
+    $tablas[] = "CREATE TABLE IF NOT EXISTS publicaciones (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        usuario_id  INT          NULL,
+        placa_id    INT          NULL,
+        nombre      VARCHAR(120) NOT NULL DEFAULT '',
+        formato     VARCHAR(20)  NOT NULL DEFAULT '',
+        piezas      INT          NOT NULL DEFAULT 1,
+        enlace      VARCHAR(255) NULL,
+        ig_id       VARCHAR(40)  NULL,
+        programada  TINYINT(1)   NOT NULL DEFAULT 0,
+        publicada   DATETIME     NOT NULL,
+        INDEX (usuario_id, publicada),
+        INDEX (publicada)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
+    /* Los intentos fallidos de entrar, para frenar a quien prueba
+       contraseñas una tras otra. */
+    $tablas[] = "CREATE TABLE IF NOT EXISTS intentos (
+        id      INT AUTO_INCREMENT PRIMARY KEY,
+        llave   VARCHAR(160) NOT NULL,
+        cuando  DATETIME     NOT NULL,
+        INDEX (llave, cuando)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
     // la base va en la cuenta: otra base en el mismo sitio es otra marca
     $firma = substr(md5(BD_HOST . '|' . BD_NOMBRE . '|' . implode(';', $tablas)), 0, 16);
     $marca = __DIR__ . '/.tablas-' . $firma;
@@ -152,13 +203,103 @@ function clave_recibida(): string {
     return '';
 }
 
-function exigir_clave(?array $cuerpo = null): void {
+/* ------------------------------------------------------------------ */
+/* cuentas                                                             */
+/* ------------------------------------------------------------------ */
+
+/* Cuánto dura una sesión sin usarse. Cada vez que se usa vuelve a empezar:
+   quien entra todos los días no tiene que volver a poner la contraseña. */
+const SESION_DIAS = 60;
+
+/* La hora en UTC, puesta por PHP: es la misma que usa la cola de
+   programadas, y así el panel muestra todo en la hora de quien mira. */
+function ahora_utc(): string { return gmdate('Y-m-d H:i:s'); }
+
+function iso_utc(?string $fecha): ?string {
+    return $fecha ? str_replace(' ', 'T', $fecha) . 'Z' : null;
+}
+
+/* Quién hace el pedido.
+   La clave del sitio —la de api/config.php— sigue valiendo: la usan el
+   cron de las programadas y el panel de configuración, que no tienen
+   usuario. Cualquier otra cosa se busca entre las sesiones abiertas.
+   Devuelve null si no es nadie. */
+function quien_es(?array $cuerpo = null): ?array {
+    $recibida = trim((string) ($cuerpo['clave'] ?? clave_recibida()));
+    if ($recibida === '') return null;
+    if (definida('PUBLICAR_CLAVE') && hash_equals(PUBLICAR_CLAVE, $recibida)) {
+        return ['id' => null, 'sitio' => true, 'usuario' => '', 'nombre' => '', 'foto' => '', 'rol' => 'admin'];
+    }
+    if (!preg_match('/^[a-f0-9]{64}$/', $recibida)) return null;
+
+    $huella = hash('sha256', $recibida);
+    try {
+        $st = bd()->prepare(
+            'SELECT u.id, u.usuario, u.nombre, u.foto, u.rol, s.usada
+             FROM sesiones s JOIN usuarios u ON u.id = s.usuario_id
+             WHERE s.token = ? AND u.activo = 1');
+        $st->execute([$huella]);
+        $u = $st->fetch();
+    } catch (Throwable $e) {
+        return null;   // sin base no hay sesiones
+    }
+    if (!$u) return null;
+
+    $usada = strtotime($u['usada'] . ' UTC');
+    if ($usada < time() - SESION_DIAS * 86400) {
+        bd()->prepare('DELETE FROM sesiones WHERE token = ?')->execute([$huella]);
+        return null;
+    }
+    // se anota el uso de a ratos: escribir en cada pedido sería carga de más
+    if ($usada < time() - 600) {
+        bd()->prepare('UPDATE sesiones SET usada = ? WHERE token = ?')->execute([ahora_utc(), $huella]);
+    }
+    return ['id' => (int) $u['id'], 'sitio' => false, 'usuario' => $u['usuario'],
+            'nombre' => $u['nombre'], 'foto' => $u['foto'], 'rol' => $u['rol']];
+}
+
+/* Corta el pedido si no viene de alguien conocido, y si viene, dice quién
+   es: los que publican lo usan para anotar a nombre de quién. */
+function exigir_clave(?array $cuerpo = null): array {
     if (!definida('PUBLICAR_CLAVE')) {
         responder(['error' => 'Falta definir PUBLICAR_CLAVE en api/config.php'], 503);
     }
-    $recibida = $cuerpo['clave'] ?? clave_recibida();
-    if (!hash_equals(PUBLICAR_CLAVE, (string) $recibida)) {
-        responder(['error' => 'Clave incorrecta'], 401);
+    $quien = quien_es($cuerpo);
+    if (!$quien) responder(['error' => 'La sesión venció o la clave no es la correcta'], 401);
+    return $quien;
+}
+
+/* Solo para quien administra el equipo. La clave del sitio no alcanza:
+   la conocía todo el equipo antes de que hubiera cuentas. */
+function exigir_admin(?array $cuerpo = null): array {
+    $quien = exigir_clave($cuerpo);
+    if ($quien['sitio'] || $quien['rol'] !== 'admin') {
+        responder(['error' => 'Esto es solo para quien administra el equipo'], 403);
+    }
+    return $quien;
+}
+
+/* Anota una publicación en el historial del equipo. Si falla no rompe
+   nada: el post ya está en Instagram, y el registro es un extra. */
+function registrar_publicacion(?int $usuarioId, array $meta, array $resultado, bool $programada = false): void {
+    try {
+        $st = bd()->prepare(
+            'INSERT INTO publicaciones
+               (usuario_id, placa_id, nombre, formato, piezas, enlace, ig_id, programada, publicada)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $st->execute([
+            $usuarioId,
+            isset($meta['placa_id']) && $meta['placa_id'] !== null ? (int) $meta['placa_id'] : null,
+            mb_substr((string) ($meta['nombre'] ?? ''), 0, 120),
+            mb_substr((string) ($meta['formato'] ?? ''), 0, 20),
+            max(1, (int) ($resultado['laminas'] ?? 1)),
+            isset($resultado['enlace']) ? mb_substr((string) $resultado['enlace'], 0, 255) : null,
+            isset($resultado['id']) ? mb_substr((string) $resultado['id'], 0, 40) : null,
+            $programada ? 1 : 0,
+            ahora_utc(),
+        ]);
+    } catch (Throwable $e) {
+        error_log('no se pudo anotar la publicación: ' . $e->getMessage());
     }
 }
 

@@ -23,6 +23,8 @@ jobs:
           cp index.html index.php editor.js placa.js dibujo-eyey.js mp4.js voz.js robots.txt sitio/
           # el panel de feeds: página aparte, no toca el editor
           cp feeds.html feeds.php feeds.js sitio/
+          # el panel del equipo: las cuentas y quién publicó qué
+          cp equipo.html equipo.php sitio/
           cp panel-*.html sitio/
           cp -r assets sitio/
           cp -r marca sitio/

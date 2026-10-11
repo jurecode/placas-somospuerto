@@ -204,7 +204,10 @@ function vaciar_cola(int $tope = 5): array {
         if ($marcar->rowCount() === 0) continue;   // otra corrida se la llevó
 
         try {
-            $r = publicar_ahora(json_decode($fila['carga'], true) ?: []);
+            $carga = json_decode($fila['carga'], true) ?: [];
+            $r = publicar_ahora($carga);
+            registrar_publicacion(isset($carga['quien']) ? (int) $carga['quien'] : null,
+                (array) ($carga['placa'] ?? []), $r, true);
             $upd = bd()->prepare("UPDATE programadas SET estado = 'publicada', resultado = ? WHERE id = ?");
             $upd->execute([$r['enlace'] ?? ('id ' . $r['id']), $fila['id']]);
             $hechas[] = ['id' => (int) $fila['id'], 'ok' => true, 'enlace' => $r['enlace'] ?? null];

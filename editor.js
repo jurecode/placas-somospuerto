@@ -154,14 +154,26 @@ const URGENTE = {
 const clave = () => localStorage.getItem('clave_publicar') || '';
 
 async function api(ruta, opciones = {}){
+  /* Sin credencial no se pregunta nada: el panel de actividad y otros que
+     consultan solos arrancan antes de que se sepa si hay sesión, y su 401
+     tapaba la pantalla de entrar con un «la sesión venció» que no era. */
+  if(!clave()){
+    const e = new Error('Todavía no se entró');
+    e.esClave = true;
+    e.status = 401;
+    throw e;
+  }
   const res = await fetch(ruta, {
     ...opciones,
     headers: { 'x-clave': clave(), ...(opciones.headers || {}) },
   });
   const datos = await res.json().catch(() => ({}));
   if(res.status === 401){
-    localStorage.removeItem('clave_publicar');
-    pantallaClave('La clave no es la correcta.');
+    // varios pedidos pueden volver con 401 a la vez: la pantalla se arma una sola vez
+    if(clave()){
+      localStorage.removeItem('clave_publicar');
+      pantallaIngreso('La sesión se cerró o venció: entrá de nuevo.');
+    }
     // se marca para que el arranque no tape la pantalla de la clave con
     // la de error genérico
     const e = new Error(datos.error || 'Clave incorrecta');
@@ -919,7 +931,7 @@ async function imagenesDe(p){
     cargarImagen(p.foto_izq), cargarImagen(p.foto_der),
     cargarImagen(p.foto_cen), cargarImagen(LOGO),
   ]);
-  return { izq, der, cen, logo };
+  return { izq, der, cen, logo, firma };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1041,7 +1053,7 @@ function repintar(){
             const a = Math.min(1, (reproductor.currentTime || 0) / ANIMACION);
             if(a === ultimo) return;
             ultimo = a;
-            dibujarReel(ctx, placa, null, logo, REEL.ancho, REEL.alto, a, true);
+            dibujarReel(ctx, placa, null, logo, REEL.ancho, REEL.alto, a, true, firma);
           };
           encima();
           bucleReel = setInterval(encima, 80);
@@ -1049,7 +1061,7 @@ function repintar(){
           ctx.clearRect(0, 0, lienzo.width, lienzo.height);   // ya viene quemado
         }else{
           dibujarReel(ctx, placa, await cargarImagen(placa.portada),
-            await cargarImagen(LOGO), REEL.ancho, REEL.alto, 1);
+            await cargarImagen(LOGO), REEL.ancho, REEL.alto, 1, false, firma);
         }
         await pintarTira();
         return;
@@ -1721,6 +1733,8 @@ $('#publicar').addEventListener('click', async (ev) => {
         caption: armarCaption(),
         colaboradores: placa.colaboradores || '',
         etiquetados: placa.etiquetados || '',
+        // para el historial del equipo: qué fue. Quién, lo sabe el servidor
+        placa: { placa_id: placa.id, nombre: placa.nombre, formato: placa.formato },
       }),
     });
     const datos = await res.json().catch(() => ({}));
@@ -1822,7 +1836,7 @@ $('#programar').addEventListener('click', async (ev) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        clave: clave(), placa_id: placa.id, nombre: placa.nombre,
+        clave: clave(), placa_id: placa.id, nombre: placa.nombre, formato: placa.formato,
         // se manda el instante absoluto: el servidor puede estar en otra zona
         publicar_en: new Date(cuando).toISOString(),
         carga: { ...carga, caption: armarCaption(),
@@ -2574,7 +2588,7 @@ async function quemarReel(fuente, avisar){
     if(!dibujando) return;
     vigia.latido();
     dibujarReel(ctx, placa, video, logo, REEL.ancho, REEL.alto,
-      Math.min(1, video.currentTime / ANIMACION));
+      Math.min(1, video.currentTime / ANIMACION), false, firma);
     cuadros++;
     if(video.duration) avisar?.(video.currentTime / video.duration);
     setTimeout(pintar, 33);
@@ -2591,7 +2605,7 @@ async function quemarReel(fuente, avisar){
     video.onloadeddata = r;
     setTimeout(r, 1500);
   });
-  dibujarReel(ctx, placa, video, logo, REEL.ancho, REEL.alto, 0);
+  dibujarReel(ctx, placa, video, logo, REEL.ancho, REEL.alto, 0, false, firma);
 
   const listo = new Promise((r) => { grabador.onstop = r; });
   const despierto = await mantenerDespierto();
@@ -2629,7 +2643,7 @@ async function quemarReel(fuente, avisar){
   // portada: un cuadro con el titular ya entrado
   video.currentTime = Math.min(2, video.duration / 2);
   await new Promise((r) => { video.onseeked = r; setTimeout(r, 600); });
-  dibujarReel(ctx, placa, video, logo, REEL.ancho, REEL.alto, 1);
+  dibujarReel(ctx, placa, video, logo, REEL.ancho, REEL.alto, 1, false, firma);
   const portada = await new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.9));
 
   if(propia) URL.revokeObjectURL(video.src);
@@ -2802,7 +2816,7 @@ async function grabarReel(){
       video = await quemarConCodecs(fuente,
         (ctx, cuadro, segundos) => {
           dibujarReel(ctx, placa, cuadro, logo, REEL.ancho, REEL.alto,
-            Math.min(1, segundos / ANIMACION));
+            Math.min(1, segundos / ANIMACION), false, firma);
         },
         (a) => trabajo(rotulo, a, espera),
         REEL.ancho, REEL.alto);
@@ -3455,6 +3469,135 @@ async function ultimaPlaca(){
 
 /* Si el editor no puede arrancar, hay que decirlo en la cara y no dejar
    un lienzo negro: el mensaje del panel queda al fondo y no se ve. */
+/* ------------------------------------------------------------------ */
+/* cuentas                                                             */
+/* ------------------------------------------------------------------ */
+
+/* Con quién se entró. null mientras el sitio todavía no tiene cuentas y se
+   entra con la clave de siempre: ahí no hay firma. */
+let yo = null;
+/* Lo que va en «Publicado por»: el nombre y la foto de la cuenta. Cada
+   pieza la recibe al dibujarse, así la vista previa la muestra igual que
+   va a salir publicada. */
+let firma = null;
+
+/* Quién es este navegador para el servidor: { usuario } con una cuenta,
+   { sitio, hayUsuarios } con la clave de siempre, o null si la sesión ya
+   no vale. Si el servidor no contesta, eso es otra cosa y se avisa como
+   error. */
+async function quienSoy(){
+  const r = await fetch('api/sesion.php', { headers: { 'x-clave': clave() } });
+  if(r.status === 401) return null;
+  const d = await r.json().catch(() => ({}));
+  if(!r.ok) throw new Error(d.error || `El servidor contestó ${r.status}`);
+  return d;
+}
+
+/* La pantalla para entrar. Mientras el sitio no tenga cuentas se pide la
+   clave de siempre, así nadie se queda afuera durante el cambio; en cuanto
+   existe la primera, cada uno entra con su usuario y su contraseña. */
+async function pantallaIngreso(mensaje){
+  let hay = true;
+  try{ hay = !!(await (await fetch('api/sesion.php?tarea=estado')).json()).hayUsuarios; }
+  catch(e){ /* sin respuesta se pide usuario: es lo que corresponde de ahora en más */ }
+  if(!hay) return pantallaClave(mensaje);
+
+  const portada = $('#portada');
+  portada.innerHTML = `
+    <h2>Entrar</h2>
+    ${mensaje ? `<p class="fallo">${esc(mensaje)}</p>` : ''}
+    <form class="ingreso" id="ingreso" autocomplete="on">
+      <input id="ing_usuario" name="usuario" placeholder="Usuario" autocomplete="username"
+             autocapitalize="none" spellcheck="false" required>
+      <input id="ing_clave" name="contrasena" type="password" placeholder="Contraseña"
+             autocomplete="current-password" required>
+      <button class="tarjeta-chica" type="submit">Entrar</button>
+      <p class="pista" id="ing_estado" aria-live="polite"></p>
+    </form>
+    <p class="pista">La cuenta te la crea quien administra el equipo.</p>`;
+  portada.hidden = false;
+
+  const form = $('#ingreso');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const boton = form.querySelector('button');
+    boton.disabled = true;
+    $('#ing_estado').textContent = 'Entrando…';
+    try{
+      // fetch directo y no api(): un 401 acá es «contraseña mala», no «sesión vencida»
+      const r = await fetch('api/sesion.php', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tarea: 'entrar', usuario: $('#ing_usuario').value,
+                               contrasena: $('#ing_clave').value }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
+      localStorage.setItem('clave_publicar', d.token);
+      location.reload();
+    }catch(e){
+      $('#ing_estado').textContent = e.message;
+      boton.disabled = false;
+    }
+  });
+  $('#ing_usuario').focus();
+}
+
+/* La foto de la cuenta arriba, con su menú. */
+function pintarCuenta(){
+  const caja = $('#cuenta');
+  if(!caja || !yo) return;
+  caja.hidden = false;
+  const boton = $('#yo');
+  const iniciales = yo.nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
+  boton.innerHTML = yo.foto ? `<img src="${esc(yo.foto)}" alt="">` : esc(iniciales);
+  boton.title = yo.nombre;
+  $('#menu_quien').innerHTML = `<b>${esc(yo.nombre)}</b><small>@${esc(yo.usuario)}${yo.rol === 'admin' ? ' · administración' : ''}</small>`;
+  $('#ir_equipo').hidden = yo.rol !== 'admin';
+}
+
+$('#yo')?.addEventListener('click', (ev) => {
+  ev.stopPropagation();
+  $('#menu_yo').hidden = !$('#menu_yo').hidden;
+  $('#form_clave').hidden = true;
+});
+// el menú se cierra al tocar afuera
+document.addEventListener('click', (ev) => {
+  const menu = $('#menu_yo');
+  if(menu && !menu.hidden && !ev.target.closest('#cuenta')) menu.hidden = true;
+});
+
+$('#salir')?.addEventListener('click', async () => {
+  try{
+    await fetch('api/sesion.php', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-clave': clave() },
+      body: JSON.stringify({ tarea: 'salir' }) });
+  }catch(e){ /* igual se olvida acá */ }
+  localStorage.removeItem('clave_publicar');
+  location.reload();
+});
+
+$('#cambiar_clave')?.addEventListener('click', () => {
+  $('#form_clave').hidden = !$('#form_clave').hidden;
+  $('#clave_actual').focus();
+});
+
+$('#form_clave')?.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const aviso = $('#clave_estado');
+  if($('#clave_nueva').value !== $('#clave_repetida').value){
+    aviso.textContent = 'Las dos contraseñas nuevas no son iguales.';
+    return;
+  }
+  aviso.textContent = 'Guardando…';
+  try{
+    await api('api/sesion.php', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tarea: 'clave', actual: $('#clave_actual').value, nueva: $('#clave_nueva').value }),
+    });
+    ev.target.reset();
+    aviso.textContent = 'Listo. Las sesiones abiertas en otros aparatos se cerraron.';
+  }catch(e){ aviso.textContent = e.message; }
+});
+
 function pantallaError(mensaje){
   const portada = $('#portada');
   portada.innerHTML = `
@@ -3541,7 +3684,25 @@ $('#portada').addEventListener('click', async (ev) => {
   pintarDisenos();
   pintarPaleta();
   pintarChips();
-  if(!clave()) return pantallaClave();
+  if(!clave()) return pantallaIngreso();
+  try{
+    const quien = await quienSoy();
+    if(!quien){
+      localStorage.removeItem('clave_publicar');
+      return pantallaIngreso('La sesión venció: entrá de nuevo.');
+    }
+    /* Con la clave de siempre y cuentas ya creadas, se pide entrar: si no,
+       se podría seguir publicando sin nombre para siempre. */
+    if(quien.sitio && quien.hayUsuarios){
+      localStorage.removeItem('clave_publicar');
+      return pantallaIngreso('Desde ahora cada uno entra con su usuario y su contraseña.');
+    }
+    yo = quien.usuario || null;
+    if(yo) firma = { nombre: yo.nombre, imagen: yo.foto ? await cargarImagen(yo.foto) : null };
+    pintarCuenta();
+  }catch(e){
+    return pantallaError(e.message);
+  }
   // por si el hosting no tiene cron: al abrir, se publica lo que ya venció
   api('api/programar.php?tarea=vaciar&clave=' + encodeURIComponent(clave()))
     .catch(() => {});

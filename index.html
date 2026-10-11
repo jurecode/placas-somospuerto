@@ -63,6 +63,36 @@
   }
   .panel > header button{ padding:7px 13px; font-size:12px; flex:none }
 
+  /* la cuenta con la que se entró: su foto, con un borde blanco como en la
+     firma de las placas, y un menú debajo */
+  .cuenta{ position:relative; flex:none }
+  .panel > header .yo{
+    width:36px; height:36px; padding:0; border-radius:50%; overflow:hidden;
+    border:2px solid #fff; background:var(--boton-claro); color:var(--texto);
+    display:grid; place-items:center; font-size:12px; font-weight:700;
+  }
+  .yo img{ width:100%; height:100%; object-fit:cover; display:block }
+  .menu-yo{
+    position:absolute; right:0; top:calc(100% + 8px); z-index:30; width:260px;
+    background:var(--panel); border:1px solid var(--linea); border-radius:14px;
+    padding:12px; display:grid; gap:6px; box-shadow:0 18px 40px #000a;
+  }
+  .menu-yo__quien{ display:grid; gap:2px; padding:2px 6px 8px; border-bottom:1px solid var(--linea); margin-bottom:4px }
+  .menu-yo__quien b{ font-size:14px }
+  .menu-yo__quien small{ color:var(--suave); font-size:12px }
+  .menu-yo > a, .menu-yo > button{
+    display:block; text-align:left; border-radius:10px; padding:9px 10px; font-size:13px;
+    background:none; color:var(--texto); text-decoration:none;
+  }
+  .menu-yo > a:hover, .menu-yo > button:hover{ background:var(--boton) }
+  .menu-yo__clave{ display:grid; gap:6px; padding:4px 2px }
+  .menu-yo__clave small{ color:var(--suave); font-size:12px }
+
+  /* la pantalla para entrar */
+  .ingreso{ display:grid; gap:10px; width:min(320px, 100%) }
+  .ingreso input{ padding:12px 14px }
+  .ingreso .tarjeta-chica{ justify-self:stretch }
+
   fieldset{
     border:0; background:var(--panel); border-radius:var(--radio);
     padding:16px 18px; margin-bottom:12px;
@@ -665,6 +695,22 @@
       <button id="nueva" title="Crear una placa nueva">Nueva</button>
       <button id="duplicar" title="Duplicar la placa actual">Duplicar</button>
       <button class="mostrar_vista" id="mostrar_vista" type="button">Ver la placa</button>
+      <div class="cuenta" id="cuenta" hidden>
+        <button class="yo" id="yo" type="button" aria-haspopup="true"></button>
+        <div class="menu-yo" id="menu_yo" hidden>
+          <p class="menu-yo__quien" id="menu_quien"></p>
+          <a href="equipo.php" id="ir_equipo" hidden>Equipo y publicaciones</a>
+          <button type="button" id="cambiar_clave">Cambiar mi contraseña</button>
+          <form class="menu-yo__clave" id="form_clave" hidden>
+            <input type="password" id="clave_actual" placeholder="Contraseña actual" autocomplete="current-password" required>
+            <input type="password" id="clave_nueva" placeholder="Nueva, al menos 8 caracteres" autocomplete="new-password" minlength="8" required>
+            <input type="password" id="clave_repetida" placeholder="La nueva, otra vez" autocomplete="new-password" minlength="8" required>
+            <button class="principal" type="submit">Guardar</button>
+            <small id="clave_estado" aria-live="polite"></small>
+          </form>
+          <button type="button" id="salir">Salir</button>
+        </div>
+      </div>
     </div>
   </header>
 

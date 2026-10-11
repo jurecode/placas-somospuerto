@@ -24,7 +24,7 @@ $cuerpo = null;
 if ($metodo === 'POST') {
     $cuerpo = json_decode(file_get_contents('php://input') ?: '', true) ?: [];
 }
-exigir_clave($cuerpo);
+$quien = exigir_clave($cuerpo);
 
 try {
     if ($metodo === 'GET') {
@@ -68,6 +68,15 @@ try {
     if (trim((string) ($carga['caption'] ?? '')) === '') {
         responder(['error' => 'Falta la descripción de la publicación'], 400);
     }
+    /* Quién la programó lo pone el servidor, de la sesión, y no lo que
+       diga el navegador: si no, cualquiera podría publicar a nombre de otro.
+       Cuando el cron la publique, queda anotada a su nombre. */
+    $carga['quien'] = $quien['id'];
+    $carga['placa'] = [
+        'placa_id' => isset($cuerpo['placa_id']) ? (int) $cuerpo['placa_id'] : null,
+        'nombre'   => mb_substr((string) ($cuerpo['nombre'] ?? ''), 0, 120),
+        'formato'  => mb_substr((string) ($cuerpo['formato'] ?? ''), 0, 20),
+    ];
 
     $st = bd()->prepare(
         'INSERT INTO programadas (placa_id, nombre, publicar_en, estado, carga, creada)

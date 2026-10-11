@@ -46,11 +46,28 @@ async function api(ruta, opciones = {}){
   return datos;
 }
 
-function pedirClave(mensaje){
+/* Con cuentas creadas se entra desde el editor, con usuario y contraseña:
+   la sesión queda guardada en este navegador y este panel la usa. La clave
+   de siempre se pide solo mientras el sitio todavía no tiene cuentas. */
+async function pedirClave(mensaje){
+  let hay = false;
+  try{ hay = !!(await (await fetch('api/sesion.php?tarea=estado')).json()).hayUsuarios; }catch(e){}
   $('#velo_clave').hidden = false;
+  if(hay){
+    $('#velo_clave .caja').innerHTML = `
+      <h2>Entrá con tu cuenta</h2>
+      <p class="nota">${esc(mensaje || 'Cada uno entra con su usuario y su contraseña, desde el editor. '
+        + 'Después volvé acá: la sesión queda abierta en este navegador.')}</p>
+      <div class="fila"><a class="principal boton-enlace" href="./">Ir al editor para entrar</a></div>`;
+    return;
+  }
   $('#aviso_clave').textContent = mensaje || '';
   $('#clave').focus();
 }
+
+/* Lo que va en «Publicado por» en las placas de acá, igual que en el
+   editor. null mientras no haya cuentas. */
+let firma = null;
 
 $('#entrar').addEventListener('click', async () => {
   const valor = $('#clave').value.trim();
@@ -220,7 +237,7 @@ async function dibujarPrevia(n, art){
   const placa = placaDesde(n, n.fotoPropia || n.foto || 'assets/marcador.jpg');
   const [foto, logo] = await Promise.all([cargarImagen(placa.foto_izq), cargarImagen(LOGO)]);
   if(!art.isConnected) return;
-  dibujar(lienzo.getContext('2d'), placa, { izq: foto, der: foto, cen: foto, logo }, VISTA);
+  dibujar(lienzo.getContext('2d'), placa, { izq: foto, der: foto, cen: foto, logo, firma }, VISTA);
 
   if(cierre){
     if(CIERRE === false){ cierre.hidden = true; }
@@ -372,7 +389,7 @@ async function dibujarModal(){
   if(!enModal) return;
   const c = $('#m_placa');
   c.width = MODAL; c.height = altoDe(MODAL);
-  dibujar(c.getContext('2d'), placa, { izq: foto, der: foto, cen: foto, logo }, MODAL);
+  dibujar(c.getContext('2d'), placa, { izq: foto, der: foto, cen: foto, logo, firma }, MODAL);
   const cc = $('#m_cierre');
   if(CIERRE === false){ cc.hidden = true; return; }
   cc.width = MODAL; cc.height = altoDe(MODAL);
@@ -657,7 +674,7 @@ async function piezasParaPublicar(placa){
   const logo = await cargarImagen(LOGO);
   const items = [];
 
-  dibujar(ctx, placa, { izq: foto, der: foto, cen: foto, logo }, ANCHO_FEED);
+  dibujar(ctx, placa, { izq: foto, der: foto, cen: foto, logo, firma }, ANCHO_FEED);
   items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
 
   // la lámina de cierre, igual que en el editor
@@ -708,6 +725,8 @@ async function publicarNoticia(n, art){
       body: JSON.stringify({
         clave: clave(), items,
         caption: [placa.descripcion, placa.hashtags].filter(Boolean).join('\n\n'),
+        // para el historial del equipo: qué fue. Quién, lo sabe el servidor
+        placa: { nombre: String(placa.nombre || placa.titulo || '').slice(0, 120), formato: 'noticia' },
       }),
     });
     const datos = await r.json().catch(() => ({}));
@@ -842,6 +861,18 @@ $('#recargar').addEventListener('click', () => cargarNoticias(true));
 async function arrancar(){
   $('#sub').textContent = `Se publican con el diseño de ${MARCA.nombre}`;
   try{
+    const r = await fetch('api/sesion.php', { headers: { 'X-Clave': clave() } });
+    if(r.status === 401){ localStorage.removeItem('clave_publicar'); return pedirClave(); }
+    const quien = await r.json().catch(() => ({}));
+    if(quien.sitio && quien.hayUsuarios){
+      localStorage.removeItem('clave_publicar');
+      return pedirClave('Desde ahora cada uno entra con su usuario y su contraseña, desde el editor.');
+    }
+    if(quien.usuario){
+      const u = quien.usuario;
+      firma = { nombre: u.nombre, imagen: u.foto ? await cargarImagen(u.foto) : null };
+      $('#sub').textContent += ` · firmadas por ${u.nombre}`;
+    }
     await esperarTipografias();
     await cargarFuentes();
     await cargarNoticias();
