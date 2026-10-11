@@ -1,7 +1,7 @@
 <?php
 /* Las otras redes donde se publica además de Instagram.
  *
- * GET  → qué redes están conectadas. Lo pide el editor para saber qué
+ * GET  → qué redes están conectadas (Facebook y TikTok). Lo pide el editor para saber qué
  *        botones mostrar; con ?revisar=1 (el panel) además se prueba el
  *        token contra Facebook.
  * POST → conectar o desconectar, solo con la clave del sitio o una cuenta
@@ -32,6 +32,33 @@ function estado_facebook(bool $revisar): array {
             $p = pedir(FB . '/' . rawurlencode($id) . '?fields=id,name&access_token=' . urlencode($token));
             $r['pagina']['nombre'] = (string) ($p['name'] ?? $r['pagina']['nombre']);
             guardar_ajuste('fb_page_nombre', $r['pagina']['nombre']);
+            $r['funciona'] = true;
+        } catch (Throwable $e) {
+            $r['funciona'] = false;
+            $r['error'] = $e->getMessage();
+        }
+    }
+    return $r;
+}
+
+/* TikTok: si está conectada, con qué cuenta y con qué privacidad sale. Al
+   revisar se le pregunta a TikTok qué privacidades acepta la cuenta, que
+   cambian según la cuenta sea pública o privada. Lo de configurar (claves
+   de la app, dirección de vuelta, archivo de verificación) va solo para el
+   panel. */
+function estado_tiktok(bool $revisar): array {
+    $r = ['conectado' => tiktok_conectado(), 'usuario' => ajuste('tt_usuario'),
+          'privacidad' => ajuste('tt_privacidad', 'SELF_ONLY')];
+    if (!$revisar) return $r;
+    $r['app'] = ['client_key' => ajuste('tt_client_key'), 'secret' => ajuste('tt_client_secret') !== '',
+                 'redirect_uri' => base_url() . '/api/tiktok.php', 'prefijo' => base_url() . '/',
+                 'verificacion' => ajuste('tt_verificacion')];
+    if ($r['conectado']) {
+        try {
+            $c = creador_tiktok();
+            $r['usuario'] = (string) ($c['creator_username'] ?? $r['usuario']);
+            $r['nombre'] = (string) ($c['creator_nickname'] ?? '');
+            $r['opciones'] = $c['privacy_level_options'] ?? [];
             $r['funciona'] = true;
         } catch (Throwable $e) {
             $r['funciona'] = false;
@@ -74,7 +101,7 @@ try {
     if ($metodo === 'GET') {
         responder([
             'facebook' => estado_facebook(isset($_GET['revisar'])),
-            'tiktok'   => ['conectado' => false, 'pronto' => true],
+            'tiktok'   => estado_tiktok(isset($_GET['revisar'])),
         ]);
     }
     if ($metodo !== 'POST') responder(['error' => 'Método no soportado'], 405);

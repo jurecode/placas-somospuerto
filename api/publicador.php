@@ -1,5 +1,5 @@
 <?php
-/* El trabajo de publicar en Instagram y Facebook, sin depender de quién lo pida.
+/* El trabajo de publicar en Instagram, Facebook y TikTok, sin depender de quién lo pida.
  *
  * Lo usan el botón del editor (api/publicar.php) y la cola de programadas
  * (api/programar.php). Está aparte justamente para que no haya dos
@@ -43,7 +43,7 @@ function ruta_publica(string $rel): string {
 /* Las redes donde se puede publicar. Instagram es la de siempre; las otras
    se agregan con el mismo procedimiento: los archivos se preparan una sola
    vez y cada red los toma de ahí. */
-const REDES = ['instagram', 'facebook'];
+const REDES = ['instagram', 'facebook', 'tiktok'];
 const NOMBRES_DE_RED = ['instagram' => 'Instagram', 'facebook' => 'Facebook', 'tiktok' => 'TikTok'];
 
 function facebook_conectado(): bool {
@@ -75,7 +75,10 @@ function preparar_medios(array $items): array {
     foreach ($items as $i => $item) {
         $tipo = $item['tipo'] ?? 'imagen';
         if (isset($item['ruta']) && $item['ruta'] !== '') {
-            $medios[] = ['tipo' => $tipo, 'url' => ruta_publica((string) $item['ruta']),
+            $url = ruta_publica((string) $item['ruta']);
+            // TikTok recibe los videos subidos desde acá: necesita el archivo
+            $archivo = dirname(__DIR__) . '/' . ltrim(str_replace('\\', '/', (string) $item['ruta']), '/');
+            $medios[] = ['tipo' => $tipo, 'url' => $url, 'archivo' => $archivo,
                          'portadaEn' => $item['portadaEn'] ?? null];
             continue;
         }
@@ -91,7 +94,7 @@ function preparar_medios(array $items): array {
             throw new RuntimeException('No se pudo guardar la imagen en el servidor');
         }
         $temporales[] = $dir . '/' . $nombre;
-        $medios[] = ['tipo' => 'imagen', 'url' => $urlBase . '/' . $nombre];
+        $medios[] = ['tipo' => 'imagen', 'url' => $urlBase . '/' . $nombre, 'archivo' => $dir . '/' . $nombre];
     }
     return [$medios, $temporales];
 }
@@ -234,6 +237,130 @@ function publicar_en_facebook(array $medios, string $texto): array {
             'aviso' => $videos ? 'en Facebook los videos del carrusel salieron como publicaciones aparte: su API no junta fotos y videos' : null];
 }
 
+/* Corta un texto a lo que entra en TikTok, que mide en unidades UTF-16:
+   un emoji ocupa dos. */
+function recortar_utf16(string $texto, int $max): string {
+    $salida = '';
+    $usado = 0;
+    foreach (mb_str_split(trim($texto)) as $c) {
+        $n = mb_ord($c) > 0xFFFF ? 2 : 1;
+        if ($usado + $n > $max) break;
+        $usado += $n;
+        $salida .= $c;
+    }
+    return $salida;
+}
+
+/* Espera a que TikTok termine con una publicación. Devuelve el estado: si
+   se pasa del tiempo, la deja seguir sola y avisa. */
+const ESPERA_TIKTOK = 90;
+
+function esperar_tiktok(string $publishId, string $token, int $segundos = ESPERA_TIKTOK): array {
+    $hasta = time() + $segundos;
+    do {
+        $d = pedir_tiktok(TIKTOK . '/post/publish/status/fetch/', ['publish_id' => $publishId], $token)['data'] ?? [];
+        $estado = (string) ($d['status'] ?? '');
+        if ($estado === 'PUBLISH_COMPLETE') return $d;
+        if ($estado === 'FAILED') {
+            $motivos = [
+                'file_format_check_failed' => 'el formato del archivo no le sirve',
+                'duration_check_failed' => 'el video es más largo de lo que acepta esta cuenta',
+                'frame_rate_check_failed' => 'la cantidad de cuadros por segundo no le sirve',
+                'picture_size_check_failed' => 'el tamaño de la imagen no le sirve',
+                'video_pull_failed' => 'no pudo bajar el video del sitio',
+                'photo_pull_failed' => 'no pudo bajar las fotos del sitio',
+                'spam_risk_too_many_posts' => 'ya hubo demasiadas publicaciones por la API en 24 horas',
+                'spam_risk_text' => 'marcó el texto como sospechoso',
+                'auth_removed' => 'la cuenta le sacó el permiso a la app: hay que conectarla de nuevo',
+            ];
+            $r = (string) ($d['fail_reason'] ?? '');
+            throw new RuntimeException('TikTok lo rechazó: ' . ($motivos[$r] ?? ($r !== '' ? $r : 'sin motivo')));
+        }
+        sleep(3);   // TikTok deja consultar 30 veces por minuto
+    } while (time() < $hasta);
+    return ['status' => 'PROCESSING', 'demorado' => true];
+}
+
+/* TikTok: la cuenta conectada, con la privacidad que se eligió en el panel.
+   - Fotos: una publicación de fotos (TikTok las baja del sitio, por eso
+     pide el dominio verificado).
+   - Video: se sube directo desde el servidor, en pedazos.
+   Como Facebook, no junta fotos y videos: los videos van aparte. */
+function publicar_en_tiktok(array $medios, string $texto): array {
+    $creador = creador_tiktok();
+    $token = token_tiktok();
+    $opciones = $creador['privacy_level_options'] ?? [];
+    $privacidad = ajuste('tt_privacidad', 'SELF_ONLY');
+    if (!in_array($privacidad, $opciones, true)) {
+        throw new RuntimeException('TikTok no acepta la privacidad elegida para esta cuenta ('
+            . strtolower($privacidad) . '): elegí otra en el panel');
+    }
+    $usuario = (string) ($creador['creator_username'] ?? ajuste('tt_usuario'));
+    $fotos  = array_values(array_filter($medios, static fn($m) => $m['tipo'] === 'imagen'));
+    $videos = array_values(array_filter($medios, static fn($m) => $m['tipo'] !== 'imagen'));
+    $sinComentarios = !empty($creador['comment_disabled']);
+    $ids = [];
+    $demorado = false;
+
+    if ($fotos) {
+        // el título es corto (90); la descripción entera va aparte
+        $titulo = recortar_utf16(strtok($texto, "\n") ?: '', 90);
+        $r = pedir_tiktok(TIKTOK . '/post/publish/content/init/', [
+            'post_info' => ['title' => $titulo, 'description' => recortar_utf16($texto, 4000),
+                            'privacy_level' => $privacidad, 'disable_comment' => $sinComentarios,
+                            'auto_add_music' => true],
+            'source_info' => ['source' => 'PULL_FROM_URL', 'photo_cover_index' => 0,
+                              'photo_images' => array_column($fotos, 'url')],
+            'post_mode' => 'DIRECT_POST', 'media_type' => 'PHOTO',
+        ], $token);
+        $estado = esperar_tiktok((string) $r['data']['publish_id'], $token);
+        $demorado = $demorado || !empty($estado['demorado']);
+        $ids[] = $estado['publicaly_available_post_id'][0] ?? null;
+    }
+    foreach ($videos as $m) {
+        $archivo = (string) ($m['archivo'] ?? '');
+        $peso = is_file($archivo) ? (int) filesize($archivo) : 0;
+        if ($peso <= 0) throw new RuntimeException('No se encontró el video para subirlo a TikTok');
+        /* Pedazos de 10 MB; el último se lleva lo que sobra (TikTok acepta
+           hasta 128 en el último). Menos de 5 MB va entero. */
+        $trozo = $peso < 5 * 1048576 ? $peso : 10 * 1048576;
+        $cuantos = max(1, intdiv($peso, $trozo));
+        $r = pedir_tiktok(TIKTOK . '/post/publish/video/init/', [
+            'post_info' => ['title' => recortar_utf16($texto, 2200), 'privacy_level' => $privacidad,
+                            'disable_comment' => $sinComentarios,
+                            'disable_duet' => !empty($creador['duet_disabled']),
+                            'disable_stitch' => !empty($creador['stitch_disabled']),
+                            'video_cover_timestamp_ms' => (int) round(((float) ($m['portadaEn'] ?? 1.5)) * 1000)],
+            'source_info' => ['source' => 'FILE_UPLOAD', 'video_size' => $peso,
+                              'chunk_size' => $trozo, 'total_chunk_count' => $cuantos],
+        ], $token);
+        $tipo = str_ends_with(strtolower($archivo), '.mov') ? 'video/quicktime'
+              : (str_ends_with(strtolower($archivo), '.webm') ? 'video/webm' : 'video/mp4');
+        for ($i = 0; $i < $cuantos; $i++) {
+            $desde = $i * $trozo;
+            $largo = $i === $cuantos - 1 ? $peso - $desde : $trozo;
+            subir_trozo_tiktok((string) $r['data']['upload_url'], $archivo, $desde, $largo, $peso, $tipo);
+        }
+        $estado = esperar_tiktok((string) $r['data']['publish_id'], $token);
+        $demorado = $demorado || !empty($estado['demorado']);
+        $ids[] = $estado['publicaly_available_post_id'][0] ?? null;
+    }
+
+    /* El enlace al post solo existe cuando es público y TikTok ya lo revisó;
+       mientras tanto, el del perfil. */
+    $id = $ids[0] ?? null;
+    $perfil = $usuario !== '' ? 'https://www.tiktok.com/@' . rawurlencode($usuario) : null;
+    $avisos = [];
+    if ($fotos && $videos) $avisos[] = 'en TikTok los videos del carrusel salieron como publicaciones aparte';
+    if ($privacidad === 'SELF_ONLY') $avisos[] = 'en TikTok salió en privado («solo yo»)';
+    if ($demorado) $avisos[] = 'TikTok lo sigue procesando: aparece en unos minutos';
+    return ['ok' => true, 'id' => $id !== null ? (string) $id : null,
+            'enlace' => $id !== null && $perfil ? $perfil . '/' . ($fotos ? 'photo' : 'video') . '/' . $id : $perfil,
+            'laminas' => count($fotos) ?: count($videos), 'aviso' => $avisos ? implode(' · ', $avisos) : null,
+            // si sigue bajando las fotos, las temporales no se pueden borrar todavía
+            'conservar' => $demorado];
+}
+
 /* $carga: items[], caption, colaboradores, etiquetados, y `redes`.
    Cada item es {tipo: imagen|video|reel} más `ruta` (archivo ya subido) o
    `dataUrl` (base64, solo para imágenes que se generan al vuelo).
@@ -250,6 +377,9 @@ function publicar_ahora(array $carga): array {
     if (in_array('facebook', $redes, true) && !facebook_conectado()) {
         throw new RuntimeException('Falta conectar la página de Facebook en el panel privado');
     }
+    if (in_array('tiktok', $redes, true) && !tiktok_conectado()) {
+        throw new RuntimeException('Falta conectar la cuenta de TikTok en el panel privado');
+    }
 
     $items = $carga['items'] ?? [];
     if (!is_array($items) || !count($items)) throw new RuntimeException('No llegó ninguna imagen');
@@ -264,9 +394,11 @@ function publicar_ahora(array $carga): array {
     try {
         foreach ($redes as $red) {
             try {
-                $resultados[$red] = $red === 'facebook'
-                    ? publicar_en_facebook($medios, $caption)
-                    : publicar_en_instagram($medios, $carga);
+                $resultados[$red] = match ($red) {
+                    'facebook' => publicar_en_facebook($medios, $caption),
+                    'tiktok'   => publicar_en_tiktok($medios, $caption),
+                    default    => publicar_en_instagram($medios, $carga),
+                };
             } catch (Throwable $e) {
                 $resultados[$red] = ['ok' => false, 'error' => $e->getMessage()];
             }
@@ -274,7 +406,9 @@ function publicar_ahora(array $carga): array {
     } finally {
         // las que se generaron acá ya las bajaron las redes; las que venían
         // subidas de antes se quedan, que son las del carrusel y los videos
-        foreach ($temporales as $ruta) @unlink($ruta);
+        // salvo que TikTok todavía las esté bajando: esas las limpia la próxima, en una hora
+        $conservar = array_filter($resultados, static fn($r) => !empty($r['conservar']));
+        if (!$conservar) foreach ($temporales as $ruta) @unlink($ruta);
     }
 
     $bien = array_filter($resultados, static fn($r) => !empty($r['ok']));

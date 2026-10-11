@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacidad — el medio</title>
+<style>
+  :root{ --bg:#0E0E10; --texto:#F2F2F4; --suave:#8B8B94; --linea:#26262A; --ok:#3DE0B4 }
+  @media (prefers-color-scheme: light){ :root{ --bg:#FFFFFF; --texto:#141416; --suave:#5C5C66; --linea:#E4E4E8; --ok:#0A7D5F } }
+  *{ box-sizing:border-box }
+  body{ margin:0; background:var(--bg); color:var(--texto); font:16px/1.6 system-ui, sans-serif; padding:40px 16px 60px }
+  main{ max-width:680px; margin:auto }
+  h1{ font-size:24px; margin:0 0 4px } h2{ font-size:17px; margin:28px 0 6px }
+  p, li{ color:var(--texto) } .fecha{ color:var(--suave); font-size:14px; margin:0 0 24px }
+  hr{ border:0; border-top:1px solid var(--linea); margin:36px 0 }
+  .en{ color:var(--suave); font-size:15px } a{ color:var(--ok) }
+</style>
+</head>
+<body>
+<main>
+<h1>Política de privacidad</h1>
+<p class="fecha">Herramienta de publicación de <span class="medio">el medio</span> · vigente desde octubre de 2026</p>
+
+<p>Esta es la herramienta interna con la que el equipo de <span class="medio">el medio</span>
+prepara y publica sus noticias en las cuentas del medio en Instagram, Facebook y TikTok.
+No es un servicio abierto al público: solo la usan las personas del equipo, con una cuenta
+que les crea quien lo administra.</p>
+
+<h2>Qué datos se guardan</h2>
+<ul>
+  <li><b>Del equipo:</b> nombre, usuario, una foto opcional para la firma de las placas, y
+    la contraseña guardada de forma irreversible (no se puede leer). También qué publicó
+    cada uno y cuándo.</li>
+  <li><b>De las cuentas del medio en las redes:</b> los permisos (tokens) que esas redes
+    entregan cuando se conecta la cuenta, el identificador de la cuenta y su nombre de
+    usuario. Sirven solo para publicar en esas cuentas.</li>
+  <li><b>Del contenido:</b> las fotos, videos y textos que el equipo sube para armar cada
+    publicación.</li>
+</ul>
+
+<h2>Para qué se usan</h2>
+<p>Únicamente para publicar en las cuentas del medio lo que el equipo decide publicar, y para
+llevar el registro interno de quién publicó qué. No se venden, no se comparten con terceros
+y no se usan para publicidad. No se leen datos de otras personas en las redes.</p>
+
+<h2>Dónde están y cuánto tiempo</h2>
+<p>En el servidor del sitio, en una base de datos privada. Los permisos de las redes se borran
+al desconectar la cuenta desde el panel; los archivos temporales de cada publicación se borran
+apenas las redes los reciben. Cualquier persona del equipo puede pedir que se borre su cuenta.</p>
+
+<h2>Contacto</h2>
+<p>Por cualquier consulta sobre estos datos, escribinos por mensaje directo a
+<span class="cuenta">la cuenta del medio</span>.</p>
+
+<hr>
+<div class="en" lang="en">
+<h2>Summary in English</h2>
+<p>This is the internal publishing tool of <span class="medio">the outlet</span>'s newsroom. It is
+only used by newsroom staff to publish the outlet's own content to the outlet's own accounts on
+Instagram, Facebook and TikTok. We store staff accounts, the content they upload, and the access
+tokens granted by those platforms when the outlet's accounts are connected. Tokens are used solely
+to publish on those accounts, are never sold or shared, and are deleted when the account is
+disconnected. Contact us through a direct message to <span class="cuenta">the outlet's account</span>.</p>
+</div>
+</main>
+<script type="module">
+  import('./marca/marca.js').then(({ MARCA }) => {
+    document.querySelectorAll('.medio').forEach((el) => { el.textContent = MARCA.nombre; });
+    document.querySelectorAll('.cuenta').forEach((el) => { el.textContent = MARCA.cuenta || MARCA.nombre; });
+    document.title = document.title.replace('el medio', MARCA.nombre);
+  }).catch(() => {});
+</script>
+</body>
+</html>

@@ -109,6 +109,19 @@
   #resultado.bien, #fb_resultado.bien{ color:var(--ok) }
   #fb_resultado.error{ color:var(--mal) }
   #fb_resultado{ margin-top:12px }
+  #tt_resultado{ margin-top:12px }
+  #tt_resultado.bien{ color:var(--ok) } #tt_resultado.error{ color:var(--mal) }
+  select{
+    width:100%; background:var(--hueco); color:var(--texto); font:inherit;
+    border:1px solid var(--linea); border-radius:8px; padding:9px 11px;
+  }
+  .guia ol ul.copiables{ margin:8px 0 4px; gap:6px }
+  .copiables li{ flex-wrap:nowrap; align-items:center; gap:8px }
+  .copiables li span{ flex:none; width:140px; font-size:12.5px }
+  .copiables code{ flex:1; min-width:0 }
+  .copiables button{ padding:4px 10px; font-size:12px }
+  @media (max-width:560px){ .copiables li{ flex-wrap:wrap } .copiables li span{ width:100% } }
+  input[type=file]{ padding:7px }
 </style>
 </head>
 <body>
@@ -226,6 +239,87 @@
     </details>
   </section>
 
+  <section id="tiktok">
+    <h2>Cuenta de TikTok</h2>
+    <p id="tt_estado" class="nota" style="margin-top:0">Escribí la clave y tocá Revisar.</p>
+    <div id="tt_conectada" hidden style="margin-top:14px">
+      <div class="campo">
+        <label for="tt_privacidad">Quién ve lo que se publica</label>
+        <select id="tt_privacidad"></select>
+      </div>
+      <div class="fila">
+        <button id="reconectar_tt">Conectar otra vez</button>
+        <button id="desconectar_tt">Desconectar</button>
+      </div>
+    </div>
+    <div id="tt_resultado" class="nota"></div>
+
+    <!-- Pasos según la documentación de TikTok for Developers de octubre de
+         2026 (Login Kit web y Content Posting API). El portal está en
+         inglés: los nombres de los botones van como aparecen ahí. -->
+    <details class="guia" id="tt_guia" open>
+      <summary>Cómo conectar TikTok, paso a paso</summary>
+      <ol>
+        <li>Entrá a <a href="https://developers.tiktok.com/" target="_blank" rel="noopener noreferrer">developers.tiktok.com</a>,
+          iniciá sesión y andá a <b>Manage apps</b> → <b>Connect an app</b>. Ponele un nombre
+          (por ejemplo «<span class="tt-medio">el medio</span> Publicación»), un ícono, una categoría y una descripción corta.</li>
+        <li>En la misma ficha, completá estas direcciones, que ya están en el sitio:
+          <ul class="copiables">
+            <li><span>Terms of Service URL</span><code data-tt="terminos">…</code><button data-copiar="terminos">Copiar</button></li>
+            <li><span>Privacy Policy URL</span><code data-tt="privacidad">…</code><button data-copiar="privacidad">Copiar</button></li>
+            <li><span>Web/Desktop URL</span><code data-tt="sitio">…</code><button data-copiar="sitio">Copiar</button></li>
+          </ul>
+          En <b>Platforms</b> marcá <b>Web</b>.</li>
+        <li>En <b>Products</b>, agregá <b>Login Kit</b> y <b>Content Posting API</b>. Dentro de
+          Content Posting API, prendé <b>Direct Post</b>. En <b>Scopes</b> tienen que quedar
+          <code>user.info.basic</code> y <code>video.publish</code>.</li>
+        <li>En <b>Login Kit</b>, en <b>Redirect URI</b>, pegá esta dirección, tal cual:
+          <ul class="copiables">
+            <li><code data-tt="redirect">…</code><button data-copiar="redirect">Copiar</button></li>
+          </ul></li>
+        <li>TikTok baja las fotos del sitio y pide probar que el sitio es tuyo. En
+          <b>URL properties</b> → <b>Verify properties</b>, elegí <b>URL prefix</b> y pegá:
+          <ul class="copiables">
+            <li><code data-tt="prefijo">…</code><button data-copiar="prefijo">Copiar</button></li>
+          </ul>
+          Bajá el archivo que te da (se llama <code>tiktok….txt</code>), subilo acá y después
+          tocá <b>Verify</b> en TikTok:
+          <div class="fila" style="margin-top:8px">
+            <input type="file" id="tt_archivo" accept=".txt,text/plain">
+          </div>
+          <p class="nota" id="tt_verificado" style="margin-top:6px"></p></li>
+        <li>Mientras TikTok no revise la app, solo pueden conectarse las cuentas de prueba.
+          Arriba de la ficha, pasá a <b>Sandbox</b>, repetí ahí los pasos 3 y 4, y en
+          <b>Target users</b> agregá la cuenta de TikTok del medio.</li>
+        <li>Copiá la <b>Client key</b> y el <b>Client secret</b> (los del Sandbox, si estás
+          en Sandbox) y pegalos acá:
+          <div class="campo" style="margin-top:8px">
+            <label for="tt_key">Client key</label>
+            <input type="text" id="tt_key" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="campo">
+            <label for="tt_secret">Client secret</label>
+            <input type="password" id="tt_secret" placeholder="Se guarda en la base, no se muestra nunca más" autocomplete="off">
+          </div>
+          <button id="guardar_tt">Guardar</button></li>
+        <li>Hasta que TikTok apruebe la app, solo publica en cuentas privadas: en la app de
+          TikTok del medio, andá a <b>Configuración y privacidad</b> → <b>Privacidad</b> y
+          prendé <b>Cuenta privada</b>.</li>
+        <li>Tocá <b>Conectar con TikTok</b>, entrá con la cuenta del medio y aceptá todos los
+          permisos. Vuelve sola a este panel.
+          <div class="fila" style="margin-top:8px">
+            <button class="principal" id="conectar_tt">Conectar con TikTok</button>
+          </div></li>
+      </ol>
+      <p class="nota">
+        La conexión se renueva sola: dura un año sin tocar nada. Mientras la app no esté
+        aprobada, todo sale en privado («Solo yo»). Para publicar a la vista de todos,
+        en la ficha de la app tocá <b>Submit for review</b>; cuando TikTok la apruebe,
+        sacá la cuenta de privado y elegí <b>Todos</b> arriba.
+      </p>
+    </details>
+  </section>
+
   <section>
     <h2>Estado</h2>
     <ul id="variables">
@@ -327,6 +421,7 @@ const $ = (s) => document.querySelector(s);
    conviene saber en cuál se está antes de tocar nada. */
 import('./marca/marca.js')
   .then(({ MARCA }) => {
+    document.querySelectorAll('.tt-medio').forEach((el) => { el.textContent = MARCA.nombre; });
     $('#de_quien').textContent = MARCA.nombre + ' · esta página no está enlazada desde el editor';
     document.title = 'Panel — ' + MARCA.nombre;
   })
@@ -485,7 +580,16 @@ function pintarFacebook(fb){
 async function revisarRedes(){
   try{
     const r = await fetch('api/redes.php?revisar=1', { headers: { 'x-clave': $('#clave').value.trim() } });
-    if(r.ok) pintarFacebook((await r.json()).facebook);
+    if(r.ok){
+      const d = await r.json();
+      pintarFacebook(d.facebook);
+      pintarTiktok(d.tiktok);
+      if(location.hash === '#tiktok' && d.tiktok?.conectado){
+        avisoTt('TikTok quedó conectado.', true);
+        $('#tiktok').scrollIntoView();
+        history.replaceState(null, '', location.pathname);
+      }
+    }
   }catch(e){ /* sin esto el resto del panel igual sirve */ }
 }
 
@@ -535,6 +639,105 @@ $('#desconectar_fb').addEventListener('click', async () => {
   if(!confirm('¿Desconectar la página? El editor deja de publicar en Facebook.')) return;
   try{ pintarFacebook((await redes({ tarea: 'desconectar' })).facebook); $('#fb_resultado').textContent = ''; }
   catch(e){ $('#fb_resultado').className = 'nota error'; $('#fb_resultado').textContent = e.message; }
+});
+
+/* TikTok: el estado, las direcciones para copiar y la privacidad. */
+const PRIVACIDAD = {
+  PUBLIC_TO_EVERYONE: 'Todos', FOLLOWER_OF_CREATOR: 'Seguidores',
+  MUTUAL_FOLLOW_FRIENDS: 'Amigos (se siguen mutuamente)', SELF_ONLY: 'Solo yo (privado)',
+};
+let direcciones = {};
+
+function pintarTiktok(tt){
+  const app = tt?.app || {};
+  const base = (app.prefijo || location.href.replace(/[^/]*$/, ''));
+  direcciones = { terminos: base + 'terminos.html', privacidad: base + 'privacidad.html',
+                  sitio: base, redirect: app.redirect_uri || base + 'api/tiktok.php', prefijo: base };
+  document.querySelectorAll('[data-tt]').forEach((el) => { el.textContent = direcciones[el.dataset.tt]; });
+  if(app.client_key && !$('#tt_key').value) $('#tt_key').value = app.client_key;
+  $('#tt_secret').placeholder = app.secret ? 'Ya está guardado · pegá otro solo para cambiarlo'
+    : 'Se guarda en la base, no se muestra nunca más';
+  $('#tt_verificado').textContent = app.verificacion ? `Subido: ${app.verificacion}` : '';
+
+  const el = $('#tt_estado');
+  $('#tt_conectada').hidden = !tt?.conectado;
+  if(!tt?.conectado){
+    el.innerHTML = '<span class="no">✕</span> Sin conectar. Seguí los pasos de abajo.';
+    return;
+  }
+  $('#tt_guia').open = false;
+  const quien = esc('@' + (tt.usuario || '') + (tt.nombre ? ` (${tt.nombre})` : ''));
+  el.innerHTML = tt.funciona === false
+    ? `<span class="no">✕</span> Conectada a <b>${quien}</b>, pero TikTok no contesta bien: ${esc(tt.error || '')}`
+    : `<span class="si">✓</span> Conectada a <b>${quien}</b>: el editor ya puede publicar ahí.`;
+  const opciones = tt.opciones?.length ? tt.opciones : [tt.privacidad];
+  $('#tt_privacidad').innerHTML = opciones.map((o) =>
+    `<option value="${esc(o)}" ${o === tt.privacidad ? 'selected' : ''}>${esc(PRIVACIDAD[o] || o)}</option>`).join('');
+  if(!opciones.includes(tt.privacidad)){
+    $('#tt_privacidad').insertAdjacentHTML('afterbegin',
+      `<option value="" selected disabled>${esc(PRIVACIDAD[tt.privacidad] || tt.privacidad)} — esta cuenta ya no la acepta, elegí otra</option>`);
+  }
+}
+
+async function tiktok(cuerpo){
+  const r = await fetch('api/tiktok.php', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clave: $('#clave').value.trim(), ...cuerpo }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
+  return d;
+}
+function avisoTt(texto, bien){
+  $('#tt_resultado').className = 'nota ' + (bien ? 'bien' : 'error');
+  $('#tt_resultado').textContent = texto;
+}
+
+document.addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-copiar]');
+  if(!b) return;
+  try{ await navigator.clipboard.writeText(direcciones[b.dataset.copiar]); b.textContent = 'Copiado'; }
+  catch(e){ b.textContent = 'Seleccionalo a mano'; }
+  setTimeout(() => { b.textContent = 'Copiar'; }, 1600);
+});
+
+$('#guardar_tt').addEventListener('click', async () => {
+  try{
+    await tiktok({ tarea: 'credenciales', client_key: $('#tt_key').value, client_secret: $('#tt_secret').value });
+    $('#tt_secret').value = '';
+    avisoTt('Guardado. Ahora tocá «Conectar con TikTok».', true);
+    revisarRedes();
+  }catch(e){ avisoTt(e.message); }
+});
+
+$('#tt_archivo').addEventListener('change', async (ev) => {
+  const f = ev.target.files[0];
+  if(!f) return;
+  try{
+    const d = await tiktok({ tarea: 'verificacion', nombre: f.name, contenido: await f.text() });
+    $('#tt_verificado').innerHTML = `Listo: está en <a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.url)}</a>. Ahora tocá <b>Verify</b> en TikTok.`;
+  }catch(e){ $('#tt_verificado').textContent = e.message; }
+  ev.target.value = '';
+});
+
+async function conectarTiktok(){
+  try{ location.href = (await tiktok({ tarea: 'iniciar', volver: location.href.split('#')[0] })).url; }
+  catch(e){ avisoTt(e.message); }
+}
+$('#conectar_tt').addEventListener('click', conectarTiktok);
+$('#reconectar_tt').addEventListener('click', conectarTiktok);
+
+$('#tt_privacidad').addEventListener('change', async (ev) => {
+  try{
+    await tiktok({ tarea: 'privacidad', valor: ev.target.value });
+    avisoTt(`Desde ahora sale para: ${PRIVACIDAD[ev.target.value] || ev.target.value}.`, true);
+  }catch(e){ avisoTt(e.message); }
+});
+
+$('#desconectar_tt').addEventListener('click', async () => {
+  if(!confirm('¿Desconectar TikTok? El editor deja de publicar ahí.')) return;
+  try{ await tiktok({ tarea: 'desconectar' }); avisoTt(''); revisarRedes(); }
+  catch(e){ avisoTt(e.message); }
 });
 
 async function revisarVersion(){

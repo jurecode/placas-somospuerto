@@ -378,6 +378,122 @@ function pedir_http(string $url, array $cabeceras = [], ?string $guardarEn = nul
     return ['codigo' => $codigo, 'cuerpo' => is_string($cuerpo) ? $cuerpo : ''];
 }
 
+/* TikTok contesta distinto que Meta: todo viene con un `error` adentro, y
+   si salió bien ese error dice code «ok». Con $form va como formulario (es
+   lo que pide su ventanilla de tokens); si no, como JSON con el token de
+   la cuenta en la cabecera. */
+function pedir_tiktok(string $url, ?array $json = null, string $token = '', ?array $form = null): array {
+    $ch = curl_init($url);
+    $cabeceras = [];
+    if ($form !== null) {
+        $cabeceras[] = 'Content-Type: application/x-www-form-urlencoded';
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($form));
+    } else {
+        $cabeceras[] = 'Content-Type: application/json; charset=UTF-8';
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $json ? json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '{}');
+    }
+    if ($token !== '') $cabeceras[] = 'Authorization: Bearer ' . $token;
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60,
+        CURLOPT_HTTPHEADER => $cabeceras,
+    ]);
+    $cuerpo = curl_exec($ch);
+    $codigo = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if ($cuerpo === false) throw new RuntimeException('No se pudo contactar a TikTok: ' . curl_error($ch));
+    $datos = json_decode((string) $cuerpo, true);
+    if (!is_array($datos)) throw new RuntimeException("TikTok devolvió una respuesta inesperada ($codigo)");
+    // la ventanilla de tokens avisa los errores con texto suelto
+    if (is_string($datos['error'] ?? null)) {
+        throw new RuntimeException(error_tiktok($datos['error'], (string) ($datos['error_description'] ?? '')));
+    }
+    $error = $datos['error']['code'] ?? 'ok';
+    if ($error !== 'ok') throw new RuntimeException(error_tiktok((string) $error, (string) ($datos['error']['message'] ?? '')));
+    return $datos;
+}
+
+/* Un pedazo de un video, directo del archivo al servidor de TikTok, sin
+   cargarlo en la memoria de PHP. */
+function subir_trozo_tiktok(string $url, string $archivo, int $desde, int $largo, int $total, string $tipo): void {
+    $fh = fopen($archivo, 'rb');
+    if ($fh === false) throw new RuntimeException('No se pudo leer el video para TikTok');
+    fseek($fh, $desde);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_UPLOAD => true, CURLOPT_CUSTOMREQUEST => 'PUT',
+        CURLOPT_INFILE => $fh, CURLOPT_INFILESIZE => $largo,
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 300,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: ' . $tipo,
+            'Content-Range: bytes ' . $desde . '-' . ($desde + $largo - 1) . '/' . $total,
+        ],
+    ]);
+    $r = curl_exec($ch);
+    $codigo = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    fclose($fh);
+    if ($r === false) throw new RuntimeException('Se cortó la subida del video a TikTok: ' . curl_error($ch));
+    if ($codigo >= 300) throw new RuntimeException("TikTok no aceptó un pedazo del video ($codigo)");
+}
+
+/* Lo que dice TikTok, en castellano cuando se sabe qué hacer. */
+function error_tiktok(string $codigo, string $mensaje = ''): string {
+    $conocidos = [
+        'unaudited_client_can_only_post_to_private_accounts' =>
+            'TikTok todavía no aprobó la app: hasta entonces solo publica si la cuenta de TikTok está en privado',
+        'url_ownership_unverified' =>
+            'TikTok no tiene verificado el sitio: falta el paso de verificar el dominio en el panel',
+        'privacy_level_option_mismatch' =>
+            'TikTok no acepta esa privacidad para esta cuenta: elegí otra en el panel',
+        'spam_risk_too_many_posts' => 'TikTok frenó: ya hubo demasiadas publicaciones por la API en 24 horas',
+        'spam_risk_user_banned_from_posting' => 'TikTok tiene bloqueada esta cuenta para publicar',
+        'reached_active_user_cap' => 'La app de TikTok llegó a su tope diario de cuentas',
+        'access_token_invalid' => 'La conexión con TikTok venció: conectala de nuevo en el panel',
+        'invalid_grant' => 'La conexión con TikTok venció: conectala de nuevo en el panel',
+        'scope_not_authorized' => 'Al conectar TikTok no se dio permiso para publicar: conectala de nuevo y aceptá todo',
+        'rate_limit_exceeded' => 'TikTok pide esperar: demasiados pedidos en un minuto',
+        'invalid_client' => 'TikTok no reconoce la Client key o el Client secret: revisalos en el panel',
+    ];
+    return $conocidos[$codigo] ?? ('TikTok: ' . ($mensaje !== '' ? $mensaje : $codigo));
+}
+
+const TIKTOK = 'https://open.tiktokapis.com/v2';
+
+function tiktok_conectado(): bool {
+    return ajuste('tt_refresh_token') !== '' && (int) ajuste('tt_refresh_vence') > time();
+}
+
+/* Guarda lo que devuelve la ventanilla de tokens. El de acceso dura un día
+   y el de renovar, un año: con ese se saca uno nuevo cada vez que hace falta,
+   sin que nadie tenga que volver a conectar. */
+function guardar_tokens_tiktok(array $d): void {
+    guardar_ajuste('tt_access_token', (string) $d['access_token']);
+    guardar_ajuste('tt_access_vence', (string) (time() + (int) ($d['expires_in'] ?? 86400)));
+    if (!empty($d['refresh_token'])) {
+        guardar_ajuste('tt_refresh_token', (string) $d['refresh_token']);
+        guardar_ajuste('tt_refresh_vence', (string) (time() + (int) ($d['refresh_expires_in'] ?? 31536000)));
+    }
+    if (!empty($d['open_id'])) guardar_ajuste('tt_open_id', (string) $d['open_id']);
+}
+
+/* El token de acceso, renovado si vence en menos de diez minutos. */
+function token_tiktok(): string {
+    if (!tiktok_conectado()) throw new RuntimeException('Falta conectar la cuenta de TikTok en el panel privado');
+    if ((int) ajuste('tt_access_vence') > time() + 600) return ajuste('tt_access_token');
+    $d = pedir_tiktok(TIKTOK . '/oauth/token/', null, '', [
+        'client_key' => ajuste('tt_client_key'), 'client_secret' => ajuste('tt_client_secret'),
+        'grant_type' => 'refresh_token', 'refresh_token' => ajuste('tt_refresh_token'),
+    ]);
+    guardar_tokens_tiktok($d);
+    return (string) $d['access_token'];
+}
+
+/* Quién es la cuenta y qué privacidades acepta. TikTok pide consultarlo
+   antes de cada publicación. */
+function creador_tiktok(): array {
+    $d = pedir_tiktok(TIKTOK . '/post/publish/creator_info/query/', [], token_tiktok())['data'] ?? [];
+    if (!empty($d['creator_username'])) guardar_ajuste('tt_usuario', (string) $d['creator_username']);
+    return $d;
+}
+
 /* $espera: los segundos que se le aguantan. Facebook baja el video entero
    antes de contestar, y con uno largo 30 no alcanzan. */
 function pedir(string $url, ?array $post = null, int $espera = 30): array {

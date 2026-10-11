@@ -72,6 +72,9 @@ try {
     if (in_array('facebook', redes_pedidas($carga), true) && !facebook_conectado()) {
         responder(['error' => 'Falta conectar la página de Facebook en el panel privado'], 400);
     }
+    if (in_array('tiktok', redes_pedidas($carga), true) && !tiktok_conectado()) {
+        responder(['error' => 'Falta conectar la cuenta de TikTok en el panel privado'], 400);
+    }
     $carga['redes'] = redes_pedidas($carga);
     /* Quién la programó lo pone el servidor, de la sesión, y no lo que
        diga el navegador: si no, cualquiera podría publicar a nombre de otro.

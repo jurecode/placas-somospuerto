@@ -1552,6 +1552,8 @@ $('#compartir').addEventListener('click', async (ev) => {
 const NOMBRE_RED = { instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok' };
 // Instagram siempre: es la cuenta con la que arranca todo. Las otras, según el servidor
 const conectadas = { instagram: true, facebook: false, tiktok: false };
+// en TikTok, mientras la app no esté aprobada, todo sale en privado: se avisa en el botón
+let privadoEnTiktok = false;
 
 /* «Instagram», «Instagram y Facebook», «Instagram, Facebook y TikTok». */
 function enRedes(redes){
@@ -1569,9 +1571,12 @@ function pintarRedes(){
     input.disabled = !conectadas[red];
     if(!conectadas[red]) input.checked = false;
     const nota = input.parentElement.querySelector('small');
-    if(nota && red === 'facebook') nota.textContent = conectadas.facebook ? '' : 'sin conectar';
-    input.parentElement.title = conectadas[red] ? '' : red === 'tiktok'
-      ? 'Muy pronto' : 'Se conecta desde el panel privado';
+    if(nota && red !== 'instagram'){
+      nota.textContent = !conectadas[red] ? 'sin conectar'
+        : red === 'tiktok' && privadoEnTiktok ? 'privado' : '';
+    }
+    input.parentElement.title = !conectadas[red] ? 'Se conecta desde el panel privado'
+      : red === 'tiktok' && privadoEnTiktok ? 'Sale en TikTok como «Solo yo»: se cambia en el panel' : '';
   }
   const elegidas = redesElegidas();
   $('#publicar span').textContent = elegidas.length
@@ -1584,12 +1589,18 @@ async function cargarRedes(){
   try{
     const d = await api('api/redes.php');
     conectadas.facebook = !!d.facebook?.conectado;
+    conectadas.tiktok = !!d.tiktok?.conectado;
+    privadoEnTiktok = d.tiktok?.privacidad === 'SELF_ONLY';
   }catch(e){ /* sin respuesta queda solo Instagram, como antes */ }
+  /* Se guarda qué se eligió y qué redes había en ese momento: una red que
+     se conecta después arranca marcada, así sale en todas sin tocar nada. */
   let guardadas = null;
   try{ guardadas = JSON.parse(localStorage.getItem('redes_publicar') || 'null'); }catch(e){}
+  if(Array.isArray(guardadas)) guardadas = { elegidas: guardadas, conocidas: ['instagram', 'facebook'] };
   for(const input of document.querySelectorAll('#redes input')){
-    input.checked = conectadas[input.value]
-      && (Array.isArray(guardadas) ? guardadas.includes(input.value) : true);
+    const red = input.value;
+    input.checked = conectadas[red]
+      && (!guardadas || guardadas.elegidas.includes(red) || !guardadas.conocidas?.includes(red));
   }
   // si lo guardado quedó sin nada que valga (desconectaron Facebook), Instagram
   if(!redesElegidas().length) $('#redes input[value="instagram"]').checked = true;
@@ -1597,7 +1608,8 @@ async function cargarRedes(){
 }
 
 $('#redes').addEventListener('change', () => {
-  try{ localStorage.setItem('redes_publicar', JSON.stringify(redesElegidas())); }catch(e){}
+  const conocidas = Object.keys(conectadas).filter((r) => conectadas[r]);
+  try{ localStorage.setItem('redes_publicar', JSON.stringify({ elegidas: redesElegidas(), conocidas })); }catch(e){}
   pintarRedes();
 });
 

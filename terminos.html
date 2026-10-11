@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Términos — el medio</title>
+<style>
+  :root{ --bg:#0E0E10; --texto:#F2F2F4; --suave:#8B8B94; --linea:#26262A; --ok:#3DE0B4 }
+  @media (prefers-color-scheme: light){ :root{ --bg:#FFFFFF; --texto:#141416; --suave:#5C5C66; --linea:#E4E4E8; --ok:#0A7D5F } }
+  *{ box-sizing:border-box }
+  body{ margin:0; background:var(--bg); color:var(--texto); font:16px/1.6 system-ui, sans-serif; padding:40px 16px 60px }
+  main{ max-width:680px; margin:auto }
+  h1{ font-size:24px; margin:0 0 4px } h2{ font-size:17px; margin:28px 0 6px }
+  p, li{ color:var(--texto) } .fecha{ color:var(--suave); font-size:14px; margin:0 0 24px }
+  hr{ border:0; border-top:1px solid var(--linea); margin:36px 0 }
+  .en{ color:var(--suave); font-size:15px } a{ color:var(--ok) }
+</style>
+</head>
+<body>
+<main>
+<h1>Términos de uso</h1>
+<p class="fecha">Herramienta de publicación de <span class="medio">el medio</span> · vigente desde octubre de 2026</p>
+
+<p>Esta herramienta es de uso interno del equipo de <span class="medio">el medio</span>. Sirve
+para preparar placas, carruseles y videos con la identidad del medio y publicarlos en sus cuentas
+de Instagram, Facebook y TikTok.</p>
+
+<h2>Quién puede usarla</h2>
+<p>Solo las personas del equipo con una cuenta creada por quien administra el sitio. Cada
+cuenta es personal: lo que se publica queda firmado y registrado a nombre de quien lo publicó.</p>
+
+<h2>Responsabilidad sobre lo publicado</h2>
+<p>Lo que se publica es responsabilidad editorial de <span class="medio">el medio</span>. Quien
+publica se compromete a tener los derechos de las fotos, videos y audios que usa, y a respetar
+las normas de cada red: las de Instagram y Facebook (Meta) y las de TikTok, incluidas sus
+condiciones de uso de música.</p>
+
+<h2>Las redes</h2>
+<p>La herramienta publica a través de las interfaces oficiales de cada red y solo en las cuentas
+que el medio conectó. Cada red puede rechazar o demorar una publicación según sus propias reglas.
+La cuenta conectada se puede desconectar en cualquier momento desde el panel o desde la propia
+red.</p>
+
+<h2>Cambios</h2>
+<p>Estos términos pueden cambiar; la versión vigente es siempre la de esta página.</p>
+
+<hr>
+<div class="en" lang="en">
+<h2>Summary in English</h2>
+<p>This is an internal tool for <span class="medio">the outlet</span>'s newsroom staff, used to
+create and publish the outlet's own content to its own Instagram, Facebook and TikTok accounts
+through each platform's official APIs. Only staff with an account created by the administrator
+may use it. Published content is the outlet's editorial responsibility, and users must hold the
+rights to the media they post and follow each platform's terms, including TikTok's Music Usage
+Confirmation. Connected accounts can be disconnected at any time.</p>
+</div>
+</main>
+<script type="module">
+  import('./marca/marca.js').then(({ MARCA }) => {
+    document.querySelectorAll('.medio').forEach((el) => { el.textContent = MARCA.nombre; });
+    document.querySelectorAll('.cuenta').forEach((el) => { el.textContent = MARCA.cuenta || MARCA.nombre; });
+    document.title = document.title.replace('el medio', MARCA.nombre);
+  }).catch(() => {});
+</script>
+</body>
+</html>
