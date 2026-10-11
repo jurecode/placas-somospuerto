@@ -33,14 +33,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET' && ($_GET['tarea'] ?? '') === '
          * a medio subir, y cualquier cosa que llegue mañana quedaría afuera
          * sola en vez de aparecer en la lista sin que nadie lo note. */
         $ext = strtolower(pathinfo($n, PATHINFO_EXTENSION));
-        $mirables = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'mov', 'm4v'];
+        $mirables = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'mov', 'm4v',
+                     'm4a', 'mp3', 'ogg', 'wav', 'webm', 'aac'];
         if (!in_array($ext, $mirables, true)) continue;
         $lista[] = [
             'nombre' => $n,
             'url'    => $base . '/' . rawurlencode($n),
             'bytes'  => filesize($ruta) ?: 0,
             'cuando' => date('c', filemtime($ruta) ?: 0),
-            'tipo'   => in_array($ext, ['mp4', 'mov', 'm4v'], true) ? 'video' : 'imagen',
+            'tipo'   => in_array($ext, ['mp4', 'mov', 'm4v'], true) ? 'video'
+                      : (in_array($ext, ['m4a', 'mp3', 'ogg', 'wav', 'webm', 'aac'], true) ? 'audio' : 'imagen'),
         ];
     }
     // lo último primero, que es lo que se está por mirar
@@ -72,6 +74,27 @@ function explicar_vacio(): void
         )], 413);
     }
     responder(['error' => 'Llegó vacío'], 400);
+}
+
+/* El tipo de un video o de un audio, por sus primeros bytes: el nombre y lo
+ * que dice el navegador no sirven, se pueden cambiar. Los audios entran por
+ * la placa con voz: un audio de WhatsApp (ogg), una grabación (m4a, mp3,
+ * wav, webm) o un video del que se usa solo el sonido. */
+function tipo_de_sonido_o_video(string $c): ?string
+{
+    if (strlen($c) < 4) return null;
+    if (substr($c, 4, 4) === 'ftyp') {
+        // un m4a es un MP4 que trae solo sonido, y lo dice su marca
+        return in_array(substr($c, 8, 4), ['M4A ', 'M4B '], true) ? 'm4a' : 'mp4';
+    }
+    if (substr($c, 0, 4) === 'OggS') return 'ogg';
+    if (substr($c, 0, 4) === 'RIFF' && substr($c, 8, 4) === 'WAVE') return 'wav';
+    if (substr($c, 0, 4) === "\x1A\x45\xDF\xA3") return 'webm';
+    if (substr($c, 0, 3) === 'ID3') return 'mp3';
+    $a = ord($c[0]); $b = ord($c[1]);
+    if ($a === 0xFF && ($b & 0xF6) === 0xF0) return 'aac';   // AAC suelto (ADTS)
+    if ($a === 0xFF && ($b & 0xE0) === 0xE0) return 'mp3';   // MP3 sin etiqueta
+    return null;
 }
 
 /* Un pedazo entra entero en memoria sin problema: son dos megas. Lo que no
@@ -111,11 +134,9 @@ function guardar_archivo(string $origen, string $dir): void
             @unlink($origen);
             responder(['error' => 'Formato no soportado: ' . $tipo['mime']], 400);
         }
-    } elseif (@file_get_contents($origen, false, null, 4, 4) === 'ftyp') {   // firma de los MP4
-        $ext = 'mp4';
-    } else {
+    } elseif (($ext = tipo_de_sonido_o_video((string) @file_get_contents($origen, false, null, 0, 12))) === null) {
         @unlink($origen);
-        responder(['error' => 'Eso no es una imagen ni un video MP4'], 400);
+        responder(['error' => 'Eso no es una imagen, ni un video MP4, ni un audio'], 400);
     }
 
     try {

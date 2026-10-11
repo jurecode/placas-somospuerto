@@ -4,11 +4,13 @@
  * las placas y las fotos se guardan en MySQL a través de api/, así que son
  * las mismas desde cualquier dispositivo. */
 
-import { dibujarCierre, dibujarReel, dibujarFoto, esperarTipografias, textoSobre, LIENZO, altoDe, REEL } from './placa.js';
+import { dibujarCierre, dibujarReel, dibujarFoto, esperarTipografias, textoSobre, LIENZO, altoDe, REEL,
+         prepararVoz, VOZ } from './placa.js';
 import * as somosPuerto from './placa.js';
 import * as eyey from './dibujo-eyey.js';
 import { MARCA } from './marca/marca.js';
 import { armarMp4, leerMp4, RELOJ } from './mp4.js';
+import { leerAudio, medirVoz, grabarVoz } from './voz.js';
 
 /* Cada medio tiene su dibujante y la marca dice cuál. Lo que se le pasa de
    más —el nombre, el pie— lo ignora el que no lo necesita. */
@@ -65,7 +67,10 @@ const BASE = {
   foto_cen: 'assets/marcador.jpg', foto_cen_x: 50, foto_cen_y: 50, foto_cen_ajuste: 'completa',
   color_fondo: '#ff0054',
   color_filete: '#0ae7ae',
-  circulo_x: 50, circulo_y: 62.6,
+  /* Era 62,6, la del arte original. Al agrandar el titular el diseño subió
+     el círculo al medio, pero como cada placa nueva guardaba su 62,6, el
+     cambio no le llegaba a ninguna: quedaba debajo de las letras. */
+  circulo_x: 50, circulo_y: 50,
   laminas: [],            // fotos extra del carrusel; la placa es la primera
   descripcion: '', hashtags: '', colaboradores: '', etiquetados: '',
   // cada medio pisa lo que le corresponde: su cuerpo de letra, sus colores
@@ -81,7 +86,8 @@ const MAX_LAMINAS = 8;   // 8 + la placa + el cierre = las 10 que permite Instag
    sobrescribe al actualizar —para eso está—, así que un sitio instalado hace
    meses sigue con el valor que tenía el día que se instaló: si la regla
    dependiera de eso, el cierre desaparecería sin motivo visible. */
-const llevaCierre = () => placa.formato !== 'reel' && CIERRE !== false;
+// el reel y la placa con voz son un solo video: no hay lámina de cierre
+const llevaCierre = () => !['reel', 'voz'].includes(placa.formato) && CIERRE !== false;
 
 /* El arte del cierre. Puede venir en dos versiones, clara y oscura, porque
    una sola no se lee sobre toda la paleta: la clara desaparece en el fondo
@@ -118,6 +124,17 @@ const REELS = {
   formato: 'reel',
   titulo: 'Titular del\nreel',
   video: '', portada: '',
+};
+
+/* La placa con voz: la de noticia, con un audio que la vuelve video. El
+   círculo arranca más arriba: abajo quedaría detrás de la franja del
+   reproductor. */
+const VOZ_PLACA = {
+  ...BASE,
+  formato: 'voz',
+  titulo: 'Titular del\naudio',
+  circulo_y: 30,
+  audio: '', audio_nombre: '', audio_dura: 0,
 };
 
 const URGENTE = {
@@ -438,6 +455,9 @@ function loQueFalta(){
   if(placa.formato === 'reel' && !fuenteDelReel()){
     falta.push({ seccion: 'fotos', que: 'Falta el video del reel.' });
   }
+  if(placa.formato === 'voz' && !placa.audio){
+    falta.push({ seccion: 'fotos', que: 'Falta el audio con la voz.' });
+  }
   if(!String(placa.titulo || '').trim()){
     falta.push({ seccion: 'titular', que: 'Falta el titular.' });
   }
@@ -463,8 +483,9 @@ function pintarBarra(){
   const falta = loQueFalta();
   const urgente = placa.formato === 'urgente';
   const reel = placa.formato === 'reel';
+  const voz = placa.formato === 'voz';
   const sobra = { fotos: urgente, etiqueta: urgente, color: urgente,
-                  carrusel: reel, titular: false, texto: false, mas: false };
+                  carrusel: reel || voz, titular: false, texto: false, mas: false };
 
   barra.querySelectorAll('[data-ir]').forEach((b) => {
     b.hidden = !!sobra[b.dataset.ir];
@@ -968,6 +989,7 @@ async function videoParaPrevia(ruta){
    con requestAnimationFrame a propósito: rAF no corre si la pestaña está
    en segundo plano y la vista previa quedaría congelada. */
 function repintar(){
+  detenerVoz();   // si estaba sonando, lo que se ve ya no corresponde
   clearTimeout(pendiente);
   clearInterval(bucleReel);   // si había una capa animándose, se rearma abajo
   bucleReel = null;
@@ -1032,6 +1054,24 @@ function repintar(){
         await pintarTira();
         return;
       }
+      if(placa.formato === 'voz'){
+        soltarVideoLamina();
+        /* Se muestra el momento en que el titular ya entró, con la voz de
+           ese instante. Si el audio todavía no se midió —la placa se abrió
+           otro día—, se mide de fondo y se vuelve a dibujar; mientras tanto
+           van barras de muestra. */
+        const voz = vozEnMemoria();
+        const dura = voz ? voz.audio.duracion : (placa.audio_dura || 12);
+        const pintor = prepararVoz(placa, await imagenesDe(placa), lienzo.width, dura);
+        const t = Math.min(dura, pintor.finEntrada + 0.6);
+        if(voz) pintor.cuadro(ctx, t, ...vozEn(voz, t));
+        else pintor.cuadro(ctx, t);
+        if(!voz && placa.audio){
+          vozDePlaca().then(() => { if(mia === generacionLamina) repintar(); }).catch(() => {});
+        }
+        await pintarTira();
+        return;
+      }
       const laminas = placa.laminas || [];
       const conCierre = llevaCierre() && laminas.length + 2 <= 10;
       const ultima = laminas.length + (conCierre ? 1 : 0);
@@ -1091,6 +1131,15 @@ async function pintarTira(){
     const compartirR = $('#compartir');
     if(compartirR) compartirR.hidden = true;
     // en el reel el video se baja con su propio botón, no con el del carrusel
+    $('#bajar_videos').hidden = true;
+    return;
+  }
+  if(placa.formato === 'voz'){
+    $('#rotulo_tira').textContent = placa.audio
+      ? `Voz · un video 4:5 de ${enMinutos(placa.audio_dura || 0)}` : 'Voz · falta el audio';
+    tira.innerHTML = '';
+    const compartirV = $('#compartir');
+    if(compartirV) compartirV.hidden = true;
     $('#bajar_videos').hidden = true;
     return;
   }
@@ -1320,10 +1369,33 @@ async function pintarFotos(){
         <b class="sub">Posición del círculo</b>
         <div class="encuadre">
           <span>X</span><input type="range" data-campo="circulo_x" min="8" max="92" step="0.5" value="${placa.circulo_x ?? 50}">
-          <span>Y</span><input type="range" data-campo="circulo_y" min="8" max="92" step="0.5" value="${placa.circulo_y ?? 62.6}">
+          <span>Y</span><input type="range" data-campo="circulo_y" min="8" max="92" step="0.5" value="${placa.circulo_y ?? 50}">
         </div>` : ''}
       </div>
     </div>`).join('');
+  if(placa.formato === 'voz'){
+    const nombre = placa.audio_nombre ? esc(placa.audio_nombre) : '';
+    $('#fotos').insertAdjacentHTML('afterbegin', `
+      <div class="foto" data-audio>
+        <div class="icono-audio" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/>
+          <path d="M5 11a7 7 0 0 0 14 0M12 18v3M8.5 21h7"/></svg></div>
+        <div class="cuerpo">
+          <b>Audio con la voz</b>
+          <button type="button" class="archivo"
+                  onclick="this.parentNode.querySelector('input').click()">${placa.audio ? 'Cambiar audio…' : 'Elegir audio…'}</button>
+          ${placa.audio ? '<button type="button" class="archivo" data-voz-escuchar>▶ Escuchar con las barras</button>' : ''}
+          <input type="file" accept="audio/*,video/*,.opus,.ogg,.m4a,.mp3,.wav,.aac,.webm" data-voz-audio>
+          <p class="nota" id="estado_audio">${placa.audio
+            ? `${nombre}${nombre ? ' · ' : ''}${enMinutos(placa.audio_dura || 0)}` : ''}</p>
+          <p class="nota">
+            Un audio de WhatsApp, una grabación o un video, del que se usa solo
+            el sonido. De 3 segundos a 15 minutos. Las barras se mueven con la
+            voz de verdad, y se arma el video al publicar.
+          </p>
+        </div>
+      </div>`);
+  }
   for(const [campo] of slots){
     const img = await cargarImagen(placa[campo]);
     const destino = document.querySelector(`.foto[data-campo="${campo}"] img`);
@@ -1331,6 +1403,10 @@ async function pintarFotos(){
   }
   marcarSeleccion();
 }
+
+document.addEventListener('click', (ev) => {
+  if(ev.target.closest('[data-voz-escuchar]')) escucharVoz();
+});
 
 async function pintarLaminas(){
   const laminas = placa.laminas || [];
@@ -1415,15 +1491,17 @@ async function cargar(id){
   if(videoLocal){ URL.revokeObjectURL(videoLocal); videoLocal = null; }
   subiendoVideo = null;
   ultimoQuemado = null;
+  detenerVoz();
+  ultimaVoz = null;
 
   placa = await leerPlaca(id);
   localStorage.setItem('placa', id);
   document.body.dataset.formato = placa.formato;
-  const esReel = placa.formato === 'reel';
-  // en un reel no hay imágenes que bajar, hay un video
-  $('#bajar_reel').hidden = !esReel;
-  $('#bajar_carrusel').hidden = esReel;
-  document.querySelectorAll('[data-exportar]').forEach((b) => { b.hidden = esReel; });
+  // en un reel o una placa con voz no hay imágenes que bajar, hay un video
+  const esVideo = ['reel', 'voz'].includes(placa.formato);
+  $('#bajar_reel').hidden = !esVideo;
+  $('#bajar_carrusel').hidden = esVideo;
+  document.querySelectorAll('[data-exportar]').forEach((b) => { b.hidden = esVideo; });
   const urgente = placa.formato === 'urgente';
   $('#leg_titular').textContent = urgente ? 'Descripción' : 'Titular';
   $('#lab_titulo').textContent = urgente
@@ -1605,7 +1683,10 @@ $('#publicar').addEventListener('click', async (ev) => {
       + 'chocar. ¿Seguimos igual?')) return;
   }
   const laminas = (placa.laminas || []).length + 1;
-  if(!confirm(`Se va a publicar en Instagram un carrusel de ${laminas} imagen${laminas > 1 ? 'es' : ''}. ¿Seguimos?`)) return;
+  // el reel y la placa con voz son un video solo, no un carrusel
+  const queSale = ['reel', 'voz'].includes(placa.formato) ? 'un video'
+    : `un carrusel de ${laminas} imagen${laminas > 1 ? 'es' : ''}`;
+  if(!confirm(`Se va a publicar en Instagram ${queSale}. ¿Seguimos?`)) return;
   ev.target.disabled = true;
   // publicar puede llevar minutos; si la pantalla se apaga, se corta todo
   const despierto = await mantenerDespierto();
@@ -1620,6 +1701,8 @@ $('#publicar').addEventListener('click', async (ev) => {
     let items;
     if(placa.formato === 'reel'){
       items = [await reelParaPublicar()];
+    }else if(placa.formato === 'voz'){
+      items = [await vozParaPublicar()];
     }else{
       trabajo('Generando las imágenes', 0);
       items = await itemsParaPublicar((a) => trabajo('Generando las imágenes', a));
@@ -1665,6 +1748,7 @@ $('#publicar').addEventListener('click', async (ev) => {
    llegue la hora no va a haber ningún navegador que las dibuje. */
 async function cargaParaProgramar(){
   if(placa.formato === 'reel') return { items: [await reelParaPublicar()] };
+  if(placa.formato === 'voz') return { items: [await vozParaPublicar()] };
   trabajo('Generando las imágenes', 0);
   const listos = await itemsParaPublicar((a) => trabajo('Generando las imágenes', a));
   const items = [];
@@ -1823,7 +1907,11 @@ $('#bajar_reel').addEventListener('click', async (ev) => {
   abrirTrabajo();
   congelar(true);   // el titular se le quema encima con lo que hay ahora
   try{
-    if(!placa.reel_crudo && placa.video){
+    if(placa.formato === 'voz'){
+      // el mismo que se va a publicar: si ya está armado, sale al instante
+      const { blob } = await grabarVozDePlaca();
+      bajar(blob, baseNombre() + '.mp4');
+    }else if(!placa.reel_crudo && placa.video){
       // los de antes ya están hechos: se bajan del servidor y listo
       const r = await fetch(placa.video);
       bajar(await r.blob(), baseNombre() + '.mp4');
@@ -1880,6 +1968,8 @@ document.addEventListener('change', async (ev) => {
   try{
     if(el.dataset.reelVideo !== undefined){
       await agregarReel(archivo);
+    }else if(el.dataset.vozAudio !== undefined){
+      await agregarAudioVoz(archivo);
     }else if(el.dataset.laminaFoto !== undefined){
       await reemplazarLamina(Number(el.dataset.laminaFoto), archivo);
       estado('Foto del carrusel actualizada');
@@ -2752,6 +2842,187 @@ async function reelParaPublicar(){
   return { tipo: 'reel', ruta, portadaEn };
 }
 
+/* ------------------------------------------------------------------ */
+/* placa con voz                                                       */
+/* ------------------------------------------------------------------ */
+
+/* El audio ya leído y medido, para no repetirlo cada vez que se dibuja:
+   medir quince minutos de voz lleva unos segundos. Va atado a la placa y
+   al archivo que se midió; `ruta` es null mientras recién se eligió y
+   todavía está subiendo. */
+let vozMedida = null;      // { placaId, ruta, audio, medida, local }
+let midiendoVoz = null;    // la medición en curso, para no arrancar dos
+let ultimaVoz = null;      // el video ya armado: { firma, ruta, blob, portadaEn }
+let reproduccion = null;   // la vista previa sonando: { sonido, cuadro }
+
+const DURACION_VOZ_MIN = 3;     // Instagram no acepta reels más cortos
+const DURACION_VOZ_MAX = 900;   // ni más largos que 15 minutos
+
+/* Todo lo que cambia el video. Si nada de esto cambió desde la última vez,
+   publicar usa el que ya está armado y subido, en vez de armarlo de nuevo. */
+const CAMPOS_VOZ = ['audio', 'titulo', 'etiqueta', 'color_fondo', 'color_filete', 'diseno',
+  'foto_izq', 'foto_izq_x', 'foto_izq_y', 'foto_izq_ajuste',
+  'foto_der', 'foto_der_x', 'foto_der_y', 'foto_der_ajuste',
+  'foto_cen', 'foto_cen_x', 'foto_cen_y', 'foto_cen_ajuste', 'circulo_x', 'circulo_y'];
+
+function vozEnMemoria(){
+  const v = vozMedida;
+  if(!v || !placa || v.placaId !== placa.id) return null;
+  return (v.ruta === null || v.ruta === placa.audio) ? v : null;
+}
+
+/* Lee y mide el audio de la placa. Si se acaba de elegir ya está en
+   memoria; si la placa se abrió otro día o desde otro equipo, se baja del
+   servidor. */
+async function vozDePlaca(avisar){
+  const ya = vozEnMemoria();
+  if(ya) return ya;
+  if(!placa.audio) throw new Error('Falta el audio con la voz.');
+  const ruta = placa.audio, placaId = placa.id;
+  if(midiendoVoz?.ruta === ruta) return midiendoVoz.promesa;
+  const promesa = (async () => {
+    avisar?.('Bajando el audio');
+    const r = await fetch(recurso(ruta));
+    if(!r.ok) throw new Error(`No se pudo bajar el audio del servidor (${r.status}).`);
+    const audio = await leerAudio(await r.arrayBuffer());
+    avisar?.('Midiendo la voz');
+    const medida = await medirVoz(audio.pcm);
+    vozMedida = { placaId, ruta, audio, medida, local: null };
+    return vozMedida;
+  })();
+  midiendoVoz = { ruta, promesa };
+  try{ return await promesa; }
+  finally{ if(midiendoVoz?.promesa === promesa) midiendoVoz = null; }
+}
+
+/* Los niveles de la voz en el segundo `t`. */
+function vozEn(voz, t){
+  const B = VOZ.bandas;
+  const f = Math.max(0, Math.min(voz.medida.cuadros - 1, Math.floor(t * VOZ.ritmo)));
+  return [voz.medida.bandas.subarray(f * B, f * B + B), voz.medida.volumen[f]];
+}
+
+/* Se elige el audio: se lee y se mide acá mismo, así la placa se ve con
+   la voz de verdad enseguida, y se sube mientras tanto. Si el audio no se
+   puede abrir o no tiene un largo que Instagram acepte, se dice antes de
+   subir nada. */
+async function agregarAudioVoz(archivo){
+  detenerVoz();
+  const decir = (texto, mal) => {
+    const el = $('#estado_audio');
+    if(el){ el.textContent = texto; el.classList.toggle('mal', !!mal); }
+    estado(texto, mal);
+  };
+  decir('Leyendo el audio…');
+  const audio = await leerAudio(await archivo.arrayBuffer());
+  if(audio.duracion < DURACION_VOZ_MIN){
+    throw new Error(`El audio dura ${audio.duracion.toFixed(1)} s: Instagram pide al menos ${DURACION_VOZ_MIN} segundos.`);
+  }
+  if(audio.duracion > DURACION_VOZ_MAX){
+    throw new Error(`El audio dura ${enMinutos(audio.duracion)}: Instagram acepta hasta 15 minutos.`);
+  }
+  decir('Midiendo la voz…');
+  const medida = await medirVoz(audio.pcm);
+  anotar('audio elegido', { para: 'voz', peso: mb(archivo.size),
+    dura: seg(audio.duracion * 1000),
+    camino: audio.aac ? 'AAC: va tal cual, sin recomprimir' : 'se pasa a AAC al publicar' });
+
+  const suPlaca = placa;
+  if(vozMedida?.local) URL.revokeObjectURL(vozMedida.local);
+  vozMedida = { placaId: placa.id, ruta: null, audio, medida, local: URL.createObjectURL(archivo) };
+  ultimaVoz = null;
+  repintar();
+
+  const pista = 'Podés ir escribiendo el titular.';
+  decir(`Guardando el audio… 0%. ${pista}`);
+  const { ruta } = await despiertoMientras(guardarFoto(archivo,
+    (a, nota) => decir(`Guardando el audio… ${Math.round(a * 100)}%. ${nota || pista}`)));
+  if(placa !== suPlaca) return estado('El audio subió, pero ya estabas en otra noticia.', true);
+  if(vozMedida?.placaId === placa.id) vozMedida.ruta = ruta;
+  placa.audio_nombre = archivo.name;
+  placa.audio_dura = Math.round(audio.duracion * 10) / 10;
+  cambio('audio', ruta);
+  await pintarFotos();
+  decir(`Audio listo: ${enMinutos(audio.duracion)}.`);
+}
+
+function detenerVoz(){
+  if(!reproduccion) return;
+  cancelAnimationFrame(reproduccion.cuadro);
+  reproduccion.sonido.pause();
+  reproduccion = null;
+  const b = $('[data-voz-escuchar]');
+  if(b) b.textContent = '▶ Escuchar con las barras';
+}
+
+/* La vista previa con sonido: la placa se dibuja con la misma función que
+   arma el video, en el segundo que va sonando, así que lo que se ve es lo
+   que se va a publicar. */
+async function escucharVoz(){
+  if(reproduccion){ detenerVoz(); repintar(); return; }
+  try{
+    const voz = await vozDePlaca((que) => estado(que + '…'));
+    estado('');
+    const pintor = prepararVoz(placa, await imagenesDe(placa), ANCHO_FEED, voz.audio.duracion);
+    const sonido = new Audio(voz.local || recurso(placa.audio));
+    const ctx = $('#previa').getContext('2d');
+    reproduccion = { sonido, cuadro: 0 };
+    const pintar = () => {
+      if(reproduccion?.sonido !== sonido) return;
+      const t = sonido.currentTime;
+      pintor.cuadro(ctx, t, ...vozEn(voz, t));
+      reproduccion.cuadro = requestAnimationFrame(pintar);
+    };
+    sonido.onended = () => { detenerVoz(); repintar(); };
+    await sonido.play();
+    const b = $('[data-voz-escuchar]');
+    if(b) b.textContent = '■ Parar';
+    pintar();
+  }catch(e){
+    detenerVoz();
+    estado(e.message, true);
+  }
+}
+
+/* Arma el video, lo sube y lo recuerda: publicar, programar y bajar usan
+   el mismo, y mientras no cambie nada no se vuelve a armar. */
+async function grabarVozDePlaca(){
+  const firma = JSON.stringify(CAMPOS_VOZ.map((k) => placa[k]));
+  if(ultimaVoz?.firma === firma) return ultimaVoz;
+  if(!placa.audio) throw new Error('Falta el audio con la voz.');
+
+  const rotulo = 'Armando el video con la voz';
+  const pista = 'Cada cuadro se dibuja con la voz de ese instante, así sale parejo '
+    + 'aunque el aparato sea lento.';
+  trabajo(rotulo, null, 'Leyendo el audio');
+  const voz = await vozDePlaca((que) => trabajo(rotulo, null, que));
+  const pintor = prepararVoz(placa, await imagenesDe(placa), ANCHO_FEED, voz.audio.duracion);
+  const arranque = Date.now();
+  const blob = await grabarVoz({
+    pintor, medida: voz.medida, audio: voz.audio,
+    ancho: ANCHO_FEED, alto: altoDe(ANCHO_FEED),
+    bitrate: tasaDeSalida(ANCHO_FEED, altoDe(ANCHO_FEED)),
+    avisar: (a, que) => trabajo(rotulo, a, que || pista),
+    cortado: cortaron,
+  });
+  anotar('voz armada', { dura: seg(voz.audio.duracion * 1000), tardo: seg(Date.now() - arranque),
+    peso: mb(blob.size), audio: voz.audio.aac ? 'AAC tal cual' : 'convertido a AAC' });
+
+  const subiendo = 'Ya está armado: falta que llegue al servidor.';
+  trabajo('Subiendo el video', 0, subiendo);
+  const sub = await guardarFoto(new File([blob], 'voz.mp4', { type: 'video/mp4' }),
+    (a, nota) => trabajo('Subiendo el video', a, nota || subiendo));
+  ultimaVoz = { firma, ruta: sub.ruta, blob, portadaEn: pintor.portada };
+  return ultimaVoz;
+}
+
+/* Para Instagram es un reel: un video solo, en 4:5. La tapa es el momento
+   en que el titular ya terminó de entrar. */
+async function vozParaPublicar(){
+  const { ruta, portadaEn } = await grabarVozDePlaca();
+  return { tipo: 'reel', ruta, portadaEn };
+}
+
 /* Un cuadro del video, sin nada encima. Es rápido: se salta al segundo que
    se pida y se dibuja, sin reproducir nada. Sirve de portada en la tira, y
    como no lleva el degradado quemado, la miniatura toma siempre el color que
@@ -3246,7 +3517,7 @@ $('#portada').addEventListener('click', async (ev) => {
   const boton = ev.target.closest('[data-crear], #seguir');
   if(!boton) return;
   if(boton.id === 'seguir') return cargar(Number(boton.dataset.id));
-  const plantillas = { urgente: URGENTE, reel: REELS, noticia: BASE };
+  const plantillas = { urgente: URGENTE, reel: REELS, noticia: BASE, voz: VOZ_PLACA };
   cargar(await crear(plantillas[boton.dataset.crear] || BASE));
 });
 

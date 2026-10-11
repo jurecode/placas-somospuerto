@@ -136,6 +136,14 @@
     width:72px; height:72px; object-fit:cover; border-radius:8px;
     background:#000; border:1px solid var(--linea); flex:none;
   }
+  /* el audio de la placa con voz va en la misma tarjeta que las fotos, con
+     un micrófono en el lugar de la miniatura */
+  .foto .icono-audio{
+    width:72px; height:72px; border-radius:8px; flex:none; display:grid; place-items:center;
+    background:var(--hueco); border:1px solid var(--linea); color:var(--ok);
+  }
+  .foto .icono-audio svg{ width:30px; height:30px }
+  #estado_audio.mal{ color:var(--mal) }
   .foto .cuerpo{ flex:1; min-width:0 }
   .foto .cuerpo b{ display:block; font-size:12px; margin-bottom:6px; font-weight:600 }
   .foto .cuerpo b.sub{ margin-top:10px; color:var(--suave); font-weight:500 }
@@ -155,6 +163,7 @@
   /* el formato urgente no tiene fotos ni degradado */
   body[data-formato="urgente"] [data-solo="noticia"]{ display:none }
   body[data-formato="reel"] [data-sin-reel]{ display:none }
+  body[data-formato="voz"] [data-sin-voz]{ display:none }
 
   .nota{ font-size:11px; color:var(--suave); margin-top:8px; line-height:1.45 }
   /* el avance de la subida del video, donde se lo está mirando */
@@ -214,6 +223,7 @@
     /* lo que el formato esconde manda por encima de la sección elegida */
     body[data-formato="urgente"] [data-solo="noticia"],
     body[data-formato="reel"] [data-sin-reel]{ display:none }
+    body[data-formato="voz"] [data-sin-voz]{ display:none }
 
     /* la barra tapa el final del formulario si no se le hace lugar */
     .panel{ padding:10px 10px calc(70px + env(safe-area-inset-bottom)) }
@@ -311,16 +321,20 @@
   }
   .portada[hidden]{ display:none }
   .portada h2{ font-size:22px; font-weight:600; letter-spacing:.01em }
-  .portada__opciones{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:22px }
-  @media (max-width:820px){ .portada__opciones{ grid-template-columns:1fr }
-    .tarjeta{ width:min(70vw, 280px) } }
+  /* Cuatro formatos: en fila en pantallas anchas, de a dos en las demás.
+     Con tres columnas fijas, la cuarta tarjeta se salía de la pantalla. */
+  .portada__opciones{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:22px }
+  @media (max-width:1180px){ .portada__opciones{ grid-template-columns:repeat(2,minmax(0,1fr)) }
+    .tarjeta{ width:min(34vw, 250px) } }
+  @media (max-width:820px){ .portada__opciones{ gap:14px }
+    .tarjeta{ width:min(42vw, 210px) } }
 
   /* Las medidas del texto van en cqw, o sea en proporción al ancho de la
      propia tarjeta: así nunca se sale, mida lo que mida la pantalla. */
   .tarjeta{
     container-type:inline-size;
     display:grid; gap:2px; align-content:center; justify-items:center;
-    width:min(27vw, 280px); aspect-ratio:1; padding:7%; border:0; border-radius:20px;
+    width:min(20vw, 260px); aspect-ratio:1; padding:7%; border:0; border-radius:20px;
     color:#fff; text-align:center; cursor:pointer; transition:transform .12s, box-shadow .12s;
   }
   .tarjeta:hover{ transform:translateY(-4px); box-shadow:0 18px 40px #0009 }
@@ -330,6 +344,7 @@
   .tarjeta--urgente{ background:linear-gradient(180deg,#ff3d7f 0%,#ff0054 45%,#4a0019 100%) }
   .tarjeta--noticia{ background:linear-gradient(180deg,#3df0c1 0%,#0ae7ae 45%,#04503b 100%) }
   .tarjeta--reel{ background:linear-gradient(180deg,#8b6cf5 0%,#6228d7 45%,#1d0a4a 100%) }
+  .tarjeta--voz{ background:linear-gradient(180deg,#ffb15c 0%,#ff6a00 45%,#5a2200 100%) }
 
   /* pantalla de arranque fallido */
   .portada .fallo{
@@ -633,6 +648,11 @@
       <span>Video</span>
       <em>Vertical, con el titular animado al entrar</em>
     </button>
+    <button class="tarjeta tarjeta--voz" data-crear="voz">
+      <b>Voz</b>
+      <span>Audio</span>
+      <em>Foto y voz, con barras que se mueven al hablar</em>
+    </button>
   </div>
   <button class="portada__seguir" id="seguir"></button>
 </div>
@@ -698,7 +718,7 @@
   </fieldset>
 
 
-  <fieldset data-seccion="carrusel" data-sin-reel>
+  <fieldset data-seccion="carrusel" data-sin-reel data-sin-voz>
     <legend>Carrusel</legend>
     <div id="zona_carrusel">
       <div id="laminas"></div>
