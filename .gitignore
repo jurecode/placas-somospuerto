@@ -17,3 +17,6 @@ node_modules/
 api/config.php
 publicaciones/
 fotos/
+
+# marca de que las tablas ya están creadas: la deja el servidor, no va en el paquete
+api/.tablas-*

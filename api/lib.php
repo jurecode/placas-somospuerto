@@ -67,30 +67,42 @@ function bd(): PDO {
 }
 
 /* Se crean solas la primera vez: no hay que correr SQL a mano. Igual se
-   pueden mirar y editar desde phpMyAdmin. */
+   pueden mirar y editar desde phpMyAdmin.
+
+   «La primera vez» antes era «cada vez»: el `static` dura lo que dura un
+   pedido, y cada pedido a la API —el panel de actividad pregunta cada
+   pocos segundos— abría la base y mandaba estos cuatro CREATE TABLE. No
+   rompían nada, pero en un hosting que limita cuánto se le pide, era carga
+   sin ningún propósito.
+   Ahora, cuando salen bien, se deja una marca en el disco y no se vuelven a
+   mandar. El nombre de la marca sale del propio SQL: si mañana se agrega una
+   tabla acá, el texto cambia, la marca es otra y se crean solas de nuevo,
+   sin acordarse de nada. Si la carpeta no se puede escribir, se sigue
+   haciendo como antes. */
 function crear_tablas(PDO $pdo): void {
     static $hecho = false;
     if ($hecho) return;
     $hecho = true;
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS placas (
+    $tablas = [];
+    $tablas[] = "CREATE TABLE IF NOT EXISTS placas (
         id           INT AUTO_INCREMENT PRIMARY KEY,
         nombre       VARCHAR(120) NOT NULL DEFAULT '',
         formato      VARCHAR(20)  NOT NULL DEFAULT 'noticia',
         datos        LONGTEXT     NOT NULL,
         actualizada  DATETIME     NOT NULL,
         INDEX (actualizada)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS fotos (
+    $tablas[] = "CREATE TABLE IF NOT EXISTS fotos (
         id       INT AUTO_INCREMENT PRIMARY KEY,
         archivo  VARCHAR(200) NOT NULL,
         creada   DATETIME     NOT NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 
     /* Instagram no tiene programación en su API: publica al instante. Por
        eso la cola vive acá y un cron la va vaciando cuando llega la hora. */
-    $pdo->exec("CREATE TABLE IF NOT EXISTS programadas (
+    $tablas[] = "CREATE TABLE IF NOT EXISTS programadas (
         id          INT AUTO_INCREMENT PRIMARY KEY,
         placa_id    INT          NULL,
         nombre      VARCHAR(120) NOT NULL DEFAULT '',
@@ -100,12 +112,20 @@ function crear_tablas(PDO $pdo): void {
         resultado   TEXT         NULL,
         creada      DATETIME     NOT NULL,
         INDEX (estado, publicar_en)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS ajustes (
+    $tablas[] = "CREATE TABLE IF NOT EXISTS ajustes (
         clave  VARCHAR(60) PRIMARY KEY,
         valor  TEXT NOT NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
+    // la base va en la cuenta: otra base en el mismo sitio es otra marca
+    $firma = substr(md5(BD_HOST . '|' . BD_NOMBRE . '|' . implode(';', $tablas)), 0, 16);
+    $marca = __DIR__ . '/.tablas-' . $firma;
+    if (is_file($marca)) return;
+
+    foreach ($tablas as $sql) $pdo->exec($sql);
+    @file_put_contents($marca, date('c') . "\n");
 }
 
 function ajuste(string $clave, string $porDefecto = ''): string {

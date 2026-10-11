@@ -149,9 +149,19 @@ async function api(ruta, opciones = {}){
     // la de error genérico
     const e = new Error(datos.error || 'Clave incorrecta');
     e.esClave = true;
+    e.status = 401;
     throw e;
   }
-  if(!res.ok) throw new Error(datos.error || `Error ${res.status}`);
+  if(!res.ok){
+    /* El código y lo que mandó el servidor viajan con el error: quien llama
+       tiene que poder distinguir «esperá y reintentá» (429, 503) de «esto no
+       va a andar nunca» (400, 413). Antes todo llegaba como un texto. */
+    const e = new Error(datos.error || `Error ${res.status}`);
+    e.status = res.status;
+    e.datos = datos;
+    e.reintentarEn = Number(res.headers.get('Retry-After')) || 0;
+    throw e;
+  }
   if(datos && datos.error) throw new Error(datos.error);
   return datos;
 }
@@ -172,7 +182,45 @@ const escribirPlaca = (p) => api('api/placas.php', {
    conexión muerta falla en un minuto en vez de nunca. */
 const TROZO = 2 * 1024 * 1024;
 const ENTERO_HASTA = 4 * 1024 * 1024;
-const PLAZO_TROZO = 90_000;
+/* Era 90 s. Como un pedazo que no contesta ahora se reintenta, no hace
+   falta esperarlo tanto: 90 s con la barra quieta era justamente el «se
+   pega». Dos megas en 60 s son 35 KB/s, menos que un 3G malo. */
+const PLAZO_TROZO = 60_000;
+
+/* El hosting limita cuánto se le pide: cuando se pasa, contesta 429 a todo
+   el sitio por un rato. Una subida son decenas de pedidos seguidos, así que
+   es lo primero que lo dispara, y antes un solo 429 tiraba la subida entera
+   —«Error 429»— y había que empezar de cero, que es pedir todavía más.
+   Ahora un pedazo rechazado por algo pasajero se espera y se reintenta,
+   cada vez un poco más, y la subida sigue desde donde quedó. */
+const REINTENTOS = 6;   // 2 + 4 + 8 + 16 + 30 + 30 s: un minuto y medio de margen
+
+/* Lo que vale la pena reintentar: sin respuesta (red caída, plazo vencido),
+   saturado (429), el servidor que se cayó un momento (5xx), o «falta un
+   pedazo» (409), que se arregla retomando. Una clave mala, un formato que no
+   va o un archivo demasiado grande van a fallar igual la próxima vez. */
+const pasajero = (e) => !e.status || [408, 409, 425, 429].includes(e.status) || e.status >= 500;
+
+/* Cuánto esperar antes del intento `n`. Si el servidor dice cuánto
+   (Retry-After), manda él, pero con tope: un «volvé en una hora» dejaría la
+   subida colgada sin que nadie se entere. */
+const esperaDe = (n, e) => (e?.reintentarEn
+  ? Math.min(60_000, e.reintentarEn * 1000)
+  : Math.min(30_000, 2000 * 2 ** n));
+
+/* El mensaje que queda si después de todos los intentos no se pudo. Dice
+   cuánto se esperó de verdad: depende de lo que haya pedido el servidor. */
+function motivoFinal(e, esperado){
+  if(e.status === 429){
+    return new Error(`El hosting está limitando los pedidos al sitio (429) y no se liberó `
+      + `en ${REINTENTOS} intentos (${Math.round(esperado / 1000)} s esperando). Esperá unos `
+      + 'minutos y probá de nuevo; si sigue, es el límite del plan del hosting.');
+  }
+  return e;
+}
+
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+
 /* Sin esto PHP intenta leer el binario como si fuera un formulario y ensucia
    la respuesta con avisos que rompen el JSON. */
 const BINARIO = { 'Content-Type': 'application/octet-stream' };
@@ -190,40 +238,83 @@ async function conPlazo(ruta, opciones, ms){
   }finally{ clearTimeout(reloj); }
 }
 
+/* `avisar(fraccion, nota)`: la nota llega solo mientras se espera para
+   reintentar, para que la barra diga por qué está quieta en vez de parecer
+   colgada. Quien no la use puede ignorarla. */
 async function guardarFoto(archivo, avisar){
   const arranque = Date.now();
+  let reintentos = 0;
+  let esperado = 0;   // ms en pausa entre intentos, para decirlo si al final no se pudo
   const contar = (r) => {
     const ms = Date.now() - arranque;
     anotar('subida', { peso: mb(archivo.size), tardo: seg(ms),
-      velocidad: (archivo.size / 1048576 / (ms / 1000)).toFixed(2) + ' MB/s' });
+      velocidad: (archivo.size / 1048576 / (ms / 1000)).toFixed(2) + ' MB/s',
+      ...(reintentos ? { reintentos } : {}) });
     return r;
   };
   const fallo = (e) => {
     anotar('subida cortada', { peso: mb(archivo.size), tardo: seg(Date.now() - arranque),
-      porque: String(e.message).slice(0, 120), nivel: 'mal' });
+      porque: String(e.message).slice(0, 120), reintentos, nivel: 'mal' });
     throw e;
   };
+  /* Un intento falló por algo pasajero: se anota, se dice en pantalla y se
+     espera. Si ya no quedan intentos, el error sigue de largo. */
+  const antesDeReintentar = async (e, n, fraccion) => {
+    if(!pasajero(e) || n >= REINTENTOS) throw motivoFinal(e, esperado);
+    reintentos++;
+    const ms = esperaDe(n, e);
+    esperado += ms;
+    const que = e.status === 429 ? 'el hosting está limitando los pedidos'
+      : e.status ? `el servidor contestó ${e.status}` : 'no hubo respuesta';
+    anotar('subida reintentada', { intento: n + 1, porque: que,
+      espera: seg(ms), va: Math.round(fraccion * 100) + '%', nivel: 'aviso' });
+    avisar?.(fraccion, `Pausa: ${que}. Se reintenta en ${Math.round(ms / 1000)} s `
+      + `(intento ${n + 1} de ${REINTENTOS}); no hace falta hacer nada.`);
+    await dormir(ms);
+  };
 
-  if(archivo.size <= ENTERO_HASTA){
-    return conPlazo('api/fotos.php',
-      { method: 'POST', body: archivo, headers: BINARIO }, PLAZO_TROZO)
-      .then(contar, fallo);
-  }
   try{
-  const sesion = (crypto.randomUUID?.() || Math.random().toString(36) + Date.now())
-    .replace(/[^a-zA-Z0-9]/g, '');
-  let enviado = 0;
-  for(let desde = 0; desde < archivo.size; desde += TROZO){
-    const pedazo = archivo.slice(desde, desde + TROZO);
-    const ultimo = desde + TROZO >= archivo.size;
-    const r = await conPlazo(
-      `api/fotos.php?trozo=1&sesion=${sesion}${ultimo ? '&fin=1' : ''}`,
-      { method: 'POST', body: pedazo, headers: BINARIO }, PLAZO_TROZO);
-    enviado += pedazo.size;
-    avisar?.(enviado / archivo.size);
-    if(ultimo) return contar(r);
-  }
-  throw new Error('El archivo llegó vacío');
+    if(archivo.size <= ENTERO_HASTA){
+      for(let n = 0; ; n++){
+        try{
+          return contar(await conPlazo('api/fotos.php',
+            { method: 'POST', body: archivo, headers: BINARIO }, PLAZO_TROZO));
+        }catch(e){ await antesDeReintentar(e, n, 0); }
+      }
+    }
+
+    const sesion = (crypto.randomUUID?.() || Math.random().toString(36) + Date.now())
+      .replace(/[^a-zA-Z0-9]/g, '');
+    /* El servidor dice cuánto tiene y se sigue desde ahí. Así un reintento
+       nunca duplica un pedazo ni deja un hueco, y una subida cortada a la
+       mitad retoma en vez de empezar de cero. */
+    let desde = 0;
+    let n = 0;   // intentos fallidos seguidos; vuelve a cero con cada pedazo que entra
+    while(desde < archivo.size){
+      const pedazo = archivo.slice(desde, desde + TROZO);
+      const ultimo = desde + pedazo.size >= archivo.size;
+      try{
+        const r = await conPlazo(
+          `api/fotos.php?trozo=1&sesion=${sesion}&desde=${desde}`
+            + (ultimo ? `&fin=1&total=${archivo.size}` : ''),
+          { method: 'POST', body: pedazo, headers: BINARIO }, PLAZO_TROZO);
+        if(ultimo) return contar(r);
+        desde = Number.isFinite(r.recibido) ? r.recibido : desde + pedazo.size;
+        n = 0;
+        avisar?.(desde / archivo.size);
+      }catch(e){
+        // «falta algo»: el servidor dice desde dónde, y se sigue sin esperar
+        if(e.status === 409 && Number.isFinite(e.datos?.recibido) && n < REINTENTOS){
+          anotar('subida retomada', { desde: mb(e.datos.recibido), porque: e.message, nivel: 'aviso' });
+          desde = e.datos.recibido;
+          n++;
+          continue;
+        }
+        await antesDeReintentar(e, n, desde / archivo.size);
+        n++;
+      }
+    }
+    throw new Error('El archivo llegó vacío');
   }catch(e){ return fallo(e); }
 }
 
@@ -445,24 +536,22 @@ $('#calidad')?.addEventListener('click', (ev) => {
 });
 pintarCalidad();
 
-/* La lista de lo que hay en curso, refrescada sola mientras se mira.
-   Solo se pregunta cuando la sección está a la vista: no tiene sentido
-   golpear el servidor cada cinco segundos mientras alguien escribe un
-   titular. */
+/* La lista de lo que hay en curso. Devuelve cuántas cosas hay, que es lo
+   que decide cada cuánto volver a preguntar. */
 async function pintarEnCurso(){
   const donde = $('#en_curso');
-  if(!donde) return;
+  if(!donde) return 0;
   let lista = [];
   try{
     const { actividad } = await api('api/actividad.php');
     lista = actividad || [];
   }catch(e){
     donde.innerHTML = `<li class="libre">No se pudo consultar: ${esc(e.message)}</li>`;
-    return;
+    return 0;
   }
   if(!lista.length){
     donde.innerHTML = '<li class="libre">Nada en curso.</li>';
-    return;
+    return 0;
   }
   const ahora = Date.now() / 1000;
   donde.innerHTML = lista.map((x) => {
@@ -475,19 +564,35 @@ async function pintarEnCurso(){
         ${x.paso ? '· ' + esc(x.paso) : ''}</small>
     </li>`;
   }).join('');
+  return lista.length;
 }
 
-/* Se pregunta cada cinco segundos mientras la pestaña esté a la vista.
-   Antes esto miraba si la sección estaba en pantalla, para no molestar al
-   servidor de más. No funcionaba: la sección puede no tener tamaño todavía
-   cuando se la empieza a vigilar, y entonces nunca cuenta como visible y la
-   lista no se llena nunca. El ahorro no valía la complicación —es un pedido
-   diminuto— y con la pestaña de fondo el navegador ya lo frena solo. */
+/* Cada cuánto se pregunta. Era cada cinco segundos, siempre, con la idea de
+   que es un pedido diminuto. Diminuto para el navegador: en el servidor
+   cada uno arranca PHP y abre la base, y son 720 por hora por pestaña. Una
+   computadora con el editor abierto todo el día eran unos 17.000 pedidos
+   diarios sin que nadie publicara nada, y el hosting limita justamente la
+   cantidad de pedidos: se gastaba el margen que después le faltaba a la
+   subida de un video.
+   Ahora, sin nada en curso, se pregunta cada 30 s —lo nuevo aparece en
+   medio minuto como mucho—; mientras alguien publica, cada 8 s, que es
+   cuando interesa seguirlo de cerca. Con la pestaña de fondo no se pregunta,
+   y al volver se pregunta en el acto.
+   (Antes esto miraba si la sección estaba en pantalla. No funcionaba: la
+   sección puede no tener tamaño todavía cuando se la empieza a vigilar, y
+   entonces nunca cuenta como visible y la lista no se llena nunca.) */
+const CADA_SIN_NADA = 30_000;
+const CADA_CON_ALGO = 8_000;
+let proximaConsulta = null;
+async function vigilarEnCurso(){
+  clearTimeout(proximaConsulta);
+  const hay = document.hidden ? 0 : await pintarEnCurso();
+  proximaConsulta = setTimeout(vigilarEnCurso, hay ? CADA_CON_ALGO : CADA_SIN_NADA);
+}
 if($('#en_curso')){
-  pintarEnCurso();
-  setInterval(() => { if(!document.hidden) pintarEnCurso(); }, 5000);
+  vigilarEnCurso();
   document.addEventListener('visibilitychange', () => {
-    if(!document.hidden) pintarEnCurso();
+    if(!document.hidden) vigilarEnCurso();
   });
 }
 
@@ -1819,6 +1924,29 @@ async function mantenerDespierto(){
   catch(e){ return null; }   // no todos los navegadores lo tienen
 }
 
+/* La pantalla encendida mientras sube un archivo.
+   Grabar y publicar ya lo hacían, pero guardar el video recién elegido no,
+   y es justo la subida más larga: el video entero, tal cual salió del
+   teléfono. Encima el editor invita a seguir trabajando mientras tanto, y a
+   los pocos segundos sin tocar la pantalla el teléfono se bloquea; con la
+   pantalla apagada el navegador suspende la pestaña y la subida queda
+   congelada en el porcentaje en que estaba.
+   El sistema suelta el bloqueo cada vez que uno se va a otra app —a
+   WhatsApp a copiar el titular, por ejemplo—, así que se vuelve a pedir al
+   regresar, mientras la subida siga en curso. */
+async function despiertoMientras(promesa){
+  let bloqueo = await mantenerDespierto();
+  const alVolver = async () => {
+    if(!document.hidden && (!bloqueo || bloqueo.released)) bloqueo = await mantenerDespierto();
+  };
+  document.addEventListener('visibilitychange', alVolver);
+  try{ return await promesa; }
+  finally{
+    document.removeEventListener('visibilitychange', alVolver);
+    bloqueo?.release().catch(() => {});
+  }
+}
+
 /* Cuántos bits por segundo lleva el video grabado. Manda el tamaño del
    archivo y, con eso, lo que tarda en subir; no cambia lo que tarda la
    grabación, que va contra el reloj.
@@ -2475,9 +2603,10 @@ async function agregarReel(archivo){
 
   // si mientras sube se cambia de placa, lo subido es de la otra: no se toca
   const suPlaca = placa;
-  subiendoVideo = guardarFoto(archivo, (a) => {
-    decir(`Guardando el video… ${Math.round(a * 100)}%. Podés ir escribiendo el titular.`);
-  })
+  subiendoVideo = despiertoMientras(guardarFoto(archivo, (a, nota) => {
+    decir(`Guardando el video… ${Math.round(a * 100)}%. `
+      + (nota || 'Podés ir escribiendo el titular.'));
+  }))
     .then(({ ruta }) => {
       if(placa !== suPlaca) return ruta;
       cambio('video', ruta);
@@ -2609,7 +2738,7 @@ async function grabarReel(){
 
   trabajo('Subiendo el reel', 0, 'Ya está grabado: falta que llegue al servidor.');
   const sub = await guardarFoto(new File([video], 'reel.mp4', { type: 'video/mp4' }),
-    (a) => trabajo('Subiendo el reel', a, 'Ya está grabado: falta que llegue al servidor.'));
+    (a, nota) => trabajo('Subiendo el reel', a, nota || 'Ya está grabado: falta que llegue al servidor.'));
   ultimoQuemado = { firma, ruta: sub.ruta, blob: video, portadaEn };
   return ultimoQuemado;
 }
@@ -2707,8 +2836,8 @@ async function agregarVideo(archivo, indice){
     }
 
     trabajo('Subiendo el video', 0, 'Se guarda tal cual, sin procesar.');
-    const subido = await guardarFoto(archivo,
-      (a) => trabajo('Subiendo el video', a, 'Se guarda tal cual, sin procesar.'));
+    const subido = await despiertoMientras(guardarFoto(archivo,
+      (a, nota) => trabajo('Subiendo el video', a, nota || 'Se guarda tal cual, sin procesar.')));
     const conPortada = await guardarFoto(new File([jpg], 'portada.jpg', { type: 'image/jpeg' }));
 
     if(placa !== suPlaca) return estado('El video subió, pero ya estabas en otra noticia.', true);
@@ -2839,7 +2968,7 @@ async function videoDeLamina(lam, i){
     }
     trabajo(rotulo, 1, 'Subiéndolo.');
     const sub = await guardarFoto(new File([listo], 'lamina.mp4', { type: 'video/mp4' }),
-      (b) => trabajo(rotulo, b, 'Subiéndolo.'));
+      (b, nota) => trabajo(rotulo, b, nota || 'Subiéndolo.'));
     quemados.set(lam.video, { firma: 'reencuadrado', ruta: sub.ruta });
     return { tipo: 'video', ruta: sub.ruta };
   }
@@ -2889,7 +3018,7 @@ async function videoDeLamina(lam, i){
     if(solo){
       trabajo(rotulo, 1, 'Subiéndolo.');
       const sub = await guardarFoto(new File([solo], 'lamina.mp4', { type: 'video/mp4' }),
-        (b) => trabajo(rotulo, b, 'Subiéndolo.'));
+        (b, nota) => trabajo(rotulo, b, nota || 'Subiéndolo.'));
       return { tipo: 'video', ruta: sub.ruta };
     }
     // si no se pudo, se sigue por el camino de siempre y se le dibuja encima
@@ -2937,7 +3066,7 @@ async function videoDeLamina(lam, i){
   }
   trabajo('Subiendo el video', 0, 'Ya está grabado: falta que llegue al servidor.');
   const sub = await guardarFoto(new File([video], 'lamina.mp4', { type: 'video/mp4' }),
-    (a) => trabajo('Subiendo el video', a, 'Ya está grabado: falta que llegue al servidor.'));
+    (a, nota) => trabajo('Subiendo el video', a, nota || 'Ya está grabado: falta que llegue al servidor.'));
   quemados.set(lam.crudo, { firma, ruta: sub.ruta });
   return { tipo: 'video', ruta: sub.ruta };
 }

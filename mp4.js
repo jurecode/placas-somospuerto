@@ -296,14 +296,15 @@ export function armarMp4(pistas){
     throw new Error('el índice cambió de tamaño al recolocarlo');
   }
 
-  const datos = cuerpo.unir();
-  const mdat = caja('mdat', datos);
-
-  const todo = new Uint8Array(ftyp.length + moov.length + mdat.length);
-  todo.set(ftyp, 0);
-  todo.set(moov, ftyp.length);
-  todo.set(mdat, ftyp.length + moov.length);
-  return new Blob([todo], { type: 'video/mp4' });
+  /* El archivo se arma como una lista de pedazos y el Blob los junta una
+     sola vez. Antes se juntaban a mano: los cuadros en un bloque, ese bloque
+     copiado dentro de la caja mdat, todo eso copiado otra vez en un bloque
+     final, y el Blob lo copiaba una última vez. Cuatro copias enteras del
+     video en memoria a la vez, que en un teléfono con un reel largo alcanzan
+     para que el navegador recargue la página: el «se cayó al subir».
+     Los bytes son los mismos; cambia solo cuántas veces se copian. */
+  const cabezaMdat = new Cinta().u32(8 + cuerpo.largo).texto('mdat').unir();
+  return new Blob([ftyp, moov, cabezaMdat, ...cuerpo.partes], { type: 'video/mp4' });
 }
 
 export { RELOJ };
@@ -337,6 +338,18 @@ function recorrer(vista, desde, hasta, alEncontrar){
 const CONTENEDORAS = ['moov', 'trak', 'mdia', 'minf', 'stbl', 'edts', 'mvex'];
 
 /* Devuelve las pistas con sus muestras ya ubicadas. */
+/* Un cuadro comprimido, como una ventana sobre el archivo original en vez
+ * de una copia. Antes cada cuadro se copiaba: el video quedaba dos veces en
+ * memoria —el archivo entero más todos sus cuadros sueltos— durante toda la
+ * grabación. El original se tiene que quedar igual hasta el final, así que
+ * mirarlo no cuesta nada.
+ * Si la tabla de un archivo roto apunta más allá del final, se corta ahí,
+ * igual que hacía slice, en vez de tirar un error. */
+function pedazo(buffer, desde, largo){
+  const ini = Math.min(desde, buffer.byteLength);
+  return new Uint8Array(buffer, ini, Math.max(0, Math.min(largo, buffer.byteLength - ini)));
+}
+
 export function leerMp4(buffer){
   const vista = new DataView(buffer);
   const pistas = [];
@@ -522,7 +535,7 @@ export function leerMp4(buffer){
         let pos = c.desde;
         for(const m of c.lista){
           pista.fragmentadas.push({
-            datos: new Uint8Array(buffer.slice(pos, pos + m.tamano)),
+            datos: pedazo(buffer, pos, m.tamano),
             tiempo: reloj ?? 0,
             duracion: m.duracion,
             // el bit 16 marca «esta no es cuadro clave»
@@ -565,7 +578,7 @@ export function leerMp4(buffer){
         const largo = t.stsz[n];
         const dura = duraciones[n] ?? 0;
         muestras.push({
-          datos: new Uint8Array(buffer.slice(pos, pos + largo)),
+          datos: pedazo(buffer, pos, largo),
           tiempo, duracion: dura,
           clave: t.stss ? t.stss.has(n + 1) : true,   // sin stss, todas son clave
         });

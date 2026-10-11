@@ -59,13 +59,11 @@ if (!is_writable($dir)) {
     responder(['error' => 'No se puede escribir en fotos/. Revisá los permisos (755).'], 500);
 }
 
-/* Lee el cuerpo, o explica por qué llegó vacío. PHP descarta la petición
- * entera cuando pasa post_max_size y no avisa de ninguna forma. */
-function cuerpo_o_error(): string
+/* PHP descarta la petición entera cuando pasa post_max_size y no avisa de
+ * ninguna forma: el cuerpo llega vacío. Esto lo explica en vez de decir
+ * «vacío» a secas. */
+function explicar_vacio(): void
 {
-    $datos = file_get_contents('php://input');
-    if ($datos !== false && $datos !== '') return $datos;
-
     $declarado = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
     if ($declarado > 0) {
         responder(['error' => sprintf(
@@ -76,30 +74,61 @@ function cuerpo_o_error(): string
     responder(['error' => 'Llegó vacío'], 400);
 }
 
-/* Guarda el archivo ya completo: revisa que sea lo que dice ser, le pone un
- * nombre propio y lo anota. */
-function guardar(string $binario, string $dir): void
+/* Un pedazo entra entero en memoria sin problema: son dos megas. Lo que no
+ * puede entrar en memoria es el video completo —ver guardar_archivo—. */
+function cuerpo_o_error(): string
 {
-    if (strlen($binario) > TOPE) responder(['error' => 'Máximo 300 MB'], 413);
+    $datos = file_get_contents('php://input');
+    if ($datos !== false && $datos !== '') return $datos;
+    explicar_vacio();
+    return '';
+}
 
-    // imagen o MP4: nada más entra
+/* Guarda un archivo que ya está en el disco: revisa que sea lo que dice ser,
+ * le pone un nombre propio, lo mueve a fotos/ y lo anota.
+ *
+ * Antes recibía el video entero como texto. Al cerrar una subida por
+ * pedazos eso obligaba a leer el archivo completo a la memoria de PHP y a
+ * escribirlo de nuevo: el triple de trabajo de disco justo en el momento en
+ * que la barra está en 100 %, y si el video pesaba más que el memory_limit,
+ * PHP moría ahí y la subida fallaba al final, después de haberla esperado
+ * entera. En un hosting que limita el uso de disco, eso era la mitad de la
+ * espera. Ahora se mira solo el principio del archivo y se lo cambia de
+ * carpeta, que no copia nada. */
+function guardar_archivo(string $origen, string $dir): void
+{
+    $bytes = (int) @filesize($origen);
+    if ($bytes <= 0) { @unlink($origen); responder(['error' => 'Llegó vacío'], 400); }
+    if ($bytes > TOPE) { @unlink($origen); responder(['error' => 'Máximo 300 MB'], 413); }
+
+    // imagen o MP4: nada más entra. getimagesize lee solo la cabecera.
     $ext = null;
-    $tipo = @getimagesizefromstring($binario);
+    $tipo = @getimagesize($origen);
     if ($tipo !== false) {
         $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp',
                 'image/gif' => 'gif'][$tipo['mime']] ?? null;
-        if ($ext === null) responder(['error' => 'Formato no soportado: ' . $tipo['mime']], 400);
-    } elseif (substr($binario, 4, 4) === 'ftyp') {   // firma de los MP4
+        if ($ext === null) {
+            @unlink($origen);
+            responder(['error' => 'Formato no soportado: ' . $tipo['mime']], 400);
+        }
+    } elseif (@file_get_contents($origen, false, null, 4, 4) === 'ftyp') {   // firma de los MP4
         $ext = 'mp4';
     } else {
+        @unlink($origen);
         responder(['error' => 'Eso no es una imagen ni un video MP4'], 400);
     }
 
     try {
         $nombre = date('Ymd-His') . '-' . bin2hex(random_bytes(4)) . '.' . $ext;
-        if (file_put_contents($dir . '/' . $nombre, $binario) === false) {
+        $destino = $dir . '/' . $nombre;
+        if (!@rename($origen, $destino)) {
+            @unlink($origen);
             responder(['error' => 'No se pudo guardar'], 500);
         }
+        /* Lo creado a mano puede quedar legible solo para PHP, y el archivo lo
+         * sirve el servidor web y lo baja Instagram: tiene que poder leerlo
+         * cualquiera. Con file_put_contents salía así de por sí. */
+        @chmod($destino, 0644);
         $st = bd()->prepare('INSERT INTO fotos (archivo, creada) VALUES (?, NOW())');
         $st->execute([$nombre]);
         responder(['ok' => true, 'id' => (int) bd()->lastInsertId(), 'ruta' => 'fotos/' . $nombre]);
@@ -108,19 +137,30 @@ function guardar(string $binario, string $dir): void
     }
 }
 
+$parciales = $dir . '/.parciales';
+if (!is_dir($parciales) && !@mkdir($parciales, 0755, true)) {
+    responder(['error' => 'No se pudo preparar la carpeta de subidas'], 500);
+}
+
 /* ------------------------------------------------------------------ */
 /* de a pedazos                                                        */
 /* ------------------------------------------------------------------ */
 
+/* Cada pedazo dice en qué posición del archivo va (`desde`), y el servidor
+ * contesta cuánto tiene (`recibido`). Antes cada uno se pegaba al final sin
+ * mirar: si en el camino un pedazo llegaba dos veces —un reintento del
+ * navegador, un proxy—, el video quedaba corrido unos megas y se veía con
+ * saltos o se cortaba, sin ningún error. Y si uno fallaba no había forma de
+ * seguir: se empezaba de cero.
+ * Ahora repetir un pedazo no hace nada, un hueco se rechaza diciendo desde
+ * dónde seguir, y el editor puede retomar una subida cortada en vez de
+ * volver a mandar todo.
+ * Un editor viejo, que no manda `desde`, sigue funcionando como antes. */
 if (isset($_GET['trozo'])) {
     // el nombre lo pone el navegador, así que se limpia antes de tocar el disco
     $sesion = preg_replace('/[^a-zA-Z0-9]/', '', (string) ($_GET['sesion'] ?? ''));
     if (strlen($sesion) < 8) responder(['error' => 'Falta identificar la subida'], 400);
 
-    $parciales = $dir . '/.parciales';
-    if (!is_dir($parciales) && !@mkdir($parciales, 0755, true)) {
-        responder(['error' => 'No se pudo preparar la carpeta de subidas'], 500);
-    }
     // subidas que quedaron por la mitad hace rato
     foreach (glob($parciales . '/*.part') ?: [] as $viejo) {
         if (is_file($viejo) && filemtime($viejo) < time() - 7200) @unlink($viejo);
@@ -128,27 +168,75 @@ if (isset($_GET['trozo'])) {
 
     $parcial = $parciales . '/' . $sesion . '.part';
     $pedazo = cuerpo_o_error();
-    $llevaba = is_file($parcial) ? (int) filesize($parcial) : 0;
-    if ($llevaba + strlen($pedazo) > TOPE) {
+    $largo = strlen($pedazo);
+
+    $f = @fopen($parcial, 'c+b');
+    if ($f === false) responder(['error' => 'No se pudo guardar el pedazo'], 500);
+    // dos pedidos de la misma subida a la vez —el original y un reintento—
+    // no pueden escribir mezclados
+    flock($f, LOCK_EX);
+    $llevaba = (int) fstat($f)['size'];
+    $desde = isset($_GET['desde']) ? max(0, (int) $_GET['desde']) : $llevaba;
+
+    $soltar = static function () use ($f): void { flock($f, LOCK_UN); fclose($f); };
+
+    if ($desde > $llevaba) {
+        // falta algo del medio: se dice desde dónde seguir y no se escribe nada
+        $soltar();
+        responder(['error' => 'Falta un pedazo anterior', 'recibido' => $llevaba], 409);
+    }
+    if ($desde + $largo > TOPE) {
+        $soltar();
         @unlink($parcial);
         responder(['error' => 'Máximo 300 MB'], 413);
     }
-    if (@file_put_contents($parcial, $pedazo, FILE_APPEND) === false) {
-        responder(['error' => 'No se pudo guardar el pedazo'], 500);
+    if ($desde + $largo > $llevaba) {
+        /* Lo normal es que $desde sea justo donde termina lo que hay. Si es
+         * menos, el mismo pedazo había quedado escrito a medias: se recorta y
+         * se escribe entero. Lo que ya estaba completo no se toca nunca. */
+        if ($desde < $llevaba) ftruncate($f, $desde);
+        fseek($f, $desde);
+        $escritos = fwrite($f, $pedazo);
+        fflush($f);
+        if ($escritos !== $largo) {
+            $soltar();
+            responder(['error' => 'No se pudo guardar el pedazo'], 500);
+        }
+        $llevaba = $desde + $largo;
     }
+    // si no entró en la condición, era un pedazo repetido: ya estaba
+    $soltar();
 
     if (empty($_GET['fin'])) {
-        responder(['ok' => true, 'recibido' => (int) filesize($parcial)]);
+        responder(['ok' => true, 'recibido' => $llevaba]);
     }
 
-    $completo = file_get_contents($parcial);
-    @unlink($parcial);
-    if ($completo === false) responder(['error' => 'Se perdió lo subido'], 500);
-    guardar($completo, $dir);
+    /* Antes de cerrar se confirma que llegó todo. Sin esto, una subida con
+     * un hueco se guardaba igual y el video salía roto. */
+    $total = isset($_GET['total']) ? (int) $_GET['total'] : $llevaba;
+    clearstatcache(true, $parcial);
+    $tiene = (int) @filesize($parcial);
+    if ($tiene !== $total) {
+        responder(['error' => "Llegaron $tiene de $total bytes", 'recibido' => min($tiene, $total)], 409);
+    }
+    guardar_archivo($parcial, $dir);
 }
 
 /* ------------------------------------------------------------------ */
 /* de una sola vez, para lo chico                                      */
 /* ------------------------------------------------------------------ */
 
-guardar(cuerpo_o_error(), $dir);
+/* Va directo al disco, sin pasar por una variable: así lo mandado de una
+ * vez tampoco depende de la memoria de PHP. */
+$temporal = $parciales . '/' . bin2hex(random_bytes(8)) . '.part';
+$entrada = fopen('php://input', 'rb');
+$salida = @fopen($temporal, 'wb');
+if ($entrada === false || $salida === false) responder(['error' => 'No se pudo guardar'], 500);
+$copiados = stream_copy_to_stream($entrada, $salida);
+fclose($entrada);
+fclose($salida);
+if (!$copiados) {
+    @unlink($temporal);
+    explicar_vacio();
+}
+guardar_archivo($temporal, $dir);
