@@ -86,8 +86,9 @@ const MAX_LAMINAS = 8;   // 8 + la placa + el cierre = las 10 que permite Instag
    sobrescribe al actualizar —para eso está—, así que un sitio instalado hace
    meses sigue con el valor que tenía el día que se instaló: si la regla
    dependiera de eso, el cierre desaparecería sin motivo visible. */
-// el reel y la placa con voz son un solo video: no hay lámina de cierre
-const llevaCierre = () => !['reel', 'voz'].includes(placa.formato) && CIERRE !== false;
+// el reel y la placa con voz son un solo video: no hay lámina de cierre.
+// La urgente tampoco: es un aviso al toque, y el «síguenos» al final le sobra
+const llevaCierre = () => !['reel', 'voz', 'urgente'].includes(placa.formato) && CIERRE !== false;
 
 /* El arte del cierre. Puede venir en dos versiones, clara y oscura, porque
    una sola no se lee sobre toda la paleta: la clara desaparece en el fondo
@@ -1392,9 +1393,9 @@ async function cargar(id){
   $('#bajar_carrusel').hidden = esVideo;
   document.querySelectorAll('[data-exportar]').forEach((b) => { b.hidden = esVideo; });
   const urgente = placa.formato === 'urgente';
-  $('#leg_titular').textContent = urgente ? 'Descripción' : 'Titular';
+  $('#leg_titular').textContent = urgente ? 'Urgente' : 'Titular';
   $('#lab_titulo').textContent = urgente
-    ? 'Lo único editable: se estira sola hasta llenar el ancho'
+    ? 'La palabra grande: se estira sola hasta llenar el ancho'
     : 'Un salto de línea = una línea en la placa';
   await volcarControles();
   irA(localStorage.getItem('seccion') || 'titular');

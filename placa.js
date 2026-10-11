@@ -60,6 +60,13 @@ export const MEDIDAS = {
      de la foto. */
   titular:  { fuente: 207, arriba: 1900 },
   urgente:  { arriba: 790, margen: 180, bajada: 190, separacion: 166, fuente: 900 },
+  /* Urgente con la noticia escrita abajo: «URGENTE / AHORA» se achica a
+     `escala` y sube, y debajo va el texto. Todo el conjunto se centra entre
+     `techo` (debajo de «Publicado por») y el logo, dejando `aireLogo`.
+     El texto se achica solo hasta `minimo` si es largo. */
+  urgenteNoticia: { escala: .6, techo: 470, aireLogo: 230, raya: 230, grosorRaya: 16,
+                    antesRaya: 120, despuesRaya: 130, fuente: 178, minimo: 104,
+                    interlinea: 1.2, margen: 230 },
 };
 
 /* La interlínea acompaña al tamaño de letra en la misma proporción que el
@@ -71,6 +78,7 @@ export const TIPOS = {
   etiqueta: '500 {px}px "Inter Tight", Arial, sans-serif',
   urgenteBajada: '700 {px}px "Poppins", Arial, sans-serif',
   urgenteTexto:  '900 {px}px "Poppins", Arial, sans-serif',
+  urgenteNoticia: '700 {px}px "Inter Tight", Arial, sans-serif',
 };
 
 export const fuente = (plantilla, px) => plantilla.replace('{px}', px);
@@ -568,8 +576,28 @@ function dibujarNoticia(ctx, datos, fotos, u, altoLienzo){
   return textoNoticia(ctx, datos, u, altoLienzo);
 }
 
+/* Parte un texto en renglones que entren en `disponible`. Respeta los
+   saltos de línea que se escribieron a mano. */
+function enRenglones(ctx, texto, tipo, px, disponible){
+  const renglones = [];
+  for(const parrafo of String(texto).split('\n')){
+    let linea = '';
+    for(const palabra of parrafo.split(/\s+/).filter(Boolean)){
+      const prueba = linea ? linea + ' ' + palabra : palabra;
+      if(linea && anchoDe(ctx, prueba, tipo, px, 0) > disponible){
+        renglones.push(linea);
+        linea = palabra;
+      }else linea = prueba;
+    }
+    if(linea) renglones.push(linea);
+  }
+  return renglones;
+}
+
 function dibujarUrgente(ctx, datos, fotos, u, ancho, alto){
   const U = MEDIDAS.urgente;
+  const N = MEDIDAS.urgenteNoticia;
+  const noticia = String(datos.noticia || '').trim();
 
   // fondo: color de la paleta oscurecido hacia el negro por abajo
   ctx.fillStyle = datos.color_fondo;
@@ -586,35 +614,74 @@ function dibujarUrgente(ctx, datos, fotos, u, ancho, alto){
   ctx.textBaseline = 'alphabetic';
   const centro = ancho / 2;
 
-  // "URGENTE", fijo
-  const pxBajada = U.bajada * u;
+  /* Con noticia, «URGENTE / AHORA» va más chico y arriba; sin ella, como
+     siempre: grande y al medio. */
+  const k = noticia ? N.escala : 1;
+  const pxBajada = U.bajada * u * k;
   const metBajada = metricas(ctx, TIPOS.urgenteBajada, pxBajada);
-  ctx.font = fuente(TIPOS.urgenteBajada, pxBajada);
-  ctx.letterSpacing = `${-0.01 * pxBajada}px`;
-  // acá no hay foto que estire: el bloque entero baja la mitad del alto que
-  // ganó el lienzo, y así queda a la misma altura del centro que en cuadrado
-  const arribaBajada = U.arriba * u + (alto - ancho) / 2;
-  ctx.fillText('URGENTE', centro,
-    arribaBajada + (pxBajada - (metBajada.ascenso + metBajada.descenso)) / 2 + metBajada.ascenso);
 
-  // la palabra grande se estira hasta llenar el ancho
-  const disponible = ancho - U.margen * u * 2;
+  // la palabra grande se estira hasta llenar el ancho (con noticia, una fracción)
+  const disponible = (ancho - U.margen * u * 2) * k;
   const lineas = String(datos.titulo).toUpperCase().split('\n').filter((l) => l.trim());
-  let px = MEDIDAS.urgente.fuente * u;
+  let px = U.fuente * u * k;
   const anchoCon = (tam) => Math.max(...lineas.map(
     (l) => anchoDe(ctx, l, TIPOS.urgenteTexto, tam, -0.1 * tam)));
   const medido = anchoCon(px);
   if(medido > disponible) px = px * disponible / medido;
-
   const met = metricas(ctx, TIPOS.urgenteTexto, px);
   const interlinea = px * .95;
+  const separacion = U.separacion * u * k;
+  const altoBloque = pxBajada + separacion + lineas.length * interlinea;
+
+  /* La noticia: renglones que entren en el ancho, achicando la letra si no
+     caben entre el bloque de arriba y el logo. */
+  let renglones = [], pxNoticia = 0, altoNoticia = 0;
+  const abajoLibre = alto - (MEDIDAS.logo.abajo + MEDIDAS.logo.alto + N.aireLogo) * u;
+  const extra = (N.antesRaya + N.grosorRaya + N.despuesRaya) * u;
+  if(noticia){
+    const anchoNoticia = ancho - N.margen * u * 2;
+    const cabe = abajoLibre - N.techo * u - altoBloque - extra;
+    for(pxNoticia = N.fuente * u; ; pxNoticia *= .94){
+      renglones = enRenglones(ctx, noticia, TIPOS.urgenteNoticia, pxNoticia, anchoNoticia);
+      altoNoticia = renglones.length * pxNoticia * N.interlinea;
+      if(altoNoticia <= cabe || pxNoticia <= N.minimo * u) break;
+    }
+  }
+
+  // acá no hay foto que estire: sin noticia, el bloque baja la mitad del
+  // alto que ganó el lienzo, y así queda a la misma altura del centro que en
+  // cuadrado; con noticia, el conjunto se centra en el espacio libre
+  const arribaBajada = noticia
+    ? N.techo * u + Math.max(0, (abajoLibre - N.techo * u - (altoBloque + extra + altoNoticia)) / 2)
+    : U.arriba * u + (alto - ancho) / 2;
+
+  // "URGENTE", fijo
+  ctx.font = fuente(TIPOS.urgenteBajada, pxBajada);
+  ctx.letterSpacing = `${-0.01 * pxBajada}px`;
+  ctx.fillText('URGENTE', centro,
+    arribaBajada + (pxBajada - (metBajada.ascenso + metBajada.descenso)) / 2 + metBajada.ascenso);
+
   ctx.font = fuente(TIPOS.urgenteTexto, px);
   ctx.letterSpacing = `${-0.1 * px}px`;
-  const arriba = arribaBajada + pxBajada + U.separacion * u;
+  const arriba = arribaBajada + pxBajada + separacion;
   lineas.forEach((linea, i) => {
     ctx.fillText(linea, centro,
       arriba + i * interlinea + (interlinea - (met.ascenso + met.descenso)) / 2 + met.ascenso);
   });
+
+  if(noticia){
+    // una raya corta separa el aviso de la noticia
+    const yRaya = arriba + lineas.length * interlinea + N.antesRaya * u;
+    ctx.fillRect(centro - N.raya * u / 2, yRaya, N.raya * u, N.grosorRaya * u);
+    const metN = metricas(ctx, TIPOS.urgenteNoticia, pxNoticia);
+    const paso = pxNoticia * N.interlinea;
+    const desde = yRaya + (N.grosorRaya + N.despuesRaya) * u;
+    ctx.font = fuente(TIPOS.urgenteNoticia, pxNoticia);
+    ctx.letterSpacing = `${-0.01 * pxNoticia}px`;
+    renglones.forEach((r, i) => {
+      ctx.fillText(r, centro, desde + i * paso + (paso - (metN.ascenso + metN.descenso)) / 2 + metN.ascenso);
+    });
+  }
   ctx.restore();
 }
 
@@ -699,6 +766,7 @@ export async function esperarTipografias(){
   await Promise.all([
     document.fonts.load('900 100px "Inter Tight"'),
     document.fonts.load('500 100px "Inter Tight"'),
+    document.fonts.load('700 100px "Inter Tight"'),
     document.fonts.load('700 100px "Poppins"'),
     document.fonts.load('900 100px "Poppins"'),
   ]);

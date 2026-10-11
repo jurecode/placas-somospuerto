@@ -6,7 +6,7 @@
 <title>Editor de placas — Somos Puerto</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@500;900&family=Poppins:ital,wght@0,700;0,900;1,800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter+Tight:wght@500;700;900&family=Poppins:ital,wght@0,700;0,900;1,800&display=swap" rel="stylesheet">
 <style>
   :root{
     /* Gris neutro y oscuro, al estilo de un panel de control. El editor
@@ -192,6 +192,7 @@
 
   /* el formato urgente no tiene fotos ni degradado */
   body[data-formato="urgente"] [data-solo="noticia"]{ display:none }
+  body:not([data-formato="urgente"]) [data-solo="urgente"]{ display:none }
   body[data-formato="reel"] [data-sin-reel]{ display:none }
   body[data-formato="voz"] [data-sin-voz]{ display:none }
 
@@ -282,6 +283,7 @@
     body[data-seccion="mas"]      fieldset[data-seccion="mas"]{ display:block }
     /* lo que el formato esconde manda por encima de la sección elegida */
     body[data-formato="urgente"] [data-solo="noticia"],
+    body:not([data-formato="urgente"]) [data-solo="urgente"],
     body[data-formato="reel"] [data-sin-reel]{ display:none }
     body[data-formato="voz"] [data-sin-voz]{ display:none }
 
@@ -685,7 +687,7 @@
     <button class="tarjeta tarjeta--urgente" data-crear="urgente">
       <b>Urgente</b>
       <span>Ahora</span>
-      <em>Placa roja, sin fotos, una palabra enorme</em>
+      <em>Placa roja, una palabra enorme y, si querés, la noticia abajo</em>
     </button>
     <button class="tarjeta tarjeta--noticia" data-crear="noticia">
       <b>Noticia</b>
@@ -739,6 +741,11 @@
     <div class="campo">
       <label for="titulo" id="lab_titulo">Un salto de línea = una línea en la placa</label>
       <textarea id="titulo" data-campo="titulo" spellcheck="false"></textarea>
+    </div>
+    <div class="campo" data-solo="urgente">
+      <label for="noticia">La noticia, abajo (opcional)</label>
+      <textarea id="noticia" data-campo="noticia" style="min-height:90px"
+        placeholder="Qué pasó, en una o dos frases. Vacío, la placa queda solo con URGENTE en grande."></textarea>
     </div>
     <p class="nota" data-solo="noticia">
       Para resaltar algo, ponelo entre asteriscos: <code>*así*</code>. Queda
