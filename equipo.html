@@ -531,7 +531,8 @@ function mostrarDatos(nombre, usuario, contrasena, nueva){
       document.title = 'Equipo — ' + MARCA.nombre;
     }).catch(() => {});
 
-    const { hayUsuarios } = await (await fetch('api/sesion.php?tarea=estado')).json();
+    const { hayUsuarios } = await (await fetch('api/sesion.php?tarea=estado')).json()
+      .catch(() => { throw new Error('El hosting no contestó bien. Esperá un minuto y recargá la página.'); });
     if(!hayUsuarios) return primeraCuenta();
 
     const r = await fetch('api/sesion.php', { headers: { 'x-clave': clave() } });

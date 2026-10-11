@@ -513,7 +513,7 @@ async function revisar(){
   res.className = ''; res.textContent = 'Revisando…';
   try{
     const r = await fetch('api/estado.php', { headers: { 'x-clave': clave } });
-    const datos = await r.json();
+    const datos = await leerJson(r);
     if(r.status === 401){
       res.className = 'error'; res.textContent = 'Clave incorrecta.';
       return;
@@ -552,7 +552,7 @@ $('#guardar').addEventListener('click', async () => {
         ig_access_token: $('#ig_token').value.trim(),
       }),
     });
-    const d = await r.json();
+    const d = await leerJson(r);
     if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
     $('#ig_token').value = '';
     await revisar();
@@ -581,7 +581,7 @@ async function revisarRedes(){
   try{
     const r = await fetch('api/redes.php?revisar=1', { headers: { 'x-clave': $('#clave').value.trim() } });
     if(r.ok){
-      const d = await r.json();
+      const d = await leerJson(r);
       pintarFacebook(d.facebook);
       pintarTiktok(d.tiktok);
       if(location.hash === '#tiktok' && d.tiktok?.conectado){
@@ -640,6 +640,23 @@ $('#desconectar_fb').addEventListener('click', async () => {
   try{ pintarFacebook((await redes({ tarea: 'desconectar' })).facebook); $('#fb_resultado').textContent = ''; }
   catch(e){ $('#fb_resultado').className = 'nota error'; $('#fb_resultado').textContent = e.message; }
 });
+
+/* Lo que contesta el servidor. Si en vez de datos llega una página —el
+   hosting frenando pedidos, o cortando uno que tardó mucho—, se dice eso en
+   castellano y no «Unexpected token '<'», que no le dice nada a nadie. */
+async function leerJson(r){
+  const texto = await r.text();
+  try{ return JSON.parse(texto); }
+  catch(e){
+    const err = new Error(r.status === 429
+      ? 'El hosting frenó los pedidos por un rato (es un límite de SiteGround). Esperá un minuto y probá de nuevo.'
+      : r.status >= 500
+        ? `El hosting cortó el pedido (error ${r.status}), casi siempre porque tardó demasiado. Esperá un minuto y recargá la página.`
+        : `El servidor contestó una página en vez de datos (código ${r.status}). Recargá y probá de nuevo.`);
+    err.pagina = true;
+    throw err;
+  }
+}
 
 /* TikTok: el estado, las direcciones para copiar y la privacidad. */
 let direcciones = {};
@@ -727,7 +744,7 @@ async function revisarVersion(){
   const el = $('#version');
   try{
     const r = await fetch('api/actualizar.php', { headers: { 'x-clave': $('#clave').value.trim() } });
-    const d = await r.json();
+    const d = await leerJson(r);
     if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
     const instalada = d.instalada || 'sin registrar';
     el.textContent = d.hayNueva
@@ -786,7 +803,7 @@ $('#guardar_gh').addEventListener('click', async () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clave: $('#clave').value.trim(), gh_token: $('#gh_token').value.trim() }),
     });
-    const d = await r.json();
+    const d = await leerJson(r);
     if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
     $('#gh_token').value = '';
     revisarVersion();
@@ -803,12 +820,17 @@ $('#actualizar').addEventListener('click', async (ev) => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clave: $('#clave').value.trim(), actualizar: true }),
     });
-    const d = await r.json();
+    const d = await leerJson(r);
     if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
     el.className = '';
     el.textContent = `Listo: versión ${d.version}, ${d.archivos} archivos actualizados.`;
     setTimeout(() => location.reload(), 1500);
-  }catch(e){ el.className = 'fallo'; el.textContent = e.message; ev.target.disabled = false; }
+  }catch(e){
+    el.className = 'fallo';
+    // si el hosting cortó la espera, la actualización pudo haber terminado igual
+    el.textContent = e.message + (e.pagina ? ' La actualización puede haber terminado igual: al recargar se ve qué versión quedó.' : '');
+    ev.target.disabled = false;
+  }
 });
 
 function pintarCron(){

@@ -154,6 +154,15 @@ const URGENTE = {
    existe en todos los navegadores. */
 const clave = () => localStorage.getItem('clave_publicar') || '';
 
+/* Cuando el servidor no manda datos sino una página de error del hosting,
+   qué decir. 429 es el límite de pedidos de SiteGround; 5xx, casi siempre,
+   un pedido que tardó más de lo que el hosting espera. */
+function motivoHttp(status){
+  if(status === 429) return 'El hosting frenó los pedidos por un rato (límite de SiteGround). Esperá un minuto y probá de nuevo.';
+  if(status >= 500) return `El hosting cortó el pedido (error ${status}). Esperá un minuto y probá de nuevo.`;
+  return `Error ${status}`;
+}
+
 async function api(ruta, opciones = {}){
   /* Sin credencial no se pregunta nada: el panel de actividad y otros que
      consultan solos arrancan antes de que se sepa si hay sesión, y su 401
@@ -186,7 +195,7 @@ async function api(ruta, opciones = {}){
     /* El código y lo que mandó el servidor viajan con el error: quien llama
        tiene que poder distinguir «esperá y reintentá» (429, 503) de «esto no
        va a andar nunca» (400, 413). Antes todo llegaba como un texto. */
-    const e = new Error(datos.error || `Error ${res.status}`);
+    const e = new Error(datos.error || motivoHttp(res.status));
     e.status = res.status;
     e.datos = datos;
     e.reintentarEn = Number(res.headers.get('Retry-After')) || 0;
@@ -1831,7 +1840,13 @@ $('#publicar').addEventListener('click', async (ev) => {
     const datos = await res.json().catch(() => ({}));
     if(!res.ok){
       if(res.status === 401) localStorage.removeItem('clave_publicar');
-      throw new Error(datos.error || `Error ${res.status}`);
+      /* Sin datos y con 5xx, el hosting dejó de esperar pero el servidor
+         puede haber seguido: publicar de nuevo a ciegas la duplicaría. */
+      if(!datos.error && res.status >= 500){
+        throw new Error(`El hosting cortó la espera (error ${res.status}) mientras se publicaba. `
+          + 'Puede que haya salido igual: revisá las redes antes de volver a publicar.');
+      }
+      throw new Error(datos.error || motivoHttp(res.status));
     }
     anotar('publicado', { tardo: seg(Date.now() - arranquePublicar),
       aviso: datos.aviso ? String(datos.aviso).slice(0, 80) : 'sin avisos' });
