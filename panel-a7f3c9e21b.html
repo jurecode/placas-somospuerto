@@ -96,6 +96,11 @@
     border-radius:0 8px 8px 0; font-size:13.5px; line-height:1.5;
   }
   details summary{ cursor:pointer; font-size:13px; color:var(--suave) }
+  /* la guía de Meta: separada del formulario y con el título a la vista,
+     que es lo primero que se busca cuando el token deja de andar */
+  .guia{ margin-top:18px; border-top:1px solid var(--linea); padding-top:14px }
+  .guia summary{ color:var(--texto); font-weight:600; font-size:14px }
+  .guia ol{ margin-top:14px; gap:10px }
   #version{ font-size:14px }
   #version.fallo{ color:var(--ok); font-weight:600 }
   #version.aldia::after{ content:' · el botón se enciende cuando haya una nueva'; color:var(--suave); font-weight:400 }
@@ -139,6 +144,34 @@
       los 60 días lo cambiás acá y listo, sin entrar por FTP. El token no se
       devuelve nunca: si el campo se ve vacío es porque ya está guardado.
     </p>
+
+    <!-- Los pasos siguen la documentación de Meta de octubre de 2026
+         (Instagram API con inicio de sesión de Instagram). Meta cambia los
+         nombres de los menús seguido: si dejan de coincidir, hay que
+         actualizar esto, no adivinar. -->
+    <details class="guia" open>
+      <summary>Cómo sacar un token nuevo en Meta, paso a paso</summary>
+      <ol>
+        <li>Abrí <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">developers.facebook.com/apps</a>
+          con la cuenta de Facebook que administra la app de publicación, y entrá a esa app.</li>
+        <li>En el menú de la izquierda, andá a <b>Instagram</b> → <b>API setup with Instagram business login</b>.
+          Si Meta está en español, aparece traducido con un nombre parecido.</li>
+        <li>En la lista de cuentas, tocá <b>Generate token</b> al lado de la cuenta del medio.
+          Si la cuenta no aparece, agregala primero con <b>Add account</b>.</li>
+        <li>Se abre Instagram: iniciá sesión con la cuenta del medio y aceptá todos los permisos
+          que pide, incluido el de publicar contenido.</li>
+        <li>Copiá el token con el botón de copiar de Meta, no seleccionándolo a mano: así no se
+          corta. Empieza con <code>IG</code> y tiene más de 150 caracteres.</li>
+        <li>Pegalo arriba, en <b>Token de larga duración</b>, y tocá <b>Guardar y probar</b>.
+          El <b>Id de la cuenta</b> no cambia: si ya está cargado, dejalo como está.</li>
+      </ol>
+      <p class="nota">
+        El token dura 60 días desde que se genera. Si en <b>Estado</b> dice que el token
+        guardado empieza con <code>EAA</code>, la app es de las de Facebook Login: ese se
+        saca en el <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">Explorador de la Graph API</a>
+        y se alarga en el <a href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank" rel="noopener noreferrer">Depurador de tokens</a>.
+      </p>
+    </details>
   </section>
 
   <section>
