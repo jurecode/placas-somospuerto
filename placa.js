@@ -20,23 +20,45 @@ export const altoDe = (ancho) => Math.round(ancho * ALTO / LIENZO);
 export const MEDIDAS = {
   /* El collage va de `y` hasta `abajo` unidades del borde inferior: se estira
      con el lienzo en vez de tener un alto fijo, que es lo que hace que el
-     4:5 no obligue a recolocar nada. */
-  media:    { x: 318, y: 136, ancho: 2364, abajo: 1260, radio: 48, filete: 30 },
-  // el centro se da en % del collage; 50/62.6 es el del arte original
-  circulo:  { x: 50, y: 62.6, radio: 512, anillo: 30 },
+     4:5 no obligue a recolocar nada.
+     Va a sangre: de borde a borde y desde arriba del todo. Antes era un
+     recuadro con márgenes de color alrededor y las esquinas redondeadas, y
+     la foto —que es lo que hace que alguien se detenga en el feed— ocupaba
+     poco más de la mitad de la placa. Ahora llega más abajo y se funde con
+     el color justo donde empieza el titular. */
+  media:    { x: 0, y: 0, ancho: 3000, abajo: 880, radio: 0, filete: 30 },
+  /* El fundido de la foto con el color de la placa: desde dónde arranca, en
+     % del alto de la foto, y con qué opacidad termina. Antes terminaba en
+     0,933 porque la foto acababa en el borde de su recuadro; ahora la foto
+     sigue de largo hasta el color liso, y si no llegara al 100 % quedaría
+     una raya horizontal de lado a lado. */
+  /* `curva` es cuánto tarda en tomar color: con 1,5, la del arte original,
+     las primeras líneas de un titular largo quedaban blancas sobre la foto
+     casi sin color debajo y se perdían en una foto clara. */
+  fundido:  { desde: 50, final: 1, curva: 1.15 },
+  /* El centro se da en % del collage. Con el titular más grande el círculo
+     sube un poco: en el 62,6 del arte original quedaba debajo de las letras,
+     y más arriba tapaba las caras de las dos fotos. */
+  circulo:  { x: 50, y: 50, radio: 512, anillo: 30 },
   pie:      { x: 414, margenDerecho: 318, abajo: 479, separacion: 83 },
-  filete:   { ancho: 28, respiro: 11.5 },
-  // cinta: forma y colores fijos, es la etiqueta oficial del medio
-  etiqueta: { fuente: 74, padY: 22, padX: 96, sesgo: 44, separacion: 168,
+  /* El filete y la cinta crecen con el titular, un poco menos que él: al
+     lado de letras un 45 % más grandes, con su medida de antes quedaban como
+     de otra pieza. La forma y los colores de la cinta no cambian: es la
+     etiqueta oficial del medio. */
+  filete:   { ancho: 34, respiro: 14 },
+  etiqueta: { fuente: 92, padY: 27, padX: 118, sesgo: 54, separacion: 190,
               fondo: '#ffffff', texto: '#111111' },
   // El logo entra en una caja: manda la altura, para que el aire entre el
   // titular y el pie no cambie si el logo cambia de proporción, pero se
   // acota el ancho por si el lockup es muy apaisado.
   logo:     { alto: 280, ancho: 1560, abajo: 117 },
-  /* El cuerpo del titular es parte del diseño y no se toca: es la medida del
-     arte original. Si un titular es tan largo que se saldría por arriba, se
-     achica solo lo justo para que entre. */
-  titular:  { fuente: 143, arriba: 120 },
+  /* El cuerpo del titular es parte del diseño y no se toca desde el editor.
+     Era 143, la medida del arte original, y en el teléfono se leía chico:
+     ahora es un 45 % más grande, para que el titular sea lo primero que se
+     ve. `arriba` es hasta dónde puede subir el bloque: un titular muy largo
+     se achica solo lo justo para no pasar de ahí, en vez de tapar la cara
+     de la foto. */
+  titular:  { fuente: 207, arriba: 1900 },
   urgente:  { arriba: 790, margen: 180, bajada: 190, separacion: 166, fuente: 900 },
 };
 
@@ -72,7 +94,7 @@ export const DEG_INICIO = 68;    // dónde arranca, en % del alto
 export const DEG_FINAL  = 0.933; // opacidad en el borde de abajo
 export const DEG_CURVA  = 1.5;   // exponente: arranca suave y se acelera
 
-export function degradado(ctx, datos, x, y, ancho, alto, desde = DEG_INICIO){
+export function degradado(ctx, datos, x, y, ancho, alto, desde = DEG_INICIO, final = DEG_FINAL, curva = DEG_CURVA){
   const [r, g, b] = aRgb(datos.color_fondo);
   const grad = ctx.createLinearGradient(0, y, 0, y + alto);
   const inicio = desde / 100;
@@ -81,7 +103,7 @@ export function degradado(ctx, datos, x, y, ancho, alto, desde = DEG_INICIO){
   grad.addColorStop(inicio, `rgba(${r},${g},${b},0)`);
   for(let i = 1; i <= pasos; i++){
     const t = i / pasos;
-    const alfa = DEG_FINAL * Math.pow(t, DEG_CURVA);
+    const alfa = final * Math.pow(t, curva);
     grad.addColorStop(inicio + t * (1 - inicio), `rgba(${r},${g},${b},${alfa.toFixed(4)})`);
   }
   return grad;
@@ -341,12 +363,14 @@ function dibujarNoticia(ctx, datos, fotos, u, altoLienzo){
   }
 
   // fundido con el fondo
-  ctx.fillStyle = degradado(ctx, datos, x, y, ancho, alto);
+  const F = MEDIDAS.fundido;
+  ctx.fillStyle = degradado(ctx, datos, x, y, ancho, alto, F.desde, F.final, F.curva);
   ctx.fillRect(x, y, ancho, alto);
   ctx.restore();
 
-  // titular, anclado por abajo
-  const maxAncho = (LIENZO - MEDIDAS.media.x - MEDIDAS.pie.x - MEDIDAS.pie.separacion) * u;
+  // titular, anclado por abajo. El margen derecho es el del pie: antes se
+  // tomaba del recuadro de la foto, que ya no tiene márgenes.
+  const maxAncho = (LIENZO - MEDIDAS.pie.margenDerecho - MEDIDAS.pie.x - MEDIDAS.pie.separacion) * u;
   const respiro = MEDIDAS.filete.respiro * u;
   const abajoCaja = altoLienzo - MEDIDAS.pie.abajo * u - respiro;
   const tope = MEDIDAS.titular.arriba * u;
