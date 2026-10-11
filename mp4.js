@@ -394,6 +394,28 @@ function configuracionAac(d){
   return null;
 }
 
+/* El nombre del códec HEVC, como lo pide el decodificador:
+ * hvc1.<perfil>.<compatibilidad>.<nivel>.<restricciones>, todo sacado de los
+ * primeros trece bytes de la configuración (ISO 14496-15, anexo E). Las
+ * banderas de compatibilidad van con los bits dados vuelta, y de las
+ * restricciones se sacan los ceros del final. */
+function codecHevc(c, caja = 'hvc1'){
+  if(!c || c.length < 13) return caja === 'hev1' ? 'hev1' : 'hvc1';
+  const espacio = c[1] >> 6;
+  const nivelAlto = (c[1] >> 5) & 1;
+  const perfil = c[1] & 31;
+  let compat = ((c[2] << 24) | (c[3] << 16) | (c[4] << 8) | c[5]) >>> 0;
+  let vuelta = 0;
+  for(let i = 0; i < 32; i++){ vuelta = (vuelta << 1) | (compat & 1); compat >>>= 1; }
+  const restricciones = [...c.slice(6, 12)];
+  while(restricciones.length && restricciones[restricciones.length - 1] === 0) restricciones.pop();
+  return [caja === 'hev1' ? 'hev1' : 'hvc1',
+          ['', 'A', 'B', 'C'][espacio] + perfil,
+          (vuelta >>> 0).toString(16).toUpperCase(),
+          (nivelAlto ? 'H' : 'L') + c[12],
+          ...restricciones.map((x) => x.toString(16).toUpperCase())].join('.');
+}
+
 /* Lo que dicen los primeros bits de la configuración del AAC. */
 function leerConfiguracionAac(c){
   if(!c || c.length < 2) return {};
@@ -443,16 +465,29 @@ export function leerMp4(buffer){
       actual.id = version === 1 ? vista.getUint32(ini + 20) : vista.getUint32(ini + 12);
     }
     if(nombre === 'hdlr'){
-      actual.clase = String.fromCharCode(vista.getUint8(ini + 8), vista.getUint8(ini + 9),
+      /* QuickTime —los .mov del iPhone— trae dos por pista: la del medio
+         ('vide' o 'soun') y otra de datos ('alis'). Antes cada una pisaba a
+         la anterior, quedaba 'alis', y la pista no era ni video ni sonido:
+         el lector no encontraba nada en ningún video de iPhone, y el editor
+         caía al camino viejo, el que graba a reloj y pierde cuadros. */
+      const clase = String.fromCharCode(vista.getUint8(ini + 8), vista.getUint8(ini + 9),
         vista.getUint8(ini + 10), vista.getUint8(ini + 11));
+      if(clase === 'vide' || clase === 'soun' || !actual.clase) actual.clase = clase;
     }
     if(nombre === 'stsd'){
       // la descripción está adentro; se busca avcC o esds sin importar dónde
       recorrer(vista, ini + 8, fin, function hondo(n, a, b){
-        if(n === 'avc1' || n === 'avc3'){
+        // H.264 y HEVC: la cabecera del cuadro es la misma
+        if(n === 'avc1' || n === 'avc3' || n === 'hvc1' || n === 'hev1'){
           actual.ancho = vista.getUint16(a + 24);
           actual.alto = vista.getUint16(a + 26);
           recorrer(vista, a + 78, b, hondo);
+        }else if(n === 'hvcC'){
+          /* HEVC, que es lo que graba el iPhone de fábrica. El decodificador
+             necesita esta configuración tal cual y un nombre de códec que se
+             arma con sus primeros bytes. */
+          actual.descripcion = new Uint8Array(buffer.slice(a, b));
+          actual.codec = codecHevc(actual.descripcion, n);
         }else if(n === 'mp4a'){
           actual.canales = vista.getUint16(a + 16);
           actual.muestreo = vista.getUint32(a + 24) >>> 16;
@@ -509,6 +544,20 @@ export function leerMp4(buffer){
         v.push([vista.getUint32(ini + 8 + k * 12), vista.getUint32(ini + 12 + k * 12)]);
       }
       t.stsc = v;
+    }
+    if(nombre === 'ctts'){
+      /* Cuánto después de decodificarse se muestra cada cuadro. Con cuadros
+         B —casi todo lo que sale de un teléfono— el orden en que se guardan
+         no es el orden en que se ven.
+         Se lee con signo siempre, aunque la norma diga que en la versión 0
+         no lo tiene: el iPhone escribe la versión 0 con valores negativos, y
+         leídos sin signo daban cuatro mil millones —los cuadros quedaban a
+         horas de distancia—. ffmpeg hace lo mismo, por lo mismo. */
+      const n = vista.getUint32(ini + 4); const v = [];
+      for(let k = 0; k < n; k++){
+        v.push([vista.getUint32(ini + 8 + k * 8), vista.getInt32(ini + 12 + k * 8)]);
+      }
+      t.ctts = v;
     }
     if(nombre === 'stss'){
       const n = vista.getUint32(ini + 4); t.stss = new Set();
@@ -581,8 +630,11 @@ export function leerMp4(buffer){
             if(f & 0x000100){ d = vista.getUint32(p); p += 4; }
             if(f & 0x000200){ t = vista.getUint32(p); p += 4; }
             if(f & 0x000400){ bb = vista.getUint32(p); p += 4; }
-            if(f & 0x000800){ p += 4; }   // el corrimiento de composición no se usa
-            lista.push({ duracion: d, tamano: t, banderas: bb });
+            // cuánto después de decodificarse se muestra: ver ctts
+            let cc = 0;
+            // con signo siempre, como en ctts: los archivos reales no respetan la versión
+            if(f & 0x000800){ cc = vista.getInt32(p); p += 4; }
+            lista.push({ duracion: d, tamano: t, banderas: bb, composicion: cc });
           }
           corridas.push({ desde: base + desplazamiento, lista });
         }
@@ -602,7 +654,7 @@ export function leerMp4(buffer){
         for(const m of c.lista){
           pista.fragmentadas.push({
             datos: pedazo(buffer, pos, m.tamano),
-            tiempo: reloj ?? 0,
+            tiempo: (reloj ?? 0) + m.composicion,
             duracion: m.duracion,
             // el bit 16 marca «esta no es cuadro clave»
             clave: ((m.banderas >>> 16) & 1) === 0,
@@ -636,6 +688,11 @@ export function leerMp4(buffer){
       for(let k = 0; k < cuantos; k++) duraciones.push(dura);
     }
 
+    const corrimientos = [];
+    for(const [cuantos, cuanto] of (t.ctts || [])){
+      for(let k = 0; k < cuantos; k++) corrimientos.push(cuanto);
+    }
+
     const muestras = [];
     let n = 0, tiempo = 0;
     for(let c = 0; c < t.stco.length && n < t.stsz.length; c++){
@@ -645,13 +702,29 @@ export function leerMp4(buffer){
         const dura = duraciones[n] ?? 0;
         muestras.push({
           datos: pedazo(buffer, pos, largo),
-          tiempo, duracion: dura,
+          // la hora en que se muestra, no en la que se decodifica
+          tiempo: tiempo + (corrimientos[n] || 0), duracion: dura,
           clave: t.stss ? t.stss.has(n + 1) : true,   // sin stss, todas son clave
         });
         pos += largo; tiempo += dura; n++;
       }
     }
     p.muestras = muestras;
+  }
+
+  /* Las muestras siguen en el orden en que se decodifican —es el que pide el
+     decodificador—, pero cada una con la hora en que se muestra. Antes la
+     hora era la de decodificar: con cuadros B, el decodificador los devolvía
+     en orden de pantalla con las horas cambiadas, y al repartirlos en la
+     rejilla de 30 por segundo algunos se repetían y otros se perdían. El
+     video salía a saltitos aunque el camino rápido anduviera.
+     Se corre todo para que el primero que se ve quede en cero: el corrimiento
+     de composición suele empezar en un cuadro o dos. */
+  for(const p of pistas){
+    if(!p.muestras?.length) continue;
+    let primero = Infinity;
+    for(const m of p.muestras) if(m.tiempo < primero) primero = m.tiempo;
+    if(primero !== 0) for(const m of p.muestras) m.tiempo -= primero;
   }
 
   return {

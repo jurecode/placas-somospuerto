@@ -1430,7 +1430,7 @@ async function pintarLaminas(){
         <button type="button" class="archivo"
                 onclick="this.parentNode.querySelector('input').click()">Cambiar…</button>
         <button type="button" class="archivo" data-quitar="${i}">Quitar</button>
-        <input type="file" accept="image/*,video/mp4,video/quicktime" data-lamina-foto="${i}">
+        <input type="file" accept="image/*,video/*" data-lamina-foto="${i}">
         <div class="ajuste">${AJUSTES.map(([id, n, ayuda]) =>
           `<button data-lamina-ajuste="${i}:${id}" title="${ayuda}">${n}</button>`).join('')}</div>
         <div class="encuadre">
@@ -1587,11 +1587,17 @@ document.addEventListener('click', async (ev) => {
   }
 });
 
-$('#agregar_lamina').addEventListener('click', async () => {
-  placa.laminas = (placa.laminas || []).concat(
-    { foto: 'assets/marcador.jpg', ajuste: 'completa', x: 50, y: 50 });
-  cambio('laminas', placa.laminas);
-  await pintarLaminas();
+/* El botón abre el selector de archivos directo, con fotos y videos y
+   varios a la vez. Antes agregaba un casillero vacío con una foto de
+   muestra, que después había que cambiar: el botón decía «Agregar foto», y
+   en el teléfono —donde no se puede soltar un archivo arrastrándolo— no
+   había forma de adivinar que un video también entraba. */
+$('#agregar_lamina').addEventListener('click', () => $('#archivos_carrusel').click());
+$('#archivos_carrusel').addEventListener('change', async (ev) => {
+  const archivos = [...(ev.target.files || [])];
+  ev.target.value = '';
+  try{ await agregarAlCarrusel(archivos); }
+  catch(e){ estado(e.message, true); }
 });
 
 document.addEventListener('click', async (ev) => {
@@ -2132,12 +2138,9 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
     : await fuente.arrayBuffer();
 
   const { video, audio } = leerMp4(buffer);
-  /* Sin muestras en las tablas, casi siempre es un MP4 fragmentado: los que
-     salen del grabador del navegador y de varias apps de edición guardan los
-     cuadros en cajas `moof` sueltas en vez de en el índice del principio.
-     Este lector solo entiende el índice clásico. Se dice cuál es el caso para
-     que no parezca un archivo roto, y quien llama se pasa al camino lento,
-     que reproduce el video y no necesita leer nada. */
+  /* Sin muestras, el archivo tiene una forma que el lector no conoce. Se
+     dice cuál es el caso para que no parezca un archivo roto, y quien llama
+     se pasa al camino lento, que reproduce el video y no necesita leerlo. */
   if(!video || !video.muestras.length){
     const fragmentado = new TextDecoder('latin1')
       .decode(new Uint8Array(buffer.slice(0, Math.min(buffer.byteLength, 4096))))
@@ -2146,7 +2149,21 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
       ? 'el video viene fragmentado y este camino no lo puede leer'
       : 'no se pudo leer el índice del video');
   }
-  if(!video.descripcion) throw new Error('el video no viene en H.264');
+  if(!video.descripcion) throw new Error('el video no viene ni en H.264 ni en HEVC');
+
+  /* Se pregunta antes si este aparato sabe decodificarlo. HEVC —lo que
+     graba el iPhone de fábrica— no lo decodifica cualquier navegador: Safari
+     y Chrome en Mac sí, Chrome en Windows depende de la placa de video. Sin
+     preguntar, fallaba a mitad de camino con un error que no decía nada. */
+  const configDec = {
+    codec: video.codec, description: video.descripcion,
+    codedWidth: video.ancho, codedHeight: video.alto,
+  };
+  const { supported } = await VideoDecoder.isConfigSupported(configDec).catch(() => ({}));
+  if(!supported){
+    throw new Error(`este navegador no decodifica ${/^(hvc1|hev1)/.test(video.codec) ? 'HEVC' : video.codec}`
+      + ' por el camino rápido');
+  }
 
   /* Un lienzo normal y no uno fuera de pantalla: el de fuera de pantalla no
      siempre trae todo lo del dibujo —el espaciado entre letras, por ejemplo—
@@ -2220,8 +2237,11 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
     // una clave cada dos segundos, para que se pueda saltar dentro del video
     enc.encode(salida, { keyFrame: emitidos % (ritmoOrigen * 2) === 0 });
     salida.close();
-    siguiente += PASO;
     emitidos++;
+    /* El casillero siguiente se calcula desde cero y no sumando PASO: PASO
+       está redondeado —33.333 µs en vez de 33.333,33—, y al sumarlo la
+       rejilla se iba atrasando respecto de los cuadros. */
+    siguiente = Math.round(emitidos * 1e6 / ritmoOrigen);
   };
 
   const total = video.muestras.length;
@@ -2231,7 +2251,13 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
       if(cerrado){ cuadro.close(); return; }
       try{
         // los instantes que este cuadro deja atrás se llenan con lo anterior
-        while(hayDibujo && siguiente < cuadro.timestamp) emitir();
+        /* Cada cuadro va al casillero más cercano a su hora. Antes iba al
+           primero que le quedaba atrás: con la hora apenas corrida por el
+           redondeo —un microsegundo— el casillero se llenaba con el cuadro
+           anterior, que salía repetido, y todo el video quedaba corrido uno.
+           Medido con una pelota que cruza la pantalla: se quedaba quieta un
+           cuadro al principio. */
+        while(hayDibujo && siguiente + PASO / 2 <= cuadro.timestamp) emitir();
         pintar(ctx, cuadro, siguiente / 1e6);
         hayDibujo = true;
       }finally{
@@ -2242,10 +2268,7 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
     },
     error: (e) => { falla = e; },
   });
-  dec.configure({
-    codec: video.codec, description: video.descripcion,
-    codedWidth: video.ancho, codedHeight: video.alto,
-  });
+  dec.configure(configDec);
 
   const cerrarTodo = () => {
     cerrado = true;
@@ -2290,7 +2313,8 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
   /* Lo que quedó dibujado cubre hasta el final del original: se emiten los
      instantes que faltan para no cortar el video antes de tiempo. */
   const duracionOrigen = video.muestras.reduce((a, m) => a + m.duracion, 0) / video.reloj * 1e6;
-  while(hayDibujo && siguiente < duracionOrigen) emitir();
+  // con la misma tolerancia: si no, el redondeo agregaba un cuadro de más al final
+  while(hayDibujo && siguiente + PASO / 2 <= duracionOrigen) emitir();
   if(!emitidos && hayDibujo) emitir();       // un original de un solo cuadro
   await enc.flush(); enc.close();
   cerrado = true;
@@ -3202,6 +3226,7 @@ async function medidasDeVideo(ruta){
 }
 
 async function videoDeLamina(lam, i){
+  let rapidoNoPudo = false;   // ver más abajo: no se intenta dos veces
   /* Los videos de antes vienen ya grabados y sin el archivo original, así que
      no hay nada que volver a dibujarles. Se mandaban tal cual.
      El problema es que se grabaron cuando la placa era cuadrada, y en el
@@ -3288,6 +3313,7 @@ async function videoDeLamina(lam, i){
     let solo = null;
     if(hayCodecs()){
       try{
+        rapidoNoPudo = false;
         solo = await quemarConCodecs(lam.crudo,
           (ctx, cuadro) => {
             ctx.clearRect(0, 0, ANCHO_FEED, altoSalida);
@@ -3297,6 +3323,7 @@ async function videoDeLamina(lam, i){
           (b) => trabajo(rotulo, b, pista), ANCHO_FEED, altoSalida);
       }catch(e){
         if(String(e.message) === 'Cancelado') throw e;
+        rapidoNoPudo = true;
         anotar('no se pudo acomodar el video', { porque: String(e.message).slice(0, 120), nivel: 'aviso' });
       }
     }
@@ -3328,7 +3355,10 @@ async function videoDeLamina(lam, i){
   trabajo(rotulo, 0, espera);
 
   let video = null;
-  if(hayCodecs()){
+  /* Si el camino rápido ya no pudo con este archivo, no se lo vuelve a
+     intentar: fallaría igual, y cada intento carga el video entero en
+     memoria. Con dos seguidos, un video largo del iPhone tiraba la pestaña. */
+  if(hayCodecs() && !rapidoNoPudo){
     const arranque = Date.now();
     try{
       const logo = await cargarImagen(LOGO);
@@ -3405,30 +3435,40 @@ document.addEventListener('drop', async (ev) => {
     }else if(zona.dataset.lamina !== undefined){
       await reemplazarLamina(Number(zona.dataset.lamina), archivos[0]);
     }else{
-      // en la zona del carrusel se agregan todas las que entren
-      const lugar = MAX_LAMINAS - (placa.laminas || []).length;
-      const entran = archivos.slice(0, lugar);
-      if(!entran.length) return estado(`El carrusel ya está lleno: ${MAX_LAMINAS + 1} imágenes más el cierre`, true);
-      abrirTrabajo();
-      const suPlaca = placa;
-      try{
-        for(const [i, archivo] of entran.entries()){
-          // el video abre su propio aviso, con su porcentaje
-          if(esVideo(archivo)){ await agregarVideo(archivo); continue; }
-          trabajo(`Subiendo ${entran.length > 1 ? `${i + 1} de ${entran.length}` : 'la foto'}`,
-            i / entran.length, archivo.name);
-          const { ruta } = await guardarFoto(archivo);
-          if(placa !== suPlaca) return estado('Las fotos subieron, pero ya estabas en otra noticia.', true);
-          placa.laminas = (placa.laminas || []).concat({ foto: ruta, ajuste: 'completa', x: 50, y: 50 });
-        }
-      }finally{ cerrarTrabajo(); }
-      cambio('laminas', placa.laminas);
-      await pintarLaminas();
-      estado(`${entran.length} foto${entran.length > 1 ? 's' : ''} al carrusel` +
-             (archivos.length > entran.length ? ` (${archivos.length - entran.length} no entraron)` : ''));
+      await agregarAlCarrusel(archivos);
     }
   }catch(e){ estado(e.message, true); }
 });
+
+/* Fotos y videos al final del carrusel, todos los que entren. Lo usan el
+   botón y soltar archivos sobre el carrusel. */
+async function agregarAlCarrusel(archivos){
+  archivos = archivos.filter((f) => f.type.startsWith('image/') || esVideo(f));
+  if(!archivos.length || !placa) return;
+  const lugar = MAX_LAMINAS - (placa.laminas || []).length;
+  const entran = archivos.slice(0, lugar);
+  if(!entran.length) return estado(`El carrusel ya está lleno: ${MAX_LAMINAS + 1} imágenes más el cierre`, true);
+  abrirTrabajo();
+  const suPlaca = placa;
+  let fotos = 0, videos = 0;
+  try{
+    for(const [i, archivo] of entran.entries()){
+      // el video abre su propio aviso, con su porcentaje
+      if(esVideo(archivo)){ await agregarVideo(archivo); videos++; continue; }
+      trabajo(`Subiendo ${entran.length > 1 ? `${i + 1} de ${entran.length}` : 'la foto'}`,
+        i / entran.length, archivo.name);
+      const { ruta } = await guardarFoto(archivo);
+      if(placa !== suPlaca) return estado('Las fotos subieron, pero ya estabas en otra noticia.', true);
+      placa.laminas = (placa.laminas || []).concat({ foto: ruta, ajuste: 'completa', x: 50, y: 50 });
+      fotos++;
+    }
+  }finally{ cerrarTrabajo(); }
+  cambio('laminas', placa.laminas);
+  await pintarLaminas();
+  const partes = [fotos && `${fotos} foto${fotos > 1 ? 's' : ''}`, videos && `${videos} video${videos > 1 ? 's' : ''}`].filter(Boolean);
+  estado(`${partes.join(' y ')} al carrusel` +
+         (archivos.length > entran.length ? ` (${archivos.length - entran.length} no entraron)` : ''));
+}
 
 $('#selector').addEventListener('change', (ev) => cargar(Number(ev.target.value)));
 $('#nueva').addEventListener('click', abrirPortada);
