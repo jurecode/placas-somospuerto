@@ -193,24 +193,28 @@
     </div>
     <div id="fb_resultado" class="nota"></div>
 
-    <!-- Pasos según la documentación de Meta de octubre de 2026 (Pages API).
+    <!-- Pasos según la documentación de Meta de octubre de 2026 (Pages API), con
+         los nombres de los menús como aparecen con Meta en español.
          Si los menús dejan de coincidir, hay que actualizar esto. -->
     <details class="guia" open>
       <summary>Cómo conectar la página, paso a paso</summary>
       <ol>
-        <li>Abrí el <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">Explorador de la Graph API</a>
+        <li>Abrí el <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">Explorador de la API Graph</a>
           con una cuenta de Facebook que administre la página del medio.</li>
-        <li>A la derecha, en <b>Meta App</b>, elegí la misma app de publicación. En
-          <b>User or Page</b> elegí <b>Get User Access Token</b> (token de usuario).</li>
-        <li>En <b>Permissions</b> agregá estos tres: <code>pages_show_list</code>,
-          <code>pages_manage_posts</code> y <code>pages_read_engagement</code>.
-          Si no aparecen, en la app andá a <b>Casos de uso</b> y agregá el de administrar páginas.</li>
-        <li>Tocá <b>Generate Access Token</b>. Se abre Facebook: marcá la página del medio
-          y aceptá todos los permisos.</li>
-        <li>Copiá el token con el botón de copiar y pegalo en el
-          <a href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank" rel="noopener noreferrer">Depurador de tokens</a>.
-          Tocá <b>Debug</b> y abajo de todo <b>Extend Access Token</b>. Copiá el token nuevo
-          que aparece: ese es el que dura.</li>
+        <li>A la derecha, en <b>App de Meta</b>, elegí la app de publicación de este medio:
+          la misma con la que sacaste el token de Instagram. Fijate que no quede elegida la
+          de otro medio.</li>
+        <li>En <b>Usuario o página</b>, abrí el menú y elegí <b>Obtener token de acceso de usuario</b>.</li>
+        <li>Más abajo, en <b>Permisos</b>, usá <b>Agregar un permiso</b> para sumar estos tres:
+          <code>pages_show_list</code>, <code>pages_manage_posts</code> y
+          <code>pages_read_engagement</code>. Si alguno no aparece, en la app andá a
+          <b>Casos de uso</b> y agregá el de administrar páginas.</li>
+        <li>Tocá el botón azul <b>Generate Access Token</b> (generar token; Meta lo deja en
+          inglés). Se abre Facebook: marcá la página del medio y aceptá todos los permisos.</li>
+        <li>Copiá el token con el botón de copiar que está al lado del campo <b>Token de acceso</b>.</li>
+        <li>Abrí el <a href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank" rel="noopener noreferrer">Depurador de tokens de acceso</a>,
+          pegalo y tocá <b>Depurar</b>. Abajo de todo tocá <b>Ampliar token de acceso</b>
+          (en inglés, <b>Extend Access Token</b>) y copiá el token nuevo que aparece: ese es el que dura.</li>
         <li>Pegalo arriba, en <b>Token de Facebook</b>, y tocá <b>Conectar</b>. Si manejás
           varias páginas, elegí la del medio.</li>
       </ol>
