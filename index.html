@@ -61,6 +61,10 @@
     color:var(--suave); font-weight:400; display:block; font-size:12px;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
+  /* la fila de adentro ocupa el encabezado y nada más: sin esto, un título
+     largo la estiraba más allá del panel y empujaba «Nueva», «Duplicar» y la
+     cuenta fuera de la vista. Así el título se corta con «…» */
+  .panel > header > .fila{ flex:1; min-width:0 }
   .panel > header button{ padding:7px 13px; font-size:12px; flex:none }
 
   /* la cuenta con la que se entró: su foto, con un borde blanco como en la
