@@ -251,7 +251,10 @@ function primeraCuenta(){
       crear las del resto del equipo. Para probar que sos quien maneja el sitio, poné la
       clave de siempre, la que está en <code>api/config.php</code>.</p>
     <form id="form_primera" style="display:grid; gap:10px">
-      <input id="p_sitio" type="password" placeholder="Clave del sitio" required autocomplete="off">
+      <p class="nota" id="p_guardada" hidden>La clave del sitio ya está puesta: es la que este
+        navegador usa para entrar al editor. Completá lo tuyo y listo.</p>
+      <input id="p_sitio" type="password" placeholder="Clave del sitio" required autocomplete="off"
+             data-lpignore="true" data-1p-ignore>
       <input id="p_nombre" placeholder="Tu nombre, como va a salir en las placas" required maxlength="80">
       <input id="p_usuario" placeholder="Tu usuario, para entrar" required maxlength="40" autocapitalize="none" spellcheck="false">
       <input id="p_clave" type="password" placeholder="Tu contraseña, al menos 8 caracteres" required minlength="8" autocomplete="new-password">
@@ -259,6 +262,16 @@ function primeraCuenta(){
       <p class="nota error" id="p_error" aria-live="polite"></p>
       <button class="principal" type="submit">Crear y entrar</button>
     </form>`);
+  /* La clave del sitio ya está en este navegador si se usó el editor: se
+     pone sola. Escribirla a mano fallaba sin que se viera por qué —el
+     navegador autocompletaba el campo con otra contraseña, o la clave
+     tenía un espacio—. Igual hace falta tenerla: es la misma prueba. */
+  const guardada = localStorage.getItem('clave_publicar') || '';
+  if(guardada && !/^[a-f0-9]{64}$/.test(guardada)){
+    $('#p_sitio').value = guardada;
+    $('#p_sitio').hidden = true;
+    $('#p_guardada').hidden = false;
+  }
   $('#form_primera').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     if($('#p_clave').value !== $('#p_clave2').value){ $('#p_error').textContent = 'Las dos contraseñas no son iguales.'; return; }
@@ -270,7 +283,12 @@ function primeraCuenta(){
       if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
       localStorage.setItem('clave_publicar', d.token);
       location.reload();
-    }catch(e){ $('#p_error').textContent = e.message; }
+    }catch(e){
+      $('#p_error').textContent = e.message;
+      // si la que estaba guardada no sirvió, que se pueda escribir otra
+      $('#p_sitio').hidden = false;
+      $('#p_guardada').hidden = true;
+    }
   });
 }
 

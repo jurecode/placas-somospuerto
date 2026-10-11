@@ -224,10 +224,18 @@ function iso_utc(?string $fecha): ?string {
    cron de las programadas y el panel de configuración, que no tienen
    usuario. Cualquier otra cosa se busca entre las sesiones abiertas.
    Devuelve null si no es nadie. */
+/* Si lo que llegó es la clave del sitio. Sin los espacios de las puntas,
+   de los dos lados: un espacio pegado al copiarla en config.php no se ve,
+   y hacía que la clave «correcta» fuera rechazada. */
+function es_clave_del_sitio(string $recibida): bool {
+    return definida('PUBLICAR_CLAVE')
+        && hash_equals(trim((string) PUBLICAR_CLAVE), trim($recibida));
+}
+
 function quien_es(?array $cuerpo = null): ?array {
     $recibida = trim((string) ($cuerpo['clave'] ?? clave_recibida()));
     if ($recibida === '') return null;
-    if (definida('PUBLICAR_CLAVE') && hash_equals(PUBLICAR_CLAVE, $recibida)) {
+    if (es_clave_del_sitio($recibida)) {
         return ['id' => null, 'sitio' => true, 'usuario' => '', 'nombre' => '', 'foto' => '', 'rol' => 'admin'];
     }
     if (!preg_match('/^[a-f0-9]{64}$/', $recibida)) return null;

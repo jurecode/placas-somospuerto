@@ -119,8 +119,7 @@ try {
        que es la prueba de que quien la crea es el dueño, y anda una sola
        vez: con una cuenta creada, las demás salen del panel del equipo. */
     if ($tarea === 'primera') {
-        if (!definida('PUBLICAR_CLAVE')
-            || !hash_equals(PUBLICAR_CLAVE, trim((string) ($cuerpo['clave_sitio'] ?? '')))) {
+        if (!es_clave_del_sitio((string) ($cuerpo['clave_sitio'] ?? ''))) {
             responder(['error' => 'La clave del sitio no es la correcta.'], 403);
         }
         if (hay_usuarios()) responder(['error' => 'Ya hay cuentas creadas: entrá con la tuya.'], 409);
