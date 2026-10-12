@@ -1424,6 +1424,7 @@ async function cargar(id){
   pintarBarra();
   await pintarSelector();
   $('#portada').hidden = true;
+  arrancado();
   repintar();
   prepararProgramar();
   estado('');
@@ -4013,6 +4014,7 @@ async function pantallaIngreso(mensaje){
     </form>
     <p class="pista">La cuenta te la crea quien administra el equipo.</p>`;
   portada.hidden = false;
+  arrancado();
 
   const form = $('#ingreso');
   form.addEventListener('submit', async (ev) => {
@@ -4127,6 +4129,7 @@ function pantallaError(mensaje){
       <a class="tarjeta-chica" href="panel-a7f3c9e21b.html">Abrir el panel de configuración</a>
     </div>`;
   portada.hidden = false;
+  arrancado();
   $('#reintentar').addEventListener('click', () => location.reload());
 }
 
@@ -4147,6 +4150,7 @@ function pantallaClave(mensaje){
       <button class="tarjeta-chica" id="entrar">Entrar</button>
     </div>`;
   portada.hidden = false;
+  arrancado();
 
   const entrar = () => {
     const v = $('#clave_entrada').value.trim();
@@ -4159,6 +4163,11 @@ function pantallaClave(mensaje){
   $('#clave_entrada').focus();
 }
 
+/* Ya hay algo que mostrar: se saca el velo del arranque. */
+function arrancado(){ document.body.classList.remove('arrancando'); }
+// por las dudas: si algo se colgara, que nunca quede la pantalla en blanco
+setTimeout(arrancado, 10000);
+
 async function abrirPortada(){
   const ultima = await ultimaPlaca();
   const seguir = $('#seguir');
@@ -4168,6 +4177,7 @@ async function abrirPortada(){
     seguir.dataset.id = ultima.id;
   }
   $('#portada').hidden = false;
+  arrancado();
 }
 
 $('#portada').addEventListener('click', async (ev) => {

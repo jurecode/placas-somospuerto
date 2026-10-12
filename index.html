@@ -393,6 +393,18 @@
     padding:32px; overflow-y:auto;   /* si no entra, que se pueda scrollear */
   }
   .portada[hidden]{ display:none }
+  /* el arranque: el editor no se ve hasta que se sabe qué mostrar */
+  body.arrancando .panel, body.arrancando .previa, body.arrancando .barra{ visibility:hidden }
+  .arranque{ display:none }
+  body.arrancando .arranque{
+    display:grid; place-items:center; position:fixed; inset:0; z-index:40; background:var(--bg);
+  }
+  .arranque i{
+    width:28px; height:28px; border-radius:50%; border:3px solid var(--boton-claro);
+    border-top-color:var(--texto); animation:girar .8s linear infinite;
+  }
+  @keyframes girar{ to{ transform:rotate(360deg) } }
+  @media (prefers-reduced-motion: reduce){ .arranque i{ animation-duration:2.4s } }
   .portada h2{ font-size:22px; font-weight:600; letter-spacing:.01em }
   /* Los formatos: en fila en pantallas anchas, de a dos en las demás. Van
      centrados y no en columnas fijas: un medio que ofrece menos formatos
@@ -794,7 +806,10 @@
   }
 </style>
 </head>
-<body>
+<body class="arrancando">
+<!-- Mientras arranca —ver la sesión, buscar las placas— no se muestra el
+     editor vacío: solo el fondo y esto. Se va en cuanto hay algo que mostrar. -->
+<div class="arranque" aria-hidden="true"><i></i></div>
 
 <div class="portada" id="portada" hidden>
   <h2>¿Qué vas a publicar?</h2>
