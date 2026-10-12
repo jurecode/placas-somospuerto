@@ -1903,7 +1903,8 @@ async function pintarCola(){
       <li class="${esc(p.estado)}">
         <b>${esc(new Date(p.publicar_en).toLocaleString('es-CL',
               { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</b>
-        <span>${esc(p.nombre)} · ${esc(p.estado)}</span>
+        <span>${esc(String(p.nombre || '').replace(/\*/g, ''))}</span>
+        <em>${esc(p.estado)}</em>
         ${p.estado === 'pendiente'
           ? `<button class="descarga quitar" data-quitar-cola="${p.id}">Cancelar</button>` : ''}
       </li>`).join('') || '<li class="pendiente">Nada programado.</li>');

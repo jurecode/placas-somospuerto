@@ -100,6 +100,9 @@
   fieldset{
     border:0; background:var(--panel); border-radius:var(--radio);
     padding:16px 18px; margin-bottom:12px;
+    /* por defecto un fieldset mide al menos lo que su contenido más ancho:
+       un texto que no se corta lo estiraba más allá del panel */
+    min-width:0;
   }
   legend{
     font-size:10.5px; text-transform:uppercase; letter-spacing:.12em;
@@ -575,7 +578,9 @@
   .ahora li.libre{ color:var(--suave); border-style:dashed }
 
   /* ---------- programar ---------- */
-  .programar .cuando{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:stretch }
+  /* minmax(0, …): el selector de fecha tiene un ancho mínimo propio y, con
+     1fr a secas, empujaba el botón fuera de la tarjeta */
+  .programar .cuando{ display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:8px; align-items:stretch }
   /* color-scheme oscuro: sin esto el calendario que abre el sistema sale
      blanco y encandila en medio de un editor oscuro */
   #cuando{
@@ -591,14 +596,19 @@
   #cuando::-webkit-calendar-picker-indicator:hover{ filter:invert(1) opacity(1) }
   .programar #programar{ white-space:nowrap }
 
-  .programar ul{ list-style:none; display:grid; gap:6px; margin-top:14px }
+  /* sin la sangría de las listas, y con una columna que no crece más que la
+     tarjeta: como celda de grilla, cada renglón medía lo que su texto */
+  .programar ul{ list-style:none; display:grid; grid-template-columns:minmax(0, 1fr); gap:6px; margin-top:14px; padding:0 }
   .programar li{
     display:flex; gap:9px; align-items:center; font-size:12.5px;
     background:var(--hueco); border:1px solid var(--linea); border-radius:8px;
     padding:8px 10px;
   }
-  .programar li b{ font-weight:600; color:var(--texto); font-variant-numeric:tabular-nums }
-  .programar li span{ color:var(--suave); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .programar li b{ font-weight:600; color:var(--texto); font-variant-numeric:tabular-nums; flex:none; white-space:nowrap }
+  /* el nombre se corta con «…»; sin min-width:0 no se achicaba y estiraba
+     toda la sección hasta el largo del titular */
+  .programar li span{ color:var(--suave); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1 }
+  .programar li em{ font-style:normal; color:var(--suave); font-size:11.5px; flex:none }
   .programar li .quitar{ margin-left:auto; padding:4px 9px; font-size:11px; flex:none }
   /* un punto de color al costado dice en qué está cada una */
   .programar li::before{
