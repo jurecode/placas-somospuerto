@@ -21,7 +21,14 @@ exigir_clave($cuerpo);
 function nombrar(string $titulo): string {
     foreach (explode("\n", $titulo) as $linea) {
         $linea = trim($linea);
-        if ($linea !== '') return mb_substr($linea, 0, 60);
+        if ($linea === '') continue;
+        if (mb_strlen($linea) <= 60) return $linea;
+        // largo: se corta en la última palabra entera y se avisa con «…», en
+        // vez de quedar «… por "Flamenco" en e»
+        $corto = mb_substr($linea, 0, 59);
+        $espacio = mb_strrpos($corto, ' ');
+        if ($espacio !== false && $espacio > 35) $corto = mb_substr($corto, 0, $espacio);
+        return rtrim($corto, " ,.;:-") . '…';
     }
     return 'Placa sin título';
 }
