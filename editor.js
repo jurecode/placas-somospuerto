@@ -1425,7 +1425,7 @@ async function cargar(id){
   await pintarSelector();
   $('#portada').hidden = true;
   repintar();
-  pintarCola();
+  prepararProgramar();
   estado('');
 }
 
@@ -1900,33 +1900,171 @@ async function cargaParaProgramar(){
   return { items };
 }
 
+/* La fecha como se dice: «lun 12 oct, 20:00». */
+const fechaLarga = (d) => d.toLocaleString('es-CL',
+  { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+/* «en 2 h 15 min» o «hace 3 h», según falte o ya haya pasado. */
+function cuantoFalta(ms){
+  const min = Math.round(Math.abs(ms) / 60000);
+  const h = Math.floor(min / 60), d = Math.floor(h / 24);
+  const t = d >= 1 ? `${d} d${h % 24 ? ' ' + (h % 24) + ' h' : ''}`
+    : h >= 1 ? `${h} h${min % 60 ? ' ' + (min % 60) + ' min' : ''}`
+    : `${Math.max(1, min)} min`;
+  return ms >= 0 ? `en ${t}` : `hace ${t}`;
+}
+
+/* Lo que pide el selector de fecha: la hora local, sin zona. */
+const aLocal = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+
+/* Las horas rápidas. Las de hoy que ya pasaron (o están a menos de veinte
+   minutos) no se ofrecen. */
+function horasRapidas(){
+  const ahora = new Date();
+  const en = (min) => new Date(Math.ceil((ahora.getTime() + min * 60000) / 300000) * 300000);
+  const a = (dias, h) => { const d = new Date(ahora); d.setDate(d.getDate() + dias); d.setHours(h, 0, 0, 0); return d; };
+  const lista = [['En 30 min', en(30)], ['En 1 hora', en(60)]];
+  for(const h of [13, 20]){
+    const hoy = a(0, h);
+    if(hoy - ahora > 20 * 60000) lista.push([`Hoy ${h}:00`, hoy]);
+  }
+  lista.push(['Mañana 8:00', a(1, 8)], ['Mañana 13:00', a(1, 13)]);
+  return lista.slice(0, 5);
+}
+
+function pintarAtajos(){
+  const caja = $('#atajos_cuando');
+  if(!caja) return;
+  caja.innerHTML = horasRapidas()
+    .map(([texto, d]) => `<button type="button" data-cuando="${aLocal(d)}">${esc(texto)}</button>`).join('');
+}
+
+/* Debajo del selector, en palabras: cuándo sale, cuánto falta y dónde. */
+function decirCuando(){
+  const el = $('#cuando_dice');
+  if(!el) return;
+  const v = $('#cuando').value;
+  el.className = 'cuando-dice';
+  if(!v){ el.textContent = 'Elegí cuándo sale, o tocá una de las horas rápidas.'; return; }
+  const d = new Date(v);
+  const falta = d - Date.now();
+  if(falta < 30000){
+    el.className = 'cuando-dice mal';
+    el.textContent = 'Esa hora ya pasó: elegí una más adelante.';
+    return;
+  }
+  const redes = redesElegidas();
+  el.textContent = `Sale el ${fechaLarga(d)}, ${cuantoFalta(falta)}`
+    + (redes.length ? `, en ${enRedes(redes)}.` : '. Falta elegir en qué redes, arriba de Publicar.');
+}
+
+/* Al abrir una placa: las horas rápidas, una hora sugerida (la próxima en
+   punto, con al menos media hora de margen) y la lista. */
+function prepararProgramar(){
+  const campo = $('#cuando');
+  if(!campo) return;
+  campo.min = aLocal(new Date());
+  if(!campo.value || new Date(campo.value) < Date.now()){
+    const d = new Date(Date.now() + 30 * 60000);
+    d.setMinutes(0, 0, 0);
+    d.setHours(d.getHours() + 1);
+    campo.value = aLocal(d);
+  }
+  pintarAtajos();
+  decirCuando();
+  pintarCola();
+}
+
+const ESTADO_COLA = { pendiente: 'programada', publicando: 'saliendo', publicada: 'publicada', error: 'falló' };
+let hayProximas = false;
+
+function itemCola(p){
+  const d = new Date(p.publicar_en);
+  const [primera, ...resto] = String(p.resultado || '').split('\n');
+  const enlace = /^https?:\/\//.test(primera) ? primera : null;
+  const meta = [p.redes?.length ? 'En ' + enRedes(p.redes) : '', p.quien ? 'por ' + p.quien : '']
+    .filter(Boolean).join(' · ');
+  const cuando = p.estado === 'publicando' ? 'saliendo ahora' : cuantoFalta(d - Date.now());
+  const acciones = p.estado === 'pendiente'
+    ? `<button type="button" data-cola="mover">Cambiar hora</button>
+       <button type="button" data-cola="ahora">Publicar ya</button>
+       <button type="button" data-cola="quitar" class="quitar">Cancelar</button>`
+    : p.estado === 'error'
+      ? `<button type="button" data-cola="mover">Reprogramar</button>
+         <button type="button" data-cola="ahora">Reintentar ya</button>`
+      : '';
+  return `
+    <li class="${esc(p.estado)}" data-id="${p.id}" data-cuando="${esc(p.publicar_en)}">
+      <div class="cola-fila">
+        <b>${esc(fechaLarga(d))}</b><small>${esc(cuando)}</small>
+        <em>${esc(ESTADO_COLA[p.estado] || p.estado)}</em>
+      </div>
+      <span class="cola-nombre" title="${esc(sinMarcas(p.nombre))}">${esc(sinMarcas(p.nombre))}</span>
+      ${meta ? `<small class="cola-meta">${esc(meta)}</small>` : ''}
+      ${p.estado === 'error' && p.resultado ? `<small class="cola-motivo">${esc(p.resultado)}</small>` : ''}
+      ${p.estado === 'publicada' && (enlace || resto.length)
+        ? `<small class="cola-meta">${enlace ? `<a href="${esc(enlace)}" target="_blank" rel="noopener">Ver la publicación</a>` : ''}${
+            resto.length ? (enlace ? ' · ' : '') + esc(resto.join(' ')) : ''}</small>` : ''}
+      ${acciones ? `<div class="cola-acciones">${acciones}</div>` : ''}
+      <div class="cola-mover" hidden>
+        <input type="datetime-local" aria-label="Nueva fecha y hora">
+        <button type="button" data-cola="guardar" class="principal">Guardar</button>
+        <button type="button" data-cola="cerrar">Volver</button>
+      </div>
+    </li>`;
+}
+
+/* La lista: primero lo que falta salir, de la más próxima a la más lejana, y
+   después las últimas que salieron o fallaron. */
 async function pintarCola(){
   const cola = $('#cola');
   if(!cola) return;
+  // si se está cambiando una hora, no se le borra el campo de abajo
+  if(cola.querySelector('.cola-mover:not([hidden])')) return;
   try{
     const { programadas, ahora, ahora_bd: bd } = await api('api/programar.php');
     // si los relojes del servidor no coinciden, lo programado sale a
     // destiempo y hay que saberlo antes de que pase
     const desfase = bd ? Math.abs(new Date(ahora) - new Date(bd.replace(' ', 'T') + 'Z')) : 0;
     const aviso = desfase > 120000
-      ? `<li class="error">Ojo: el reloj de la base va ${Math.round(desfase / 60000)} min
-         corrido respecto del servidor. Avisale a quien programó esto.</li>`
+      ? `<li class="vacia" style="color:var(--mal)">Ojo: el reloj de la base va ${Math.round(desfase / 60000)} min
+         corrido respecto del servidor. Avisale a quien administra el sitio.</li>`
       : '';
-    cola.innerHTML = aviso + ((programadas || []).map((p) => `
-      <li class="${esc(p.estado)}">
-        <b>${esc(new Date(p.publicar_en).toLocaleString('es-CL',
-              { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</b>
-        <span>${esc(sinMarcas(p.nombre))}</span>
-        <em>${esc(p.estado)}</em>
-        ${p.estado === 'pendiente'
-          ? `<button class="descarga quitar" data-quitar-cola="${p.id}">Cancelar</button>` : ''}
-      </li>`).join('') || '<li class="pendiente">Nada programado.</li>');
-  }catch(e){ cola.innerHTML = `<li class="error">${esc(e.message)}</li>`; }
+    const lista = programadas || [];
+    const proximas = lista.filter((p) => ['pendiente', 'publicando'].includes(p.estado));
+    const hechas = lista.filter((p) => !['pendiente', 'publicando'].includes(p.estado));
+    hayProximas = proximas.length > 0;
+    cola.innerHTML = aviso
+      + `<li class="cola-titulo">Próximas${proximas.length ? ' · ' + proximas.length : ''}</li>`
+      + (proximas.map(itemCola).join('') || '<li class="vacia">Nada programado todavía.</li>')
+      + (hechas.length ? '<li class="cola-titulo">Recientes</li>' + hechas.map(itemCola).join('') : '');
+  }catch(e){ cola.innerHTML = `<li class="vacia" style="color:var(--mal)">${esc(e.message)}</li>`; }
 }
+
+$('#atajos_cuando')?.addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-cuando]');
+  if(!b) return;
+  $('#cuando').value = b.dataset.cuando;
+  decirCuando();
+});
+$('#cuando')?.addEventListener('input', decirCuando);
+$('#redes')?.addEventListener('change', decirCuando);
+
+/* Cada minuto: las horas rápidas y el «en tanto» se ponen al día, y si hay
+   algo por salir, la lista también —así se ve pasar de programada a
+   publicada sin recargar—. Con la pestaña escondida no se pregunta nada. */
+setInterval(() => {
+  if(document.visibilityState !== 'visible' || !placa) return;
+  pintarAtajos();
+  decirCuando();
+  if(hayProximas) pintarCola();
+}, 60000);
 
 $('#programar').addEventListener('click', async (ev) => {
   const cuando = $('#cuando').value;
   if(!cuando) return estado('Elegí la fecha y la hora.', true);
+  // antes de preparar nada: si la hora ya pasó, el servidor la rechazaría al final
+  if(new Date(cuando) - Date.now() < 30000) return estado('Esa hora ya pasó: elegí una más adelante.', true);
   if(!String(placa.descripcion || '').trim()){
     return estado('Falta la descripción: es lo que va debajo de la publicación.', true);
   }
@@ -1975,7 +2113,7 @@ $('#programar').addEventListener('click', async (ev) => {
                  etiquetados: placa.etiquetados || '', redes, tiktok },
       }),
     });
-    estado('Programado para ' + enRedes(redes));
+    estado(`Programado: sale el ${fechaLarga(new Date(cuando))} en ${enRedes(redes)}`);
     await pintarCola();
   }catch(e){ estado(e.message, true); }
   finally{
@@ -1986,12 +2124,56 @@ $('#programar').addEventListener('click', async (ev) => {
 });
 
 $('#cola').addEventListener('click', async (ev) => {
-  const b = ev.target.closest('[data-quitar-cola]');
+  const b = ev.target.closest('[data-cola]');
   if(!b) return;
+  const li = b.closest('li[data-id]');
+  const id = Number(li.dataset.id);
+  const caja = li.querySelector('.cola-mover');
+  const pedir = (cuerpo) => api('api/programar.php', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clave: clave(), id, ...cuerpo }),
+  });
   try{
-    await api('api/programar.php?id=' + b.dataset.quitarCola, { method: 'DELETE' });
-    await pintarCola();
+    switch(b.dataset.cola){
+      case 'mover': {
+        // arranca en la hora que tenía, o en una hora más si esa ya pasó
+        const antes = new Date(li.dataset.cuando);
+        const campo = caja.querySelector('input');
+        campo.min = aLocal(new Date());
+        campo.value = aLocal(antes > Date.now() ? antes : new Date(Date.now() + 3600000));
+        caja.hidden = false;
+        campo.focus();
+        return;
+      }
+      case 'cerrar':
+        caja.hidden = true;
+        return;
+      case 'guardar': {
+        const v = caja.querySelector('input').value;
+        if(!v) return;
+        b.disabled = true;
+        const r = await pedir({ tarea: 'mover', publicar_en: new Date(v).toISOString() });
+        caja.hidden = true;
+        estado('Ahora sale el ' + fechaLarga(new Date(r.publicar_en)));
+        break;
+      }
+      case 'ahora': {
+        if(!confirm('¿Publicarla ahora mismo, sin esperar la hora?')) return;
+        b.disabled = true;
+        b.textContent = 'Publicando…';
+        const r = await pedir({ tarea: 'ahora' });
+        estado('Publicada' + (r.aviso ? ' — ' + r.aviso : ''));
+        break;
+      }
+      case 'quitar':
+        if(!confirm('¿Cancelar esta publicación? No va a salir.')) return;
+        await api('api/programar.php?id=' + id, { method: 'DELETE' });
+        estado('Cancelada');
+        break;
+    }
   }catch(e){ estado(e.message, true); }
+  if(caja) caja.hidden = true;
+  await pintarCola();
 });
 
 $('#copiar').addEventListener('click', async () => {

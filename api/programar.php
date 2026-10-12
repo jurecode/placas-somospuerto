@@ -28,13 +28,27 @@ $quien = exigir_clave($cuerpo);
 
 try {
     if ($metodo === 'GET') {
-        // las fechas salen en UTC con la Z, para que el navegador las
-        // muestre en la hora de quien mira
-        $filas = bd()->query(
-            "SELECT id, nombre,
-                    DATE_FORMAT(publicar_en, '%Y-%m-%dT%H:%i:%sZ') AS publicar_en,
-                    estado, resultado
-             FROM programadas ORDER BY publicar_en DESC LIMIT 50")->fetchAll();
+        /* Primero lo que falta salir, de la más próxima a la más lejana; después
+           las últimas que ya salieron o fallaron. Las fechas van en UTC con la
+           Z, para que el navegador las muestre en la hora de quien mira. */
+        $campos = "id, nombre, DATE_FORMAT(publicar_en, '%Y-%m-%dT%H:%i:%sZ') AS publicar_en,
+                   estado, resultado, carga";
+        $proximas = bd()->query("SELECT $campos FROM programadas
+            WHERE estado IN ('pendiente', 'publicando') ORDER BY publicar_en ASC LIMIT 50")->fetchAll();
+        $hechas = bd()->query("SELECT $campos FROM programadas
+            WHERE estado NOT IN ('pendiente', 'publicando') ORDER BY publicar_en DESC LIMIT 15")->fetchAll();
+        // quién programó cada una: el nombre de su cuenta
+        $nombres = [];
+        foreach (bd()->query('SELECT id, nombre FROM usuarios')->fetchAll() as $u) $nombres[(int) $u['id']] = $u['nombre'];
+        $filas = array_map(static function ($f) use ($nombres) {
+            $c = json_decode((string) $f['carga'], true) ?: [];
+            unset($f['carga']);   // las piezas no hacen falta para la lista
+            $f['id'] = (int) $f['id'];
+            $f['redes'] = redes_pedidas($c);
+            $f['quien'] = isset($c['quien']) ? ($nombres[(int) $c['quien']] ?? null) : null;
+            $f['formato'] = $c['placa']['formato'] ?? null;
+            return $f;
+        }, array_merge($proximas, $hechas));
         // los dos relojes, para poder ver de un vistazo si alguno está corrido
         $relojBd = null;
         try { $relojBd = (string) bd()->query('SELECT UTC_TIMESTAMP()')->fetchColumn(); }
@@ -51,6 +65,36 @@ try {
     }
 
     if ($metodo !== 'POST') responder(['error' => 'Método no soportado'], 405);
+
+    $tarea = (string) ($cuerpo['tarea'] ?? '');
+
+    /* Cambiarle la hora a una que no salió todavía. Una que falló también se
+       puede reprogramar: vuelve a la cola con la hora nueva. */
+    if ($tarea === 'mover') {
+        $marca = strtotime(trim((string) ($cuerpo['publicar_en'] ?? '')));
+        if (!$marca) responder(['error' => 'La fecha no se entiende'], 400);
+        if ($marca < time() + 30) responder(['error' => 'Esa hora ya pasó'], 400);
+        $st = bd()->prepare("UPDATE programadas SET publicar_en = ?, estado = 'pendiente', resultado = NULL
+                             WHERE id = ? AND estado IN ('pendiente', 'error')");
+        $st->execute([gmdate('Y-m-d H:i:s', $marca), (int) ($cuerpo['id'] ?? 0)]);
+        if ($st->rowCount() === 0) responder(['error' => 'Esa ya salió o está saliendo: no se puede mover'], 409);
+        responder(['ok' => true, 'publicar_en' => gmdate('Y-m-d\TH:i:s\Z', $marca)]);
+    }
+
+    /* Publicarla ya, sin esperar la hora: la pendiente que se quiere adelantar
+       o la que falló y se quiere reintentar. Se marca primero, igual que la
+       cola, para que dos clics no la publiquen dos veces. */
+    if ($tarea === 'ahora') {
+        $id = (int) ($cuerpo['id'] ?? 0);
+        $marcar = bd()->prepare("UPDATE programadas SET estado = 'publicando', publicar_en = ?
+                                 WHERE id = ? AND estado IN ('pendiente', 'error')");
+        $marcar->execute([gmdate('Y-m-d H:i:s'), $id]);
+        if ($marcar->rowCount() === 0) responder(['error' => 'Esa ya salió o está saliendo'], 409);
+        $st = bd()->prepare('SELECT carga FROM programadas WHERE id = ?');
+        $st->execute([$id]);
+        $r = publicar_programada($id, (string) $st->fetchColumn());
+        responder($r, $r['ok'] ? 200 : 502);
+    }
 
     /* El navegador manda el instante en ISO con zona horaria y acá se
        guarda en UTC. Si se guardara la hora tal cual la escribe el usuario,

@@ -51,10 +51,14 @@
   /* Cada sección es una tarjeta suelta sobre el fondo, en vez de bloques
      pegados separados por una línea. Se leen como cosas distintas sin que
      haga falta dibujar ninguna raya. */
-  .panel{ overflow-y:auto; background:var(--bg); padding:12px 12px 4px }
+  /* Sin relleno arriba: el encabezado se pega al borde del panel y lo tapa
+     todo. Con los 12 px arriba en el panel, el encabezado se fijaba debajo de
+     ellos y por esa franja se veía pasar lo que estaba detrás. El aire lo
+     pone el propio encabezado. */
+  .panel{ overflow-y:auto; background:var(--bg); padding:0 12px 4px }
   .panel > header{
     position:sticky; top:0; z-index:2; background:var(--bg);
-    padding:6px 6px 14px; display:flex; gap:10px; align-items:center;
+    padding:18px 6px 14px; display:flex; gap:10px; align-items:center;
   }
   h1{ font-size:16px; letter-spacing:-.01em; flex:1; min-width:0; font-weight:650 }
   h1 small{
@@ -242,7 +246,7 @@
       width:7px; height:7px; border-radius:50%; background:var(--mal);
     }
     /* al saltar a una sección, que no quede tapada por el encabezado del panel */
-    fieldset[data-seccion]{ scroll-margin-top:72px }
+    fieldset[data-seccion]{ scroll-margin-top:84px }
   }
   @media (max-width:900px){
     .barra{
@@ -606,31 +610,53 @@
   #cuando::-webkit-calendar-picker-indicator:hover{ filter:invert(1) opacity(1) }
   .programar #programar{ white-space:nowrap }
 
+  /* las horas rápidas, arriba del selector */
+  .atajos{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px }
+  .atajos button{ padding:5px 11px; font-size:12px; border-radius:99px }
+  /* lo que va a pasar, dicho en palabras */
+  .cuando-dice{ font-size:12.5px; color:var(--suave); margin-top:8px; min-height:18px }
+  .cuando-dice.mal{ color:var(--mal) }
+
   /* sin la sangría de las listas, y con una columna que no crece más que la
      tarjeta: como celda de grilla, cada renglón medía lo que su texto */
   .programar ul{ list-style:none; display:grid; grid-template-columns:minmax(0, 1fr); gap:6px; margin-top:14px; padding:0 }
-  .programar li{
-    display:flex; gap:9px; align-items:center; font-size:12.5px;
-    background:var(--hueco); border:1px solid var(--linea); border-radius:8px;
-    padding:8px 10px;
+  .programar li.cola-titulo{
+    background:none; border:0; padding:8px 2px 0; font-size:11px; color:var(--suave);
+    text-transform:uppercase; letter-spacing:.08em; display:block;
   }
-  .programar li b{ font-weight:600; color:var(--texto); font-variant-numeric:tabular-nums; flex:none; white-space:nowrap }
-  /* el nombre se corta con «…»; sin min-width:0 no se achicaba y estiraba
-     toda la sección hasta el largo del titular */
-  .programar li span{ color:var(--suave); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1 }
-  .programar li em{ font-style:normal; color:var(--suave); font-size:11.5px; flex:none }
-  .programar li .quitar{ margin-left:auto; padding:4px 9px; font-size:11px; flex:none }
-  /* un punto de color al costado dice en qué está cada una */
-  .programar li::before{
-    content:''; width:7px; height:7px; border-radius:50%; flex:none; background:var(--suave);
+  .programar li.vacia{ background:none; border:1px dashed var(--linea); color:var(--suave); display:block }
+  .programar li[data-id]{
+    display:grid; gap:4px; font-size:12.5px; min-width:0;
+    background:var(--hueco); border:1px solid var(--linea); border-radius:10px;
+    padding:9px 11px; position:relative;
   }
-  .programar li.pendiente::before{ background:var(--aviso) }
-  /* la que está saliendo ahora va en blanco: es lo más brillante de la lista,
-     que es justo lo que hay que mirar */
-  .programar li.publicando::before{ background:var(--acento) }
-  .programar li.publicada::before{ background:var(--ok) }
-  .programar li.error::before{ background:var(--mal) }
-  .programar li.error{ color:var(--mal) }
+  .cola-fila{ display:flex; align-items:baseline; gap:8px; min-width:0 }
+  .cola-fila b{ font-weight:600; color:var(--texto); white-space:nowrap }
+  .cola-fila small{ color:var(--suave); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0 }
+  .cola-fila em{
+    margin-left:auto; flex:none; font-style:normal; font-size:11px; color:var(--suave);
+    display:inline-flex; align-items:center; gap:5px;
+  }
+  /* un punto de color dice en qué está cada una */
+  .cola-fila em::before{ content:''; width:7px; height:7px; border-radius:50%; background:var(--suave) }
+  li.pendiente .cola-fila em::before{ background:var(--aviso) }
+  /* la que está saliendo ahora va en blanco: es lo que hay que mirar */
+  li.publicando .cola-fila em::before{ background:var(--acento) }
+  li.publicada .cola-fila em::before{ background:var(--ok) }
+  li.error .cola-fila em::before{ background:var(--mal) }
+  /* el nombre se corta con «…»; sin min-width:0 estiraba toda la sección */
+  .cola-nombre{ color:var(--texto); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0 }
+  .cola-meta{ color:var(--suave); font-size:11.5px; overflow-wrap:anywhere }
+  .cola-meta a{ color:var(--ok) }
+  .cola-motivo{ color:var(--mal); font-size:11.5px; overflow-wrap:anywhere }
+  .cola-acciones{ display:flex; flex-wrap:wrap; gap:6px; margin-top:4px }
+  .cola-acciones button, .cola-mover button{ padding:4px 10px; font-size:11.5px }
+  .cola-acciones .quitar{ margin-left:auto; color:var(--mal) }
+  .cola-mover{ display:grid; grid-template-columns:minmax(0, 1fr) auto auto; gap:6px; margin-top:4px }
+  .cola-mover input{
+    color-scheme:dark; background:var(--panel); color:var(--texto); font:inherit; font-size:12px;
+    border:1px solid var(--linea); border-radius:8px; padding:5px 8px; min-width:0;
+  }
 
   /* Las descargas son de contorno y con flecha hacia abajo: se leen de un
      vistazo como lo contrario de publicar. */
@@ -916,14 +942,16 @@
   <fieldset data-seccion="mas" class="programar">
     <legend>Programar</legend>
     <p class="nota" style="margin-top:0">
-      Se publica sola a la hora que elijas. Las imágenes se generan y suben
-      ahora: cuando llegue el momento no va a haber ningún navegador que las
-      dibuje.
+      Sale sola a la hora que elijas, en las redes marcadas arriba de Publicar.
+      Las imágenes y los videos se preparan ahora: a esa hora no hace falta
+      tener nada abierto.
     </p>
+    <div class="atajos" id="atajos_cuando" aria-label="Horas rápidas"></div>
     <div class="cuando">
       <input type="datetime-local" id="cuando" aria-label="Fecha y hora">
       <button class="principal" id="programar">Programar</button>
     </div>
+    <p class="cuando-dice" id="cuando_dice" aria-live="polite"></p>
     <ul id="cola"></ul>
   </fieldset>
 

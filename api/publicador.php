@@ -465,22 +465,30 @@ function vaciar_cola(int $tope = 5): array {
         $marcar = bd()->prepare("UPDATE programadas SET estado = 'publicando' WHERE id = ? AND estado = 'pendiente'");
         $marcar->execute([$fila['id']]);
         if ($marcar->rowCount() === 0) continue;   // otra corrida se la llevó
-
-        try {
-            $carga = json_decode($fila['carga'], true) ?: [];
-            $r = publicar_ahora($carga);
-            registrar_redes(isset($carga['quien']) ? (int) $carga['quien'] : null,
-                (array) ($carga['placa'] ?? []), $r, true);
-            $upd = bd()->prepare("UPDATE programadas SET estado = 'publicada', resultado = ? WHERE id = ?");
-            $upd->execute([$r['enlace'] ?? ('id ' . $r['id']), $fila['id']]);
-            $hechas[] = ['id' => (int) $fila['id'], 'ok' => true, 'enlace' => $r['enlace'] ?? null];
-        } catch (Throwable $e) {
-            $upd = bd()->prepare("UPDATE programadas SET estado = 'error', resultado = ? WHERE id = ?");
-            $upd->execute([mb_substr($e->getMessage(), 0, 500), $fila['id']]);
-            $hechas[] = ['id' => (int) $fila['id'], 'ok' => false, 'error' => $e->getMessage()];
-        }
+        $hechas[] = publicar_programada((int) $fila['id'], (string) $fila['carga']);
     }
     return ['revisadas' => count($hechas), 'resultados' => $hechas];
+}
+
+/* Publica una programada que ya quedó marcada «publicando» y anota cómo
+   le fue. La usan la cola y el botón «Publicar ya» del editor.
+   En `resultado` va el enlace en la primera línea y, si hubo, el aviso en
+   la segunda: así el editor muestra las dos cosas. */
+function publicar_programada(int $id, string $cargaJson): array {
+    try {
+        $carga = json_decode($cargaJson, true) ?: [];
+        $r = publicar_ahora($carga);
+        registrar_redes(isset($carga['quien']) ? (int) $carga['quien'] : null,
+            (array) ($carga['placa'] ?? []), $r, true);
+        $resultado = ($r['enlace'] ?? ('id ' . $r['id'])) . (!empty($r['aviso']) ? "\n" . $r['aviso'] : '');
+        $upd = bd()->prepare("UPDATE programadas SET estado = 'publicada', resultado = ? WHERE id = ?");
+        $upd->execute([mb_substr($resultado, 0, 1000), $id]);
+        return ['id' => $id, 'ok' => true, 'enlace' => $r['enlace'] ?? null, 'aviso' => $r['aviso'] ?? null];
+    } catch (Throwable $e) {
+        $upd = bd()->prepare("UPDATE programadas SET estado = 'error', resultado = ? WHERE id = ?");
+        $upd->execute([mb_substr($e->getMessage(), 0, 500), $id]);
+        return ['id' => $id, 'ok' => false, 'error' => $e->getMessage()];
+    }
 }
 
 /* Anota en el historial cada red donde salió, con un mismo código de envío:
