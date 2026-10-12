@@ -212,7 +212,7 @@ function dibujarHuincha(ctx, datos, marca, u, ancho, altoLienzo, invertida = fal
   }
 }
 
-/* Quién publicó: una etiqueta chica de la casa —rectángulo negro, letra del
+/* Quién publicó: una etiqueta chica —negra y redondeada, letra del
    titular—, con la foto en un círculo, «POR» en el color de la paleta y el
    nombre en blanco, centrada en alto en `cy`. Con `lado` 'izquierda' arranca
    en `x` y no pasa de `limite`; con 'derecha' termina en `x` y no baja de
@@ -228,7 +228,9 @@ function etiquetaDeFirma(ctx, firma, datos, u, x, cy, limite, F, alfa = 1, lado 
     const alto = met.mayuscula + padY * 2;
     const d = alto - dentro * 2;
     const anchoPor = anchoDe(ctx, por, TIPOS.etiqueta, px, 0);
-    const ancho = dentro + d + padX + anchoPor + anchoDe(ctx, nombre, TIPOS.etiqueta, px, 0) + padX;
+    // a la derecha, el aire de la curva: si no, el nombre la toca
+    const cierre = Math.max(padX, alto * .42);
+    const ancho = dentro + d + padX + anchoPor + anchoDe(ctx, nombre, TIPOS.etiqueta, px, 0) + cierre;
     return { px, padX, padY, dentro, met, alto, d, anchoPor, ancho };
   };
   let m = medir(F.fuente * u);
@@ -239,8 +241,11 @@ function etiquetaDeFirma(ctx, firma, datos, u, x, cy, limite, F, alfa = 1, lado 
 
   ctx.save();
   ctx.globalAlpha = alfa;
+  // redondeada del todo, como una píldora: acompaña a la foto redonda
   ctx.fillStyle = '#000000';
-  ctx.fillRect(x, y, m.ancho, m.alto);
+  ctx.beginPath();
+  ctx.roundRect(x, y, m.ancho, m.alto, m.alto / 2);
+  ctx.fill();
   const fx = x + m.dentro + m.d / 2;
   ctx.save();
   ctx.beginPath();
