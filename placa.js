@@ -1000,17 +1000,19 @@ function dibujarMic(ctx, cx, cy, s, color){
    va, el ecualizador, y el tiempo. `bandas` son los niveles del momento, de
    0 a 1, de la más grave a la más aguda; sin audio todavía se dibuja una
    onda de muestra, para ver el diseño. */
-function dibujarFranja(ctx, datos, u, abajo, t, duracion, bandas, volumen, aparece){
+/* `lados` deja que otro diseño ponga la franja entre sus propios márgenes
+   ({ izquierda, derecha }, en unidades del lienzo). Sin él, los de acá. */
+export function dibujarFranja(ctx, datos, u, abajo, t, duracion, bandas, volumen, aparece, lados = null){
   if(aparece <= 0) return;
   const F = VOZ.franja;
   const alto = F.alto * u;
   const cy = abajo - F.separacion * u - alto / 2;
   const r = F.mic * u;
-  const cx = MEDIDAS.pie.x * u + r;
+  const cx = (lados?.izquierda ?? MEDIDAS.pie.x) * u + r;
   const voz = Math.min(1, Math.max(0, volumen || 0));
 
   const aro = r + F.anillo * u * 1.4;
-  const derecha = (LIENZO - MEDIDAS.pie.margenDerecho) * u;
+  const derecha = (lados?.derecha ?? (LIENZO - MEDIDAS.pie.margenDerecho)) * u;
 
   ctx.save();
   ctx.globalAlpha = aparece;

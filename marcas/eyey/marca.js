@@ -48,8 +48,7 @@ export const MARCA = {
      mitades del cuadro en vez de dos recuadros con márgenes. */
   disenos: true,
 
-  /* Por ahora solo la placa normal. El urgente y el reel están dibujados con
-     la pieza gráfica del otro medio, así que se esconden hasta tener la de
-     este: más vale que falten a que salga publicado algo que no es de la casa. */
-  formatos: ['noticia'],
+  /* Los cuatro formatos, cada uno con la gráfica de este medio (están en
+     dibujo-eyey.js, que es quien decide cuáles se ofrecen). */
+  formatos: ['urgente', 'noticia', 'reel', 'voz'],
 };

@@ -4,8 +4,8 @@
  * las placas y las fotos se guardan en MySQL a través de api/, así que son
  * las mismas desde cualquier dispositivo. */
 
-import { dibujarCierre, dibujarReel, dibujarFoto, esperarTipografias, textoSobre, LIENZO, altoDe, REEL,
-         prepararVoz, VOZ } from './placa.js';
+import { dibujarCierre, dibujarReel as dibujarReelBase, dibujarFoto, esperarTipografias, textoSobre, LIENZO, altoDe, REEL,
+         prepararVoz as prepararVozBase, VOZ } from './placa.js';
 import * as somosPuerto from './placa.js';
 import * as eyey from './dibujo-eyey.js';
 import { MARCA } from './marca/marca.js';
@@ -16,6 +16,16 @@ import { leerAudio, medirVoz, grabarVoz } from './voz.js';
    más —el nombre, el pie— lo ignora el que no lo necesita. */
 const DIBUJANTE = { 'eyey': eyey }[MARCA.dibujo] || somosPuerto;
 const dibujar = (ctx, datos, fotos, ancho) => DIBUJANTE.dibujar(ctx, datos, fotos, ancho, MARCA);
+// el reel y la placa con voz, con la gráfica del medio si la tiene dibujada
+const dibujarReel = DIBUJANTE.dibujarReel || dibujarReelBase;
+const prepararVoz = DIBUJANTE.prepararVoz
+  ? (datos, fotos, ancho, duracion) => DIBUJANTE.prepararVoz(datos, fotos, ancho, duracion, MARCA)
+  : prepararVozBase;
+/* Qué formatos se ofrecen: los que el dibujante del medio tiene hechos. La
+   lista de marca/marca.js queda para los medios sin dibujante propio —en un
+   sitio instalado ese archivo no se actualiza nunca, así que un formato
+   nuevo nunca aparecería si dependiera solo de él—. */
+const FORMATOS = DIBUJANTE.FORMATOS || MARCA.formatos;
 const dibujarLamina = (ctx, datos, lamina, foto, logo, ancho) =>
   DIBUJANTE.dibujarLamina(ctx, datos, lamina, foto, logo, ancho, MARCA);
 
@@ -2878,7 +2888,7 @@ async function agregarReel(archivo){
 let ultimoQuemado = null;
 
 const firmaDelReel = () => JSON.stringify([
-  fuenteDelReel(), placa.titulo, placa.etiqueta, placa.color_fondo, placa.color_filete,
+  fuenteDelReel(), placa.titulo, placa.etiqueta, placa.color_fondo, placa.color_filete, firma?.nombre,
 ]);
 
 /* Elige el momento de la portada. La de fábrica salía negra: muchos videos
@@ -2941,8 +2951,10 @@ async function momentoDePortada(fuente){
 async function grabarReel(){
   const fuente = fuenteDelReel();
   if(!fuente) throw new Error('Falta el video del reel');
-  const firma = firmaDelReel();
-  if(ultimoQuemado && ultimoQuemado.firma === firma) return ultimoQuemado;
+  /* `huella` y no `firma`: con ese nombre tapaba a la firma de quien publica
+     —«Publicado por»—, y el reel salía grabado sin ella. */
+  const huella = firmaDelReel();
+  if(ultimoQuemado && ultimoQuemado.firma === huella) return ultimoQuemado;
 
   const rotulo = 'Grabando el titular en el video';
   const espera = 'Se le queman encima el titular, la etiqueta y el logo.';
@@ -2987,7 +2999,7 @@ async function grabarReel(){
   trabajo('Subiendo el reel', 0, 'Ya está grabado: falta que llegue al servidor.');
   const sub = await guardarFoto(new File([video], 'reel.mp4', { type: 'video/mp4' }),
     (a, nota) => trabajo('Subiendo el reel', a, nota || 'Ya está grabado: falta que llegue al servidor.'));
-  ultimoQuemado = { firma, ruta: sub.ruta, blob: video, portadaEn };
+  ultimoQuemado = { firma: huella, ruta: sub.ruta, blob: video, portadaEn };
   return ultimoQuemado;
 }
 
@@ -3851,9 +3863,9 @@ $('#portada').addEventListener('click', async (ev) => {
   // este medio usa una sola foto de fondo: el selector de armados sobra
   if(MARCA.disenos === false) $('#disenos').closest('fieldset').hidden = true;
   // los formatos que este medio todavía no tiene dibujados, no se ofrecen
-  if(Array.isArray(MARCA.formatos)){
+  if(Array.isArray(FORMATOS)){
     document.querySelectorAll('[data-crear]').forEach((b) => {
-      b.hidden = !MARCA.formatos.includes(b.dataset.crear);
+      b.hidden = !FORMATOS.includes(b.dataset.crear);
     });
   }
 
