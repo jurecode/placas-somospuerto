@@ -1368,13 +1368,16 @@ async function volcarControles(){
   await pintarLaminas();
 }
 
+/* El nombre de una placa para mostrar: sin los asteriscos del resaltado. */
+const sinMarcas = (nombre) => String(nombre || '').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
+
 async function pintarSelector(){
   const lista = await listarPlacas();
   $('#selector').innerHTML = lista.map((p) => {
     const fecha = String(p.actualizada || '').replace('T', ' ').slice(5, 16);
-    return `<option value="${p.id}"${p.id === placa.id ? ' selected' : ''}>${esc(p.nombre)} — ${fecha}</option>`;
+    return `<option value="${p.id}"${p.id === placa.id ? ' selected' : ''}>${esc(sinMarcas(p.nombre))} — ${fecha}</option>`;
   }).join('');
-  $('#cual').textContent = placa.nombre;
+  $('#cual').textContent = sinMarcas(placa.nombre);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1903,7 +1906,7 @@ async function pintarCola(){
       <li class="${esc(p.estado)}">
         <b>${esc(new Date(p.publicar_en).toLocaleString('es-CL',
               { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</b>
-        <span>${esc(String(p.nombre || '').replace(/\*/g, ''))}</span>
+        <span>${esc(sinMarcas(p.nombre))}</span>
         <em>${esc(p.estado)}</em>
         ${p.estado === 'pendiente'
           ? `<button class="descarga quitar" data-quitar-cola="${p.id}">Cancelar</button>` : ''}
@@ -3824,7 +3827,7 @@ async function abrirPortada(){
   const seguir = $('#seguir');
   seguir.hidden = !ultima;
   if(ultima){
-    seguir.textContent = 'Seguir con la última: ' + ultima.nombre;
+    seguir.textContent = 'Seguir con la última: ' + sinMarcas(ultima.nombre);
     seguir.dataset.id = ultima.id;
   }
   $('#portada').hidden = false;

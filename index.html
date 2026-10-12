@@ -390,13 +390,20 @@
   }
   .portada[hidden]{ display:none }
   .portada h2{ font-size:22px; font-weight:600; letter-spacing:.01em }
-  /* Cuatro formatos: en fila en pantallas anchas, de a dos en las demás.
-     Con tres columnas fijas, la cuarta tarjeta se salía de la pantalla. */
-  .portada__opciones{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:22px }
-  @media (max-width:1180px){ .portada__opciones{ grid-template-columns:repeat(2,minmax(0,1fr)) }
-    .tarjeta{ width:min(34vw, 250px) } }
-  @media (max-width:820px){ .portada__opciones{ gap:14px }
-    .tarjeta{ width:min(42vw, 210px) } }
+  /* Los formatos: en fila en pantallas anchas, de a dos en las demás. Van
+     centrados y no en columnas fijas: un medio que ofrece menos formatos
+     dejaba su única tarjeta pegada a la izquierda, con tres huecos al lado. */
+  .portada__opciones{ display:flex; flex-wrap:wrap; justify-content:center; gap:22px; max-width:100% }
+  .portada__opciones > .tarjeta{ flex:none }
+  /* de a dos: el ancho alcanza justo para dos tarjetas y su separación */
+  /* con «.portada__opciones >» delante: la regla base de .tarjeta viene más
+     abajo y, con el mismo peso, pisaba estos anchos (en el teléfono las
+     tarjetas quedaban de 75 px) */
+  @media (max-width:1180px){ .portada__opciones > .tarjeta{ width:min(34vw, 250px) }
+    .portada__opciones{ max-width:calc(2 * min(34vw, 250px) + 24px) } }
+  @media (max-width:820px){ .portada{ padding:24px 16px }
+    .portada__opciones{ gap:14px; max-width:calc(2 * min(42vw, 210px) + 16px) }
+    .portada__opciones > .tarjeta{ width:min(42vw, 210px) } }
 
   /* Las medidas del texto van en cqw, o sea en proporción al ancho de la
      propia tarjeta: así nunca se sale, mida lo que mida la pantalla. */
@@ -438,7 +445,7 @@
   }
   .tarjeta-chica:hover{ background:var(--boton-claro) }
 
-  .portada__seguir{ background:none; border:0; color:var(--suave); font-size:13px; text-decoration:underline }
+  .portada__seguir{ background:none; border:0; color:var(--suave); font-size:13px; text-decoration:underline; max-width:min(90vw, 640px) }
   .portada__seguir:hover{ background:none; color:var(--texto) }
   .portada__seguir[hidden]{ display:none }
 
