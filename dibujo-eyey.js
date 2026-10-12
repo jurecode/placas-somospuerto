@@ -41,8 +41,9 @@ export const MEDIDAS = {
   degradado: { desde: 30, final: 0.96, curva: 1.6 },
 
   logo:     { arriba: 300, alto: 190, ancho: 700 },
-  // quién publicó, al lado del logo: `aire` lo separa del logo
-  firma:    { aire: 50, fuente: 78, padX: 26, padY: 22, dentro: 9 },
+  // quién publicó, en la huincha al lado de las flechas: `aire` la separa
+  // de las flechas y del «síguenos». Entra holgada en el alto de la huincha
+  firma:    { aire: 50, fuente: 70, padX: 24, padY: 20, dentro: 8 },
 
   // la etiqueta es un rectángulo recto, arriba a la derecha
   // pegada al borde derecho, como en el arte
@@ -168,8 +169,9 @@ function textoDeLinea(ctx, palabras, medida, baseline, px, inter, colores){
 }
 
 /* La huincha de abajo: banda del color de la paleta, el «síguenos» a la
-   izquierda y las flechas a la derecha. */
-function dibujarHuincha(ctx, datos, marca, u, ancho, altoLienzo, invertida = false){
+   izquierda y las flechas a la derecha. Con `firma`, quién publicó va al
+   lado de las flechas, como una etiqueta chica de la casa. */
+function dibujarHuincha(ctx, datos, marca, u, ancho, altoLienzo, invertida = false, firma = null){
   const H = MEDIDAS.huincha;
   const alto = H.alto * u;
   const y = altoLienzo - alto;
@@ -190,23 +192,32 @@ function dibujarHuincha(ctx, datos, marca, u, ancho, altoLienzo, invertida = fal
   ctx.font = fuente(TIPOS.pie, px);
   ctx.letterSpacing = '0px';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(marca.pie || 'SÍGUENOS', H.margen * u, linea);
+  const pie = marca.pie || 'SÍGUENOS';
+  ctx.fillText(pie, H.margen * u, linea);
+  const finPie = H.margen * u + ctx.measureText(pie).width;
 
   const flechas = '>>>';
   const pxF = H.flechas * u;
   const metF = metricas(ctx, TIPOS.flechas, pxF);
   ctx.font = fuente(TIPOS.flechas, pxF);
   const anchoF = ctx.measureText(flechas).width;
-  ctx.fillText(flechas, ancho - H.margen * u - anchoF,
-    y + alto / 2 + metF.mayuscula / 2);
+  const xFlechas = ancho - H.margen * u - anchoF;
+  ctx.fillText(flechas, xFlechas, y + alto / 2 + metF.mayuscula / 2);
+
+  if(firma?.nombre){
+    const F = MEDIDAS.firma;
+    // termina justo antes de las flechas y no puede llegar al «síguenos»
+    etiquetaDeFirma(ctx, firma, datos, u, xFlechas - F.aire * u, y + alto / 2,
+      finPie + F.aire * u, F, 1, 'derecha');
+  }
 }
 
-/* Quién publicó: una etiqueta de la casa al lado del logo —rectángulo
-   negro, letra del titular—, con la foto chica en un círculo, «POR» en el
-   color de la paleta y el nombre en blanco. Centrada en alto con el logo
-   (`cy`). Si no entra hasta `limite` —la etiqueta de la sección, a la
-   derecha—, se achica. Las medidas de `F` van en unidades de `u`. */
-function firmaJuntoAlLogo(ctx, firma, datos, u, x, cy, limite, F, alfa = 1){
+/* Quién publicó: una etiqueta chica de la casa —rectángulo negro, letra del
+   titular—, con la foto en un círculo, «POR» en el color de la paleta y el
+   nombre en blanco, centrada en alto en `cy`. Con `lado` 'izquierda' arranca
+   en `x` y no pasa de `limite`; con 'derecha' termina en `x` y no baja de
+   `limite`. Si no entra, se achica. Las medidas de `F` van en unidades de `u`. */
+function etiquetaDeFirma(ctx, firma, datos, u, x, cy, limite, F, alfa = 1, lado = 'izquierda'){
   const nombre = String(firma?.nombre || '').trim().toUpperCase();
   if(!nombre) return;
   const por = 'POR ';
@@ -221,7 +232,9 @@ function firmaJuntoAlLogo(ctx, firma, datos, u, x, cy, limite, F, alfa = 1){
     return { px, padX, padY, dentro, met, alto, d, anchoPor, ancho };
   };
   let m = medir(F.fuente * u);
-  if(x + m.ancho > limite) m = medir(m.px * Math.max(.6, (limite - x) / m.ancho));
+  const cabe = lado === 'derecha' ? x - limite : limite - x;
+  if(m.ancho > cabe) m = medir(m.px * Math.max(.6, cabe / m.ancho));
+  if(lado === 'derecha') x -= m.ancho;
   const y = cy - m.alto / 2;
 
   ctx.save();
@@ -290,14 +303,7 @@ function dibujarLogo(ctx, logo, u){
   return caja;
 }
 
-/* La firma al lado del logo de la placa, sin llegar a la etiqueta de la
-   sección (`hasta`, en píxeles). */
-function firmaDePlaca(ctx, fotos, datos, u, caja, hasta){
-  if(!fotos.firma) return;
-  const F = MEDIDAS.firma;
-  firmaJuntoAlLogo(ctx, fotos.firma, datos, u, caja.x + caja.ancho + F.aire * u,
-    caja.y + caja.alto / 2, hasta - F.aire * u, F);
-}
+
 
 /* Las fotos a sangre: una, dos mitades, y el círculo si el armado lo lleva.
    Las imágenes llegan con las claves cortas —izq, der, cen— y no con el
@@ -410,15 +416,14 @@ export function dibujar(ctx, datos, fotos, ancho, marca = {}){
   dibujarFotos(ctx, datos, fotos, u, ancho, alto);
   ctx.fillStyle = degradadoNegro(ctx, alto);
   ctx.fillRect(0, 0, ancho, alto);
-  const logo = dibujarLogo(ctx, fotos.logo, u);
-  const etiqueta = dibujarEtiqueta(ctx, datos, u, ancho);
-  // quién publicó, al lado del logo
-  firmaDePlaca(ctx, fotos, datos, u, logo, etiqueta);
+  dibujarLogo(ctx, fotos.logo, u);
+  dibujarEtiqueta(ctx, datos, u, ancho);
 
   // el titular, apoyado sobre la huincha; no puede subir más allá de la etiqueta
   pintarTitular(ctx, titularDePlaca(ctx, datos, u, ancho, alto));
 
-  dibujarHuincha(ctx, datos, marca, u, ancho, alto);
+  // la huincha, con quién publicó al lado de las flechas
+  dibujarHuincha(ctx, datos, marca, u, ancho, alto, false, fotos.firma);
 }
 
 /* El titular de la placa, con su cuerpo y su lugar de siempre. `tope` lo
@@ -472,8 +477,7 @@ function dibujarUrgente(ctx, datos, fotos, u, ancho, alto, marca){
   ctx.fillStyle = sombra;
   ctx.fillRect(0, 0, ancho, alto);
 
-  const cajaLogo = dibujarLogo(ctx, fotos.logo, u);
-  firmaDePlaca(ctx, fotos, datos, u, cajaLogo, ancho - MEDIDAS.margen * u);
+  dibujarLogo(ctx, fotos.logo, u);
 
   // el espacio libre: entre el logo y la huincha
   const techo = (MEDIDAS.logo.arriba + MEDIDAS.logo.alto + U.aire) * u;
@@ -536,7 +540,7 @@ function dibujarUrgente(ctx, datos, fotos, u, ancho, alto, marca){
   ctx.textAlign = 'left';
 
   // sobre el color de la paleta, la huincha va al revés para no desaparecer
-  dibujarHuincha(ctx, datos, marca, u, ancho, alto, true);
+  dibujarHuincha(ctx, datos, marca, u, ancho, alto, true, fotos.firma);
 }
 
 /* ------------------------------------------------------------------ */
@@ -563,7 +567,8 @@ export function dibujarReel(ctx, datos, medio, logo, ancho, alto, avance = 1, so
   ctx.fillStyle = degradadoNegro(ctx, alto);
   ctx.fillRect(0, 0, ancho, alto);
 
-  // arriba: el logo y, a su lado, quién publica
+  // arriba: el logo y, a su lado, quién publica (el reel no tiene huincha:
+  // abajo lo tapa el texto que pone Instagram)
   const e = tramo(avance, .5, .4);
   let anchoLogo = 0, altoLogo = R.logo.alto * u;
   if(logo){
@@ -576,7 +581,7 @@ export function dibujarReel(ctx, datos, medio, logo, ancho, alto, avance = 1, so
     ctx.restore();
   }
   if(firma?.nombre){
-    firmaJuntoAlLogo(ctx, firma, datos, u, R.margen * u + anchoLogo + R.firma.aire * u,
+    etiquetaDeFirma(ctx, firma, datos, u, R.margen * u + anchoLogo + R.firma.aire * u,
       R.logo.arriba * u + altoLogo / 2 - (1 - e) * 20 * u, ancho - R.derecha * u, R.firma, e);
   }
 
@@ -621,14 +626,14 @@ export function prepararVoz(datos, fotos, ancho, duracion, marca = {}){
   const capaFoto = lienzoNuevo(Math.round(ancho * Z), Math.round(alto * Z));
   dibujarFotos(capaFoto.getContext('2d'), datos, fotos, u * Z, ancho * Z, alto * Z);
 
-  // lo que no se mueve: degradado, logo con la firma, etiqueta y huincha
+  // lo que no se mueve: degradado, logo, etiqueta y la huincha con la firma
   const capaFija = lienzoNuevo(ancho, alto);
   const cf = capaFija.getContext('2d');
   cf.fillStyle = degradadoNegro(cf, alto);
   cf.fillRect(0, 0, ancho, alto);
-  const cajaLogo = dibujarLogo(cf, fotos.logo, u);
-  firmaDePlaca(cf, fotos, datos, u, cajaLogo, dibujarEtiqueta(cf, datos, u, ancho));
-  dibujarHuincha(cf, datos, marca, u, ancho, alto);
+  dibujarLogo(cf, fotos.logo, u);
+  dibujarEtiqueta(cf, datos, u, ancho);
+  dibujarHuincha(cf, datos, marca, u, ancho, alto, false, fotos.firma);
 
   // el titular deja lugar arriba para el ecualizador
   const T = titularDePlaca(cf, datos, u, ancho, alto, VOZ.tituloArriba * u);
