@@ -10,9 +10,25 @@
 declare(strict_types=1);
 require_once __DIR__ . '/lib.php';
 require_once __DIR__ . '/publicador.php';
+require_once __DIR__ . '/horarios_lib.php';
 cargar_config();
 
 $metodo = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+/* Dos publicaciones a menos de media hora no: se pisan en el feed. Se
+   rechaza y se dice con cuál choca y qué hora libre hay cerca. */
+function separada_o_rechazar(int $t, ?int $excepto = null): void {
+    $con = choca($t, SEPARACION_MINIMA, $excepto);
+    if (!$con) return;
+    $minutos = (int) round(abs($con['t'] - $t) / 60);
+    $libre = sugerir_horas(SEPARACION_MINIMA, 1, $excepto)[0]['cuando'] ?? null;
+    responder([
+        'error' => "Queda a $minutos min de «" . str_replace('*', '', (string) $con['nombre']) . '», que '
+            . ($con['programada'] ? 'está programada' : 'acaba de salir')
+            . '. Entre dos publicaciones tiene que haber al menos ' . SEPARACION_MINIMA . ' minutos.',
+        'sugerencia' => $libre,
+    ], 409);
+}
 
 /* El cron llama con ?tarea=vaciar&clave=… porque no puede mandar cabeceras. */
 if (isset($_GET['tarea']) && $_GET['tarea'] === 'vaciar') {
@@ -74,6 +90,7 @@ try {
         $marca = strtotime(trim((string) ($cuerpo['publicar_en'] ?? '')));
         if (!$marca) responder(['error' => 'La fecha no se entiende'], 400);
         if ($marca < time() + 30) responder(['error' => 'Esa hora ya pasó'], 400);
+        separada_o_rechazar($marca, (int) ($cuerpo['id'] ?? 0));
         $st = bd()->prepare("UPDATE programadas SET publicar_en = ?, estado = 'pendiente', resultado = NULL
                              WHERE id = ? AND estado IN ('pendiente', 'error')");
         $st->execute([gmdate('Y-m-d H:i:s', $marca), (int) ($cuerpo['id'] ?? 0)]);
@@ -104,6 +121,7 @@ try {
     $marca = strtotime($cuando);
     if (!$marca) responder(['error' => 'La fecha no se entiende'], 400);
     if ($marca < time() + 30) responder(['error' => 'Esa hora ya pasó'], 400);
+    separada_o_rechazar($marca);
 
     $carga = $cuerpo['carga'] ?? null;
     if (!is_array($carga) || empty($carga['items'])) {

@@ -1902,7 +1902,7 @@ async function cargaParaProgramar(){
 
 /* La fecha como se dice: «lun 12 oct, 20:00». */
 const fechaLarga = (d) => d.toLocaleString('es-CL',
-  { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
 /* «en 2 h 15 min» o «hace 3 h», según falte o ya haya pasado. */
 function cuantoFalta(ms){
@@ -1921,7 +1921,8 @@ const aLocal = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toIS
    minutos) no se ofrecen. */
 function horasRapidas(){
   const ahora = new Date();
-  const en = (min) => new Date(Math.ceil((ahora.getTime() + min * 60000) / 300000) * 300000);
+  // siempre en punto o y media: nunca a las 21:37
+  const en = (min) => new Date(Math.ceil((ahora.getTime() + min * 60000) / 1800000) * 1800000);
   const a = (dias, h) => { const d = new Date(ahora); d.setDate(d.getDate() + dias); d.setHours(h, 0, 0, 0); return d; };
   const lista = [['En 30 min', en(30)], ['En 1 hora', en(60)]];
   for(const h of [13, 20]){
@@ -1954,8 +1955,111 @@ function decirCuando(){
     return;
   }
   const redes = redesElegidas();
-  el.textContent = `Sale el ${fechaLarga(d)}, ${cuantoFalta(falta)}`
+  let texto = `Sale el ${fechaLarga(d)}, ${cuantoFalta(falta)}`
     + (redes.length ? `, en ${enRedes(redes)}.` : '. Falta elegir en qué redes, arriba de Publicar.');
+  if(horarios){
+    const v = Math.round(puntajeDe(d) * 100);
+    texto += ` A esa hora la audiencia está al ${v} % de su pico.`;
+  }
+  // si queda muy cerca de otra, se avisa con la mejor hora libre
+  const cerca = choqueCon(d, separacion());
+  if(cerca){
+    el.className = 'cuando-dice aviso';
+    const mejor = horarios?.sugerencias?.[0];
+    texto += ` Ojo: queda a ${cerca.minutos} min de «${sinMarcas(cerca.nombre)}».`
+      + (mejor ? ` Mejor separarlas: probá ${cuandoCorto(new Date(mejor.cuando))}.` : '');
+  }
+  el.textContent = texto;
+  marcarHoraElegida();
+}
+
+/* ------------------------------------------------------------------ */
+/* las mejores horas                                                   */
+/* ------------------------------------------------------------------ */
+
+let horarios = null;        // lo que dice el servidor: curva, pico y sugerencias
+let elegidaAMano = false;   // si se eligió una hora a mano, no se le cambia
+let proximasCache = [];     // lo programado, para avisar si una hora choca
+
+const separacion = () => {
+  try{ return Number(localStorage.getItem('separacion')) === 30 ? 30 : 60; }catch(e){ return 60; }
+};
+
+// la hora en Chile, que es la de la audiencia (la curva está en esa hora)
+const horaChile = (d) => Number(new Intl.DateTimeFormat('es-CL',
+  { hour: 'numeric', hour12: false, timeZone: 'America/Santiago' }).format(d)) % 24;
+const minutoChile = (d) => Number(new Intl.DateTimeFormat('es-CL',
+  { minute: 'numeric', timeZone: 'America/Santiago' }).format(d));
+
+function puntajeDe(d){
+  const h = horaChile(d);
+  const H = horarios.horas;
+  return minutoChile(d) >= 30 ? (H[h] + H[(h + 1) % 24]) / 2 : H[h];
+}
+
+/* «Hoy 21:00», «Mañana 13:30» o «mié 14, 09:00». */
+function cuandoCorto(d){
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const dia = new Date(d); dia.setHours(0, 0, 0, 0);
+  const dias = Math.round((dia - hoy) / 86400000);
+  const hora = d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  if(dias === 0) return 'Hoy ' + hora;
+  if(dias === 1) return 'Mañana ' + hora;
+  return d.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric' }) + ', ' + hora;
+}
+
+/* La programada que queda a menos de `minutos` de `d`, si hay. */
+function choqueCon(d, minutos){
+  let cerca = null;
+  for(const p of proximasCache){
+    const m = Math.round(Math.abs(new Date(p.publicar_en) - d) / 60000);
+    if(m < minutos && (!cerca || m < cerca.minutos)) cerca = { minutos: m, nombre: p.nombre };
+  }
+  return cerca;
+}
+
+/* Siempre en punto o y media. */
+function redondearMedia(v){
+  const d = new Date(v);
+  const m = d.getMinutes();
+  d.setMinutes(m < 15 ? 0 : m < 45 ? 30 : 60, 0, 0);
+  return aLocal(d);
+}
+
+function marcarHoraElegida(){
+  const v = $('#cuando')?.value;
+  const h = v ? horaChile(new Date(v)) : -1;
+  document.querySelectorAll('#mejores_grafico i').forEach((barra, i) => barra.classList.toggle('elegida', i === h));
+}
+
+/* Pide las mejores horas y las pinta. Si no se eligió nada a mano, la mejor
+   queda puesta en el selector: lista para tocar Programar. */
+async function pintarMejores(){
+  const caja = $('#mejores');
+  if(!caja) return;
+  try{ horarios = await api('api/horarios.php?separacion=' + separacion()); }
+  catch(e){ caja.hidden = true; horarios = null; return; }
+  const H = horarios;
+  caja.hidden = false;
+  document.querySelectorAll('[data-separar]').forEach((b) => {
+    b.classList.toggle('activa', Number(b.dataset.separar) === separacion());
+  });
+  $('#mejores_fuente').textContent = `Pico a las ${H.pico}:00 · `
+    + (H.fuente === 'publicaciones'
+      ? `según cómo les fue a tus últimas ${H.muestras} publicaciones`
+      : 'horario típico de un medio de noticias (todavía hay pocas publicaciones tuyas para medir)');
+  $('#mejores_grafico').innerHTML = H.horas.map((v, h) =>
+    `<i class="${h === H.pico ? 'pico' : ''}" style="height:${Math.max(6, Math.round(v * 100))}%"
+        title="${h}:00 · ${Math.round(v * 100)} % del pico"></i>`).join('');
+  $('#mejores_opciones').innerHTML = H.sugerencias.length
+    ? H.sugerencias.map((s, i) => {
+        const d = new Date(s.cuando);
+        return `<button type="button" data-cuando="${aLocal(d)}" class="${i === 0 ? 'mejor' : ''}">`
+          + `${i === 0 ? '★ ' : ''}${esc(cuandoCorto(d))}<small>${Math.round(s.puntaje * 100)} %</small></button>`;
+      }).join('')
+    : '<small>No quedan horas libres en los próximos dos días con esta separación.</small>';
+  if(!elegidaAMano && H.sugerencias[0]) $('#cuando').value = aLocal(new Date(H.sugerencias[0].cuando));
+  decirCuando();
 }
 
 /* Al abrir una placa: las horas rápidas, una hora sugerida (la próxima en
@@ -1964,6 +2068,7 @@ function prepararProgramar(){
   const campo = $('#cuando');
   if(!campo) return;
   campo.min = aLocal(new Date());
+  elegidaAMano = false;
   if(!campo.value || new Date(campo.value) < Date.now()){
     const d = new Date(Date.now() + 30 * 60000);
     d.setMinutes(0, 0, 0);
@@ -1972,7 +2077,8 @@ function prepararProgramar(){
   }
   pintarAtajos();
   decirCuando();
-  pintarCola();
+  // la lista primero: con ella se sabe qué horas chocan
+  pintarCola().then(pintarMejores);
 }
 
 const ESTADO_COLA = { pendiente: 'programada', publicando: 'saliendo', publicada: 'publicada', error: 'falló' };
@@ -2007,7 +2113,7 @@ function itemCola(p){
             resto.length ? (enlace ? ' · ' : '') + esc(resto.join(' ')) : ''}</small>` : ''}
       ${acciones ? `<div class="cola-acciones">${acciones}</div>` : ''}
       <div class="cola-mover" hidden>
-        <input type="datetime-local" aria-label="Nueva fecha y hora">
+        <input type="datetime-local" step="1800" aria-label="Nueva fecha y hora">
         <button type="button" data-cola="guardar" class="principal">Guardar</button>
         <button type="button" data-cola="cerrar">Volver</button>
       </div>
@@ -2034,6 +2140,7 @@ async function pintarCola(){
     const proximas = lista.filter((p) => ['pendiente', 'publicando'].includes(p.estado));
     const hechas = lista.filter((p) => !['pendiente', 'publicando'].includes(p.estado));
     hayProximas = proximas.length > 0;
+    proximasCache = proximas;
     cola.innerHTML = aviso
       + `<li class="cola-titulo">Próximas${proximas.length ? ' · ' + proximas.length : ''}</li>`
       + (proximas.map(itemCola).join('') || '<li class="vacia">Nada programado todavía.</li>')
@@ -2041,13 +2148,28 @@ async function pintarCola(){
   }catch(e){ cola.innerHTML = `<li class="vacia" style="color:var(--mal)">${esc(e.message)}</li>`; }
 }
 
-$('#atajos_cuando')?.addEventListener('click', (ev) => {
-  const b = ev.target.closest('[data-cuando]');
-  if(!b) return;
-  $('#cuando').value = b.dataset.cuando;
+for(const sel of ['#atajos_cuando', '#mejores_opciones']){
+  $(sel)?.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-cuando]');
+    if(!b) return;
+    $('#cuando').value = b.dataset.cuando;
+    elegidaAMano = true;
+    decirCuando();
+  });
+}
+$('#cuando')?.addEventListener('input', () => { elegidaAMano = true; decirCuando(); });
+// al terminar de elegir, a la media hora más cercana
+$('#cuando')?.addEventListener('change', (ev) => {
+  if(!ev.target.value) return;
+  ev.target.value = redondearMedia(ev.target.value);
   decirCuando();
 });
-$('#cuando')?.addEventListener('input', decirCuando);
+$('#mejores')?.addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-separar]');
+  if(!b) return;
+  try{ localStorage.setItem('separacion', b.dataset.separar); }catch(e){}
+  pintarMejores();
+});
 $('#redes')?.addEventListener('change', decirCuando);
 
 /* Cada minuto: las horas rápidas y el «en tanto» se ponen al día, y si hay
@@ -2065,6 +2187,15 @@ $('#programar').addEventListener('click', async (ev) => {
   if(!cuando) return estado('Elegí la fecha y la hora.', true);
   // antes de preparar nada: si la hora ya pasó, el servidor la rechazaría al final
   if(new Date(cuando) - Date.now() < 30000) return estado('Esa hora ya pasó: elegí una más adelante.', true);
+  /* Muy cerca de otra: a menos de media hora no se puede (el servidor la
+     rechaza); dentro de la separación elegida, se pregunta. */
+  const cerca = choqueCon(new Date(cuando), separacion());
+  if(cerca && cerca.minutos < 30){
+    return estado(`Queda a ${cerca.minutos} min de «${sinMarcas(cerca.nombre)}»: entre dos publicaciones `
+      + 'tiene que haber al menos 30 minutos. Elegí una de las mejores horas.', true);
+  }
+  if(cerca && !confirm(`Queda a ${cerca.minutos} min de «${sinMarcas(cerca.nombre)}». `
+    + '¿La programo igual?')) return;
   if(!String(placa.descripcion || '').trim()){
     return estado('Falta la descripción: es lo que va debajo de la publicación.', true);
   }
@@ -2114,8 +2245,17 @@ $('#programar').addEventListener('click', async (ev) => {
       }),
     });
     estado(`Programado: sale el ${fechaLarga(new Date(cuando))} en ${enRedes(redes)}`);
+    elegidaAMano = false;      // la próxima arranca otra vez en la mejor hora libre
     await pintarCola();
-  }catch(e){ estado(e.message, true); }
+    pintarMejores();
+  }catch(e){
+    // si chocaba con otra, el servidor dice qué hora libre hay cerca: queda puesta
+    if(e.datos?.sugerencia){
+      $('#cuando').value = aLocal(new Date(e.datos.sugerencia));
+      decirCuando();
+      estado(e.message + ' Te dejé puesta la hora libre más cercana.', true);
+    }else estado(e.message, true);
+  }
   finally{
     cerrarTrabajo(); congelar(false); terminarActividad();
     despierto?.release().catch(() => {});
@@ -2149,7 +2289,7 @@ $('#cola').addEventListener('click', async (ev) => {
         caja.hidden = true;
         return;
       case 'guardar': {
-        const v = caja.querySelector('input').value;
+        const v = caja.querySelector('input').value && redondearMedia(caja.querySelector('input').value);
         if(!v) return;
         b.disabled = true;
         const r = await pedir({ tarea: 'mover', publicar_en: new Date(v).toISOString() });
@@ -2171,9 +2311,12 @@ $('#cola').addEventListener('click', async (ev) => {
         estado('Cancelada');
         break;
     }
-  }catch(e){ estado(e.message, true); }
+  }catch(e){
+    estado(e.message + (e.datos?.sugerencia ? ` Hay lugar el ${fechaLarga(new Date(e.datos.sugerencia))}.` : ''), true);
+  }
   if(caja) caja.hidden = true;
   await pintarCola();
+  pintarMejores();
 });
 
 $('#copiar').addEventListener('click', async () => {
