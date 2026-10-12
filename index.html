@@ -410,7 +410,10 @@
   .tarjeta{
     container-type:inline-size;
     display:grid; gap:2px; align-content:center; justify-items:center;
-    width:min(20vw, 260px); aspect-ratio:1; padding:7%; border:0; border-radius:20px;
+    /* el relleno va fijo y no en %: en una fila flexible el % se calcula sobre
+       el ancho de toda la fila, daba 77 px por lado y el texto —que se mide
+       sobre lo que queda adentro— salía a la mitad de su tamaño */
+    width:min(20vw, 260px); aspect-ratio:1; padding:16px; border:0; border-radius:20px;
     color:#fff; text-align:center; cursor:pointer; transition:transform .12s, box-shadow .12s;
   }
   .tarjeta:hover{ transform:translateY(-4px); box-shadow:0 18px 40px #0009 }
