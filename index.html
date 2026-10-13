@@ -485,9 +485,10 @@
   /* El marco toma el tamaño del lienzo y el video se estira por debajo: en el
      reel el lienzo es transparente y solo lleva el texto, que así se puede
      redibujar mientras se escribe sin tocar el video. */
-  /* overflow:hidden: el video del reel recortado (acercado) no se sale del marco */
-  .marco{ position:relative; display:grid; min-width:0; overflow:hidden;
+  .marco{ position:relative; display:grid; min-width:0;
           border-radius:14px; box-shadow:0 20px 60px #000a }
+  /* la caja del video del reel: recorta solo al video acercado */
+  .video-recorte{ position:absolute; inset:0; overflow:hidden; border-radius:14px; z-index:0; pointer-events:none }
   #previa_video{
     position:absolute; inset:0; width:100%; height:100%;
     object-fit:cover; border-radius:14px; background:#000; z-index:0;
@@ -1110,8 +1111,13 @@
          permite escribir y ver el titular cambiar sin volver a procesar.
          Va en silencio: es la única forma de que el navegador lo deje
          arrancar solo, y el sonido del reel publicado no se toca. -->
-    <video id="previa_video" playsinline loop autoplay muted
-           aria-label="Vista previa del reel" hidden></video>
+    <!-- el video va dentro de su propia caja que recorta: así, acercado, no
+         se sale del marco, sin recortar la placa (que a veces es un poco más
+         alta que el marco y perdía la huincha de abajo) -->
+    <div class="video-recorte">
+      <video id="previa_video" playsinline loop autoplay muted
+             aria-label="Vista previa del reel" hidden></video>
+    </div>
     <canvas id="previa" width="1080" height="1080" aria-label="Vista previa"></canvas>
   </div>
   <button class="encoger" id="encoger" type="button">Ocultar</button>
