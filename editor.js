@@ -230,10 +230,16 @@ const escribirPlaca = (p) => api('api/placas.php', {
    esperando para siempre. Cada trozo lleva su propio plazo, así que una
    conexión muerta falla en un minuto en vez de nunca. */
 const TROZO = 2 * 1024 * 1024;
-/* Si un pedazo no entra, el siguiente intento va con la mitad, hasta este
-   piso: con 2 MB una conexión móvil mala no llegaba nunca y la subida se
-   quedaba clavada en el mismo porcentaje, reintentando lo mismo. Cuando
-   vuelven a entrar seguidos, crecen otra vez. */
+/* Cada pedazo es un pedido aparte, y cada pedido al hosting tarda unos
+   0,6 s en ir y volver aunque no lleve nada: con pedazos chicos, un video
+   largo pasa más tiempo en idas y vueltas que subiendo. Por eso, si la
+   conexión anda rápida, crecen hasta este techo (4 MB ya entraba de una vez
+   en las fotos, así que el hosting lo acepta). */
+const TROZO_MAXIMO = 4 * 1024 * 1024;
+/* Si un pedazo se traba a mitad de camino, el siguiente intento va con la
+   mitad, hasta este piso: con una conexión móvil mala, 2 MB no llegaba nunca.
+   Solo cuando se traba: si el servidor corta al instante, achicar no
+   arregla nada y solo suma pedidos. */
 const TROZO_MINIMO = 256 * 1024;
 const ENTERO_HASTA = 4 * 1024 * 1024;
 /* Un pedazo trabado se reconoce porque deja de avanzar, no por un plazo
@@ -352,6 +358,18 @@ function subirPedazo(ruta, cuerpo, alAvanzar){
   });
 }
 
+/* Las subidas grandes van de a una: dos a la vez se reparten la misma
+   conexión, no terminan antes, y suman pedidos al hosting, que es lo que
+   lo hace cortar. La que llega segunda espera su turno. */
+let colaDeSubidas = Promise.resolve();
+let subidasActivas = 0;
+function turnoDeSubida(){
+  let soltar;
+  const anterior = colaDeSubidas;
+  colaDeSubidas = new Promise((r) => { soltar = r; });
+  return anterior.then(() => soltar);
+}
+
 /* `avisar(fraccion, nota)`: la nota llega solo mientras se espera para
    reintentar, para que la barra diga por qué está quieta en vez de parecer
    colgada. Quien no la use puede ignorarla. */
@@ -399,61 +417,79 @@ async function guardarFoto(archivo, avisar){
       }
     }
 
-    const sesion = (crypto.randomUUID?.() || Math.random().toString(36) + Date.now())
-      .replace(/[^a-zA-Z0-9]/g, '');
-    /* El servidor dice cuánto tiene y se sigue desde ahí. Así un reintento
-       nunca duplica un pedazo ni deja un hueco, y una subida cortada a la
-       mitad retoma en vez de empezar de cero. */
-    let desde = 0;
-    let n = 0;   // intentos fallidos seguidos; vuelve a cero con cada pedazo que entra
-    let trozo = TROZO;
-    let seguidos = 0;   // pedazos que entraron seguidos con el tamaño de ahora
-    let fallo = Infinity;   // el tamaño más chico que falló: no se vuelve a probar enseguida
-    while(desde < archivo.size){
-      const pedazo = archivo.slice(desde, desde + trozo);
-      const ultimo = desde + pedazo.size >= archivo.size;
-      try{
-        const r = await subirPedazo(
-          `api/fotos.php?trozo=1&sesion=${sesion}&desde=${desde}`
-            + (ultimo ? `&fin=1&total=${archivo.size}` : ''),
-          pedazo, (subido) => avisar?.((desde + subido) / archivo.size));
-        if(ultimo) return contar(r);
-        desde = Number.isFinite(r.recibido) ? r.recibido : desde + pedazo.size;
-        n = 0;
-        /* Anduvo bien varias veces seguidas: se agranda, pero sin volver al
-           tamaño que falló hasta que haya andado bien un buen rato (la red
-           pudo haber mejorado). Antes volvía a probar a los tres pedazos,
-           fallaba y perdía la pausa cada vez. */
-        seguidos++;
-        if(trozo < TROZO && seguidos >= 3 && (trozo * 2 < fallo || seguidos >= 12)){
-          if(seguidos >= 12) fallo = Infinity;
-          trozo = Math.min(TROZO, trozo * 2);
-          seguidos = 0;
-        }
-        avisar?.(desde / archivo.size);
-      }catch(e){
-        // «falta algo»: el servidor dice desde dónde, y se sigue sin esperar
-        if(e.status === 409 && Number.isFinite(e.datos?.recibido) && n < REINTENTOS){
-          anotar('subida retomada', { desde: mb(e.datos.recibido), porque: e.message, nivel: 'aviso' });
-          desde = e.datos.recibido;
-          n++;
-          continue;
-        }
-        // sin respuesta o trabado: el próximo intento, con la mitad
-        let nota = '';
-        if(!e.status) fallo = Math.min(fallo, trozo);
-        if(!e.status && trozo > TROZO_MINIMO){
-          trozo = Math.max(TROZO_MINIMO, trozo / 2);
-          nota = ` con pedazos de ${Math.round(trozo / 1024)} KB`;
-          anotar('pedazos más chicos', { ahora: Math.round(trozo / 1024) + ' KB', nivel: 'aviso' });
-        }
-        seguidos = 0;
-        await antesDeReintentar(e, n, desde / archivo.size, REINTENTOS_TROZO, nota);
-        n++;
-      }
+    if(subidasActivas > 0) avisar?.(0, 'Espera a que termine la otra subida: de a una van más rápido.');
+    subidasActivas++;
+    const soltar = await turnoDeSubida();
+    try{
+      return await subirEnPedazos(archivo, avisar, contar, antesDeReintentar);
+    }finally{
+      subidasActivas--;
+      soltar();
     }
-    throw new Error('El archivo llegó vacío');
   }catch(e){ return fallo(e); }
+}
+
+/* El archivo en pedazos, retomando desde donde el servidor dice que va. */
+async function subirEnPedazos(archivo, avisar, contar, antesDeReintentar){
+  const sesion = (crypto.randomUUID?.() || Math.random().toString(36) + Date.now())
+    .replace(/[^a-zA-Z0-9]/g, '');
+  /* El servidor dice cuánto tiene y se sigue desde ahí. Así un reintento
+     nunca duplica un pedazo ni deja un hueco, y una subida cortada a la
+     mitad retoma en vez de empezar de cero. */
+  let desde = 0;
+  let n = 0;   // intentos fallidos seguidos; vuelve a cero con cada pedazo que entra
+  let trozo = TROZO;
+  let seguidos = 0;   // pedazos que entraron seguidos con el tamaño de ahora
+  let fallido = Infinity;   // el tamaño más chico que falló: no se vuelve a probar enseguida
+  while(desde < archivo.size){
+    const pedazo = archivo.slice(desde, desde + trozo);
+    const ultimo = desde + pedazo.size >= archivo.size;
+    const empezo = Date.now();
+    try{
+      const r = await subirPedazo(
+        `api/fotos.php?trozo=1&sesion=${sesion}&desde=${desde}`
+          + (ultimo ? `&fin=1&total=${archivo.size}` : ''),
+        pedazo, (subido) => avisar?.((desde + subido) / archivo.size));
+      if(ultimo) return contar(r);
+      desde = Number.isFinite(r.recibido) ? r.recibido : desde + pedazo.size;
+      n = 0;
+      /* Anduvo bien varias veces seguidas: se agranda, pero sin volver al
+         tamaño que falló hasta que haya andado bien un buen rato (la red
+         pudo haber mejorado). Antes volvía a probar a los tres pedazos,
+         fallaba y perdía la pausa cada vez. */
+      seguidos++;
+      // rápido (menos de 5 s por pedazo): se agranda enseguida, hasta el techo
+      const rapido = Date.now() - empezo < 5000;
+      if(trozo < TROZO_MAXIMO && trozo * 2 < fallido && (rapido || seguidos >= 3)){
+        trozo = Math.min(TROZO_MAXIMO, trozo * 2);
+        seguidos = 0;
+      }else if(seguidos >= 12 && fallido !== Infinity){
+        fallido = Infinity;   // anduvo bien un buen rato: se puede volver a probar más grande
+      }
+      avisar?.(desde / archivo.size);
+    }catch(e){
+      // «falta algo»: el servidor dice desde dónde, y se sigue sin esperar
+      if(e.status === 409 && Number.isFinite(e.datos?.recibido) && n < REINTENTOS){
+        anotar('subida retomada', { desde: mb(e.datos.recibido), porque: e.message, nivel: 'aviso' });
+        desde = e.datos.recibido;
+        n++;
+        continue;
+      }
+      // trabado a mitad de camino: el próximo intento, con la mitad
+      let nota = '';
+      const trabado = e.motivo === 'sin-avance';
+      if(trabado) fallido = Math.min(fallido, trozo);
+      if(trabado && trozo > TROZO_MINIMO){
+        trozo = Math.max(TROZO_MINIMO, trozo / 2);
+        nota = ` con pedazos de ${Math.round(trozo / 1024)} KB`;
+        anotar('pedazos más chicos', { ahora: Math.round(trozo / 1024) + ' KB', nivel: 'aviso' });
+      }
+      seguidos = 0;
+      await antesDeReintentar(e, n, desde / archivo.size, REINTENTOS_TROZO, nota);
+      n++;
+    }
+  }
+  throw new Error('El archivo llegó vacío');
 }
 
 /* ------------------------------------------------------------------ */
