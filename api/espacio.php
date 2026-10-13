@@ -52,7 +52,12 @@ function contenido(string $dir): array {
 
 /* Los archivos que usa cada cosa. Las placas, una por una (para saber cuáles
    son de una placa publicada); y aparte lo programado sin publicar y las
-   fotos de las cuentas, que se respetan siempre. */
+   fotos de las cuentas, que se respetan siempre.
+   IMPORTANTE: lo programado que todavía no salió —pendiente, saliendo o con
+   error para reintentar— no se toca nunca, con ninguna de las limpiezas: ni
+   sus archivos ni su placa. Si no, a la hora de publicar no habría qué subir.
+   Por eso la regla es «todo lo que no está publicado» y no una lista de
+   estados: uno nuevo queda protegido sin tener que acordarse. */
 function en_uso(): array {
     $porPlaca = [];
     foreach (bd()->query('SELECT id, datos FROM placas')->fetchAll() as $p) {
@@ -78,7 +83,7 @@ function placas_publicadas(int $dias): array {
     $st->execute([gmdate('Y-m-d H:i:s', time() - $dias * UN_DIA)]);
     $ids = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
     $conCola = array_map('intval', bd()->query(
-        "SELECT placa_id FROM programadas WHERE estado IN ('pendiente', 'publicando', 'error') AND placa_id IS NOT NULL")
+        "SELECT placa_id FROM programadas WHERE estado <> 'publicada' AND placa_id IS NOT NULL")
         ->fetchAll(PDO::FETCH_COLUMN));
     return array_values(array_diff($ids, $conCola));
 }
@@ -148,6 +153,8 @@ try {
                           'cantidad' => count($p['sueltos']) + count($p['temporales'])],
             'publicadas' => ['bytes' => array_sum($p['dePublicadas']), 'cantidad' => count($p['dePublicadas']),
                              'placas' => count($p['placas'])],
+            // lo programado sin publicar, que ninguna limpieza toca
+            'programadas' => (int) bd()->query("SELECT COUNT(*) FROM programadas WHERE estado <> 'publicada'")->fetchColumn(),
         ]);
     }
     if ($metodo !== 'POST') responder(['error' => 'Método no soportado'], 405);

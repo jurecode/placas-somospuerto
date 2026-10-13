@@ -883,7 +883,10 @@ async function revisarEspacio(){
       { headers: { 'x-clave': $('#clave').value.trim() } });
     const d = await leerJson(r);
     if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
-    $('#espacio_total').textContent = `Lo subido ocupa ${tamano(d.total)} en ${cuantos(d.archivos, 'archivo', 'archivos')}.`;
+    $('#espacio_total').textContent = `Lo subido ocupa ${tamano(d.total)} en ${cuantos(d.archivos, 'archivo', 'archivos')}.`
+      + (d.programadas
+        ? ` Lo programado (${cuantos(d.programadas, 'publicación', 'publicaciones')}) no se toca: ni sus archivos ni sus placas.`
+        : ' Lo programado nunca se toca.');
     $('#espacio_sueltos').textContent = d.sueltos.cantidad
       ? `Libera ${tamano(d.sueltos.bytes)} (${cuantos(d.sueltos.cantidad, 'archivo', 'archivos')}).`
       : 'No hay nada suelto para borrar.';
