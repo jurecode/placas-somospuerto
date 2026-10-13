@@ -102,6 +102,15 @@
   .guia summary{ color:var(--texto); font-weight:600; font-size:14px }
   .guia ol{ margin-top:14px; gap:10px }
   #version{ font-size:14px }
+  /* liberar espacio: cada limpieza con lo que libera y su botón */
+  .limpieza{ display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:14px; align-items:center;
+             padding:14px 0; border-top:1px solid var(--linea) }
+  .limpieza b{ font-size:14px }
+  .limpieza__cuanto{ font-size:13px; margin-top:6px; color:var(--texto) }
+  .limpieza select{ background:var(--hueco); color:var(--texto); border:1px solid var(--linea);
+                    border-radius:6px; padding:1px 4px; font:inherit; font-size:12.5px;
+                    width:auto; display:inline-block }
+  #espacio_resultado.bien{ color:var(--ok) } #espacio_resultado.error{ color:var(--mal) }
   /* el interruptor de la actualización automática */
   .interruptor{ display:inline-flex; align-items:center; gap:10px; cursor:pointer; font-size:14px; user-select:none }
   .interruptor input{
@@ -397,6 +406,37 @@
     </p>
   </section>
 
+  <section id="espacio">
+    <h2>Espacio</h2>
+    <p id="espacio_total" class="nota" style="margin-top:0">Escribí la clave y tocá Revisar.</p>
+    <div class="limpieza">
+      <div>
+        <b>Archivos sueltos</b>
+        <p class="nota" style="margin:2px 0 0">Los que no usa ninguna placa, nada programado ni ninguna foto de
+          perfil: videos de prueba, reemplazados o ya procesados. Se borran sin perder nada.</p>
+        <p class="limpieza__cuanto" id="espacio_sueltos">…</p>
+      </div>
+      <button id="borrar_sueltos" disabled>Borrar</button>
+    </div>
+    <div class="limpieza">
+      <div>
+        <b>Placas ya publicadas</b>
+        <p class="nota" style="margin:2px 0 0">Las que salieron hace más de
+          <select id="espacio_dias" aria-label="Hace cuántos días">
+            <option value="1">1 día</option>
+            <option value="7" selected>7 días</option>
+            <option value="30">30 días</option>
+            <option value="0">cualquier tiempo</option>
+          </select>,
+          con sus fotos y videos. Los posts en las redes y el historial del equipo quedan; lo que se va es la
+          placa del editor.</p>
+        <p class="limpieza__cuanto" id="espacio_publicadas">…</p>
+      </div>
+      <button id="borrar_publicadas" disabled>Borrar</button>
+    </div>
+    <p id="espacio_resultado" class="nota"></p>
+  </section>
+
   <section>
     <h2>Cómo se configura</h2>
     <ol>
@@ -540,6 +580,7 @@ async function revisar(){
     if(clave) localStorage.setItem('clave_publicar', clave);
     pintar(datos);
     revisarRedes();
+    revisarEspacio();
     const faltan = datos.faltan || [];
     res.className = datos.listo ? 'bien' : 'error';
     if(datos.listo){
@@ -822,6 +863,61 @@ $('#auto_actualizar').addEventListener('change', async (ev) => {
     ev.target.checked = !prender;
     $('#auto_estado').textContent = e.message;
   }
+});
+
+/* Liberar espacio: cuánto ocupa todo y cuánto se libera con cada limpieza. */
+const tamano = (b) => b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB'
+  : b >= 1048576 ? Math.round(b / 1048576) + ' MB' : b > 0 ? Math.max(1, Math.round(b / 1024)) + ' KB' : '0 KB';
+const cuantos = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
+async function revisarEspacio(){
+  try{
+    const r = await fetch('api/espacio.php?dias=' + $('#espacio_dias').value,
+      { headers: { 'x-clave': $('#clave').value.trim() } });
+    const d = await leerJson(r);
+    if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
+    $('#espacio_total').textContent = `Lo subido ocupa ${tamano(d.total)} en ${cuantos(d.archivos, 'archivo', 'archivos')}.`;
+    $('#espacio_sueltos').textContent = d.sueltos.cantidad
+      ? `Libera ${tamano(d.sueltos.bytes)} (${cuantos(d.sueltos.cantidad, 'archivo', 'archivos')}).`
+      : 'No hay nada suelto para borrar.';
+    $('#borrar_sueltos').disabled = !d.sueltos.cantidad;
+    $('#espacio_publicadas').textContent = d.publicadas.placas
+      ? `${cuantos(d.publicadas.placas, 'placa', 'placas')}: libera ${tamano(d.publicadas.bytes)} `
+        + `(${cuantos(d.publicadas.cantidad, 'archivo', 'archivos')}).`
+      : 'No hay placas publicadas hace tanto.';
+    $('#borrar_publicadas').disabled = !d.publicadas.placas;
+    return d;
+  }catch(e){
+    $('#espacio_total').textContent = e.message;
+    $('#borrar_sueltos').disabled = $('#borrar_publicadas').disabled = true;
+  }
+}
+
+async function limpiar(tarea, pregunta){
+  if(!confirm(pregunta)) return;
+  const res = $('#espacio_resultado');
+  res.className = 'nota'; res.textContent = 'Borrando…';
+  try{
+    const r = await fetch('api/espacio.php', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clave: $('#clave').value.trim(), tarea, dias: Number($('#espacio_dias').value) }),
+    });
+    const d = await leerJson(r);
+    if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
+    res.className = 'nota bien';
+    res.textContent = `Listo: se liberaron ${tamano(d.liberado)} (${cuantos(d.borrados, 'archivo', 'archivos')}`
+      + (d.placas ? `, ${cuantos(d.placas, 'placa', 'placas')}` : '') + ').';
+  }catch(e){ res.className = 'nota error'; res.textContent = e.message; }
+  revisarEspacio();
+}
+
+$('#espacio_dias').addEventListener('change', revisarEspacio);
+$('#borrar_sueltos').addEventListener('click', () =>
+  limpiar('sueltos', '¿Borrar los archivos sueltos? No los usa ninguna placa ni nada programado.'));
+$('#borrar_publicadas').addEventListener('click', () => {
+  const dias = $('#espacio_dias').selectedOptions[0].textContent;
+  limpiar('publicadas', `¿Borrar las placas publicadas hace más de ${dias}, con sus fotos y videos? `
+    + 'No se pueden recuperar. Los posts en las redes no se tocan.');
 });
 
 const esc = (s) => String(s).replace(/[&<>"]/g,
