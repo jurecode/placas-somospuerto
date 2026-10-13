@@ -172,7 +172,15 @@ function actualizar_solo(bool $porPush): array {
     if (ajuste('auto_actualizar') !== '1') return ['ok' => true, 'hizo' => 'apagado'];
     if (!$porPush) return ['ok' => true, 'hizo' => 'solo con el aviso de GitHub'];
     if ((int) ajuste('auto_revisado') > time() - 60) return ['ok' => true, 'hizo' => 'revisado hace poco'];
-    if ((int) bd()->query("SELECT GET_LOCK('placas_actualizar', 0)")->fetchColumn() !== 1) {
+    /* El candado es de todo el servidor de bases de datos, no de esta base:
+       si dos sitios comparten servidor (Somos Puerto y eyey, en el mismo
+       hosting) y los dos reciben el aviso a la vez, uno veía el candado del
+       otro y creía que ya se estaba actualizando. Por eso lleva el nombre de
+       la base: cada sitio, el suyo. */
+    $candado = 'placas_actualizar_' . substr(md5(BD_NOMBRE), 0, 16);
+    $st = bd()->prepare('SELECT GET_LOCK(?, 0)');
+    $st->execute([$candado]);
+    if ((int) $st->fetchColumn() !== 1) {
         return ['ok' => true, 'hizo' => 'ya se está actualizando'];
     }
     try {
@@ -189,7 +197,7 @@ function actualizar_solo(bool $porPush): array {
         guardar_ajuste('auto_ultima', json_encode(['version' => $r['version'], 'cuando' => time()]));
         return ['ok' => true, 'hizo' => 'actualizado'] + $r;
     } finally {
-        bd()->query("SELECT RELEASE_LOCK('placas_actualizar')");
+        bd()->prepare('SELECT RELEASE_LOCK(?)')->execute([$candado]);
     }
 }
 
