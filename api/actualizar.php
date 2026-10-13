@@ -41,11 +41,10 @@ if ($metodo === 'POST') {
     $cuerpo = json_decode(file_get_contents('php://input') ?: '', true) ?: [];
 }
 /* La actualización automática. No pide clave a propósito: la llama GitHub al
- * terminar cada versión (ver el workflow) y el editor al abrirse, y lo único
- * que puede hacer es instalar la última versión oficial del repositorio, que
- * es justamente lo que se quiere. Solo si está prendida en el panel, y con
- * una espera mínima entre revisiones para que nadie la pueda usar para
- * cargar el servidor. */
+ * terminar cada versión (ver el workflow), y lo único que puede hacer es
+ * instalar la última versión oficial del repositorio, que es justamente lo
+ * que se quiere. Solo si está prendida en el panel, y con una espera mínima
+ * entre revisiones para que nadie la pueda usar para cargar el servidor. */
 $tarea = (string) ($_GET['tarea'] ?? ($cuerpo['tarea'] ?? ''));
 if ($tarea === 'auto') {
     try {
@@ -164,14 +163,15 @@ function instalar(array $v): array {
     return ['version' => $v['tag'], 'cache' => $cache, 'archivos' => count($escritos), 'omitidos' => $omitidos];
 }
 
-/* Revisa si hay versión nueva y, si la hay, la instala. Con `$porPush` (el
- * aviso de GitHub) revisa ya, salvo que haya revisado hace menos de un
- * minuto; si no (el editor al abrirse), como mucho una vez cada 15 minutos.
- * Un candado en la base evita que dos avisos a la vez instalen dos veces. */
+/* Revisa si hay versión nueva y, si la hay, la instala. Solo con el aviso
+ * de GitHub (`$porPush`): el sitio no pregunta nada por su cuenta, así que
+ * no gasta nada mientras no haya una versión nueva. Si revisó hace menos de
+ * un minuto, no vuelve a hacerlo. Un candado en la base evita que dos avisos
+ * a la vez instalen dos veces. */
 function actualizar_solo(bool $porPush): array {
     if (ajuste('auto_actualizar') !== '1') return ['ok' => true, 'hizo' => 'apagado'];
-    $espera = $porPush ? 60 : 900;
-    if ((int) ajuste('auto_revisado') > time() - $espera) return ['ok' => true, 'hizo' => 'revisado hace poco'];
+    if (!$porPush) return ['ok' => true, 'hizo' => 'solo con el aviso de GitHub'];
+    if ((int) ajuste('auto_revisado') > time() - 60) return ['ok' => true, 'hizo' => 'revisado hace poco'];
     if ((int) bd()->query("SELECT GET_LOCK('placas_actualizar', 0)")->fetchColumn() !== 1) {
         return ['ok' => true, 'hizo' => 'ya se está actualizando'];
     }

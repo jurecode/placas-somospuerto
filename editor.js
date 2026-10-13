@@ -4553,10 +4553,6 @@ $('#portada').addEventListener('click', async (ev) => {
   // por si el hosting no tiene cron: al abrir, se publica lo que ya venció
   api('api/programar.php?tarea=vaciar&clave=' + encodeURIComponent(clave()))
     .catch(() => {});
-  /* Y si la actualización automática está prendida, que revise si hay versión
-     nueva (el servidor lo hace como mucho cada 15 minutos). Es el respaldo
-     del aviso que manda GitHub al publicar cada versión. */
-  fetch('api/actualizar.php?tarea=auto', { method: 'POST' }).catch(() => {});
   try{
     if(!(await listarPlacas()).length) await crear(EJEMPLO);
     abrirPortada();

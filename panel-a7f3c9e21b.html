@@ -802,8 +802,9 @@ function pintarAuto(d){
     return;
   }
   el.style.color = '';
-  el.textContent = 'Prendido: cuando se publica una versión nueva, el sitio la instala solo en unos segundos. '
-    + 'Además, al abrir el editor revisa si hay alguna, como mucho cada 15 minutos.'
+  el.textContent = 'Prendido: cuando se publica una versión nueva, GitHub le avisa al sitio y la instala '
+    + 'sola en unos segundos. Mientras tanto no busca nada. Si alguna vez el aviso no llegara, el botón '
+    + '«Actualizar el sitio» se enciende igual.'
     + (d.autoUltima ? ` Última instalada sola: ${d.autoUltima.version}, ${hace(d.autoUltima.cuando)}.` : '');
 }
 
