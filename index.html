@@ -485,7 +485,8 @@
   /* El marco toma el tamaño del lienzo y el video se estira por debajo: en el
      reel el lienzo es transparente y solo lleva el texto, que así se puede
      redibujar mientras se escribe sin tocar el video. */
-  .marco{ position:relative; display:grid; min-width:0;
+  /* overflow:hidden: el video del reel recortado (acercado) no se sale del marco */
+  .marco{ position:relative; display:grid; min-width:0; overflow:hidden;
           border-radius:14px; box-shadow:0 20px 60px #000a }
   #previa_video{
     position:absolute; inset:0; width:100%; height:100%;
@@ -529,6 +530,25 @@
   .publicar:disabled{ filter:grayscale(.7); cursor:default }
   .publicar svg{ width:19px; height:19px; flex:none }
   .pie-previa{ font-size:12px; color:var(--suave); margin-top:-6px }
+  /* ---------- el recortador ---------- */
+  .recorte{
+    border:1px solid var(--linea); border-radius:var(--radio); padding:0; color:var(--texto);
+    background:var(--panel); margin:auto; max-width:calc(100vw - 16px); max-height:calc(100svh - 16px); overflow:auto;
+  }
+  .recorte::backdrop{ background:#000c }
+  .recorte__caja{ display:grid; gap:10px; padding:16px; justify-items:center }
+  .recorte h2{ font-size:16px; margin:0; justify-self:start }
+  .recorte__ayuda{ font-size:12.5px; color:var(--suave); margin:0; justify-self:start; max-width:520px }
+  .recorte__marco{ border-radius:12px; overflow:hidden; background:#000; line-height:0 }
+  #recorte_lienzo{ display:block; touch-action:none; cursor:grab }
+  #recorte_lienzo:active{ cursor:grabbing }
+  .recorte__fila{ display:grid; grid-template-columns:auto minmax(0, 1fr) auto; gap:10px; align-items:center; width:100%; font-size:12.5px; color:var(--suave) }
+  .recorte__fila input{ width:100%; accent-color:var(--acento) }
+  .recorte__fila b{ color:var(--texto); font-weight:600; min-width:44px; text-align:right }
+  .recorte__pie{ display:grid; grid-template-columns:auto 1fr auto auto; gap:8px; width:100% }
+  .recorte__pie button{ min-height:40px; padding:0 16px; border-radius:10px }
+  .recorte__listo{ background:var(--acento); color:#0E0E10; border:0; font-weight:700 }
+
   /* ---------- el paso de TikTok ---------- */
   .tt{
     border:1px solid var(--linea); border-radius:var(--radio); padding:0; color:var(--texto);
@@ -1109,6 +1129,30 @@
   <button class="publicar" id="publicar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg><span>Publicar en Instagram</span></button>
   <p class="pie-previa">Publica de verdad, en las cuentas reales.</p>
 </div>
+
+<!-- El recortador: el video (o la foto) dentro del marco con el que sale. -->
+<dialog class="recorte" id="recorte" aria-labelledby="recorte_titulo">
+  <div class="recorte__caja">
+    <h2 id="recorte_titulo">Recortar</h2>
+    <p class="recorte__ayuda">Arrastrá para elegir qué parte se ve. Acercá con la barra, la rueda del mouse o pellizcando.</p>
+    <div class="recorte__marco"><canvas id="recorte_lienzo" aria-label="Cómo va a quedar"></canvas></div>
+    <div class="recorte__fila">
+      <span>Cerca</span>
+      <input type="range" id="recorte_zoom" min="1" max="3" step="0.01" value="1" aria-label="Acercar">
+      <b id="recorte_cuanto">100 %</b>
+    </div>
+    <div class="recorte__fila" id="recorte_tiempo_caja">
+      <span>Momento</span>
+      <input type="range" id="recorte_tiempo" min="0" max="1" step="0.01" value="0" aria-label="Momento del video">
+    </div>
+    <footer class="recorte__pie">
+      <button type="button" id="recorte_centrar">Centrar</button>
+      <span></span>
+      <button type="button" id="recorte_cancelar">Cancelar</button>
+      <button type="button" class="recorte__listo" id="recorte_listo">Listo</button>
+    </footer>
+  </div>
+</dialog>
 
 <!-- El paso de TikTok: lo exige TikTok para publicar con su API. Se ve la
      cuenta, se elige la privacidad sin nada marcado de antemano, se prende a

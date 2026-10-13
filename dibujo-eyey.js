@@ -567,7 +567,8 @@ export function dibujarReel(ctx, datos, medio, logo, ancho, alto, avance = 1, so
   if(!soloEncima){
     ctx.fillStyle = '#0b0b0d';
     ctx.fillRect(0, 0, ancho, alto);
-    dibujarFoto(ctx, medio, 0, 0, ancho, alto, 'cubrir', 50, 50, u);
+    dibujarFoto(ctx, medio, 0, 0, ancho, alto, 'cubrir',
+      datos.reel_x ?? 50, datos.reel_y ?? 50, u, datos.reel_zoom ?? 1);
   }
   ctx.fillStyle = degradadoNegro(ctx, alto);
   ctx.fillRect(0, 0, ancho, alto);
@@ -684,7 +685,7 @@ export function dibujarLamina(ctx, datos, lamina, foto, logo, ancho, marca = {})
   ctx.letterSpacing = '0px';
 
   dibujarFoto(ctx, foto, 0, 0, ancho, alto,
-    lamina.ajuste || 'cubrir', lamina.x ?? 50, lamina.y ?? 50, u);
+    lamina.ajuste || 'cubrir', lamina.x ?? 50, lamina.y ?? 50, u, lamina.zoom ?? 1);
 
   ctx.fillStyle = degradadoNegro(ctx, alto);
   ctx.fillRect(0, 0, ancho, alto);

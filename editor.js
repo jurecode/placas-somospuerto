@@ -1058,6 +1058,7 @@ function repintar(){
       // video va estirado por debajo
       if(reproductor){
         reproductor.hidden = !conVideo;
+        encuadrarVistaDelReel(reproductor);
         if(conVideo && !reproductor.src.endsWith(fuente)){
           reproductor.src = fuente;
           reproductor.play().catch(() => {});
@@ -1360,6 +1361,177 @@ function pintarChips(){
     '<button data-etiqueta="">Sin etiqueta</button>';
 }
 
+/* ------------------------------------------------------------------ */
+/* recortar un video (o una foto del carrusel)                         */
+/* ------------------------------------------------------------------ */
+
+/* En la vista previa del reel el video va por debajo, como <video>: el
+   recorte se le aplica con CSS, con la misma cuenta que el dibujo —«cubrir»,
+   la posición y el acercamiento desde ese punto—, así se ve igual que va
+   a salir. */
+function encuadrarVistaDelReel(video){
+  const x = placa.reel_x ?? 50, y = placa.reel_y ?? 50, z = placa.reel_zoom ?? 1;
+  video.style.objectPosition = `${x}% ${y}%`;
+  video.style.transformOrigin = `${x}% ${y}%`;
+  video.style.transform = z > 1 ? `scale(${z})` : '';
+}
+
+/* El recortador: el video reproduciéndose dentro del marco final, con la
+   proporción con la que sale (9:16 el reel, 4:5 el carrusel). Se arrastra
+   para mover, y se acerca con la barra, la rueda o pellizcando. Devuelve
+   { x, y, zoom } o null si se canceló. */
+function recortar({ fuente, esVideo, ancho, alto, x = 50, y = 50, zoom = 1 }){
+  const dlg = $('#recorte');
+  const lienzo = $('#recorte_lienzo');
+  // el lienzo con la proporción de la salida, a un tamaño que entre en pantalla
+  const cabeAlto = Math.min(window.innerHeight * 0.58, 560);
+  const cabeAncho = Math.min(window.innerWidth - 48, 520);
+  const k = Math.min(cabeAncho / ancho, cabeAlto / alto);
+  lienzo.width = Math.round(ancho * k * (window.devicePixelRatio || 1));
+  lienzo.height = Math.round(alto * k * (window.devicePixelRatio || 1));
+  lienzo.style.width = Math.round(ancho * k) + 'px';
+  lienzo.style.height = Math.round(alto * k) + 'px';
+  const ctx = lienzo.getContext('2d');
+  const barra = $('#recorte_zoom');
+  const tiempo = $('#recorte_tiempo');
+  $('#recorte_tiempo_caja').hidden = !esVideo;
+  let estado = { x, y, zoom };
+
+  const medio = esVideo ? document.createElement('video') : new Image();
+  if(esVideo){
+    Object.assign(medio, { muted: true, playsInline: true, loop: true, preload: 'auto' });
+    medio.addEventListener('loadedmetadata', () => { tiempo.max = medio.duration || 0; });
+  }
+  medio.src = fuente;
+  if(esVideo) medio.play().catch(() => {});
+
+  let vivo = true;
+  const pintar = () => {
+    if(!vivo) return;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, lienzo.width, lienzo.height);
+    dibujarFoto(ctx, medio, 0, 0, lienzo.width, lienzo.height, 'cubrir', estado.x, estado.y, 1, estado.zoom);
+    if(esVideo && document.activeElement !== tiempo) tiempo.value = medio.currentTime || 0;
+    requestAnimationFrame(pintar);
+  };
+  requestAnimationFrame(pintar);
+
+  const mostrarZoom = () => {
+    barra.value = estado.zoom;
+    $('#recorte_cuanto').textContent = Math.round(estado.zoom * 100) + ' %';
+  };
+  mostrarZoom();
+
+  /* Arrastrar: la imagen sigue al dedo. Cuánto se corre la posición depende
+     de cuánto sobra de imagen en ese eje con este acercamiento. */
+  const sobra = () => {
+    const w0 = medio.videoWidth || medio.naturalWidth || 1, h0 = medio.videoHeight || medio.naturalHeight || 1;
+    const escala = Math.max(lienzo.width / w0, lienzo.height / h0) * estado.zoom;
+    return [w0 * escala - lienzo.width, h0 * escala - lienzo.height];
+  };
+  const dedos = new Map();
+  let pellizco = null;
+  const limitar = (v) => Math.min(100, Math.max(0, v));
+  const alApretar = (ev) => {
+    // que el arrastre siga aunque el dedo se salga del cuadro (si se puede)
+    try{ lienzo.setPointerCapture(ev.pointerId); }catch(e){}
+    dedos.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if(dedos.size === 2){
+      const [a, b] = [...dedos.values()];
+      pellizco = { distancia: Math.hypot(a.x - b.x, a.y - b.y), zoom: estado.zoom };
+    }
+  };
+  const alMover = (ev) => {
+    const antes = dedos.get(ev.pointerId);
+    if(!antes) return;
+    const ahora = { x: ev.clientX, y: ev.clientY };
+    dedos.set(ev.pointerId, ahora);
+    if(dedos.size === 2 && pellizco){
+      const [a, b] = [...dedos.values()];
+      estado.zoom = Math.min(3, Math.max(1, pellizco.zoom * Math.hypot(a.x - b.x, a.y - b.y) / pellizco.distancia));
+      mostrarZoom();
+      return;
+    }
+    const escalaCss = lienzo.width / lienzo.getBoundingClientRect().width;
+    const [sx, sy] = sobra();
+    if(sx > 0.5) estado.x = limitar(estado.x - (ahora.x - antes.x) * escalaCss / sx * 100);
+    if(sy > 0.5) estado.y = limitar(estado.y - (ahora.y - antes.y) * escalaCss / sy * 100);
+  };
+  const alSoltar = (ev) => { dedos.delete(ev.pointerId); if(dedos.size < 2) pellizco = null; };
+  const alRodar = (ev) => {
+    ev.preventDefault();
+    estado.zoom = Math.min(3, Math.max(1, estado.zoom * (1 - ev.deltaY * 0.0015)));
+    mostrarZoom();
+  };
+  const alZoom = () => { estado.zoom = Number(barra.value); mostrarZoom(); };
+  const alTiempo = () => { if(esVideo) medio.currentTime = Number(tiempo.value); };
+
+  lienzo.addEventListener('pointerdown', alApretar);
+  lienzo.addEventListener('pointermove', alMover);
+  lienzo.addEventListener('pointerup', alSoltar);
+  lienzo.addEventListener('pointercancel', alSoltar);
+  lienzo.addEventListener('wheel', alRodar, { passive: false });
+  barra.addEventListener('input', alZoom);
+  tiempo.addEventListener('input', alTiempo);
+
+  return new Promise((resolver) => {
+    const cerrar = (valor) => {
+      vivo = false;
+      lienzo.removeEventListener('pointerdown', alApretar);
+      lienzo.removeEventListener('pointermove', alMover);
+      lienzo.removeEventListener('pointerup', alSoltar);
+      lienzo.removeEventListener('pointercancel', alSoltar);
+      lienzo.removeEventListener('wheel', alRodar);
+      barra.removeEventListener('input', alZoom);
+      tiempo.removeEventListener('input', alTiempo);
+      if(esVideo){ medio.pause(); medio.removeAttribute('src'); medio.load(); }
+      dlg.close();
+      resolver(valor);
+    };
+    $('#recorte_listo').onclick = () => cerrar({
+      x: Math.round(estado.x * 10) / 10, y: Math.round(estado.y * 10) / 10,
+      zoom: Math.round(estado.zoom * 100) / 100,
+    });
+    $('#recorte_cancelar').onclick = () => cerrar(null);
+    $('#recorte_centrar').onclick = () => { estado = { x: 50, y: 50, zoom: 1 }; mostrarZoom(); };
+    dlg.oncancel = (e) => { e.preventDefault(); cerrar(null); };
+    dlg.showModal();
+  });
+}
+
+document.addEventListener('click', async (ev) => {
+  // el reel: 9:16
+  if(ev.target.closest('[data-recortar-reel]')){
+    const fuente = fuenteDelReel();
+    if(!fuente) return;
+    const r = await recortar({ fuente, esVideo: true, ancho: REEL.ancho, alto: REEL.alto,
+      x: placa.reel_x ?? 50, y: placa.reel_y ?? 50, zoom: placa.reel_zoom ?? 1 });
+    if(!r) return;
+    placa.reel_x = r.x; placa.reel_y = r.y;
+    cambio('reel_zoom', r.zoom);
+    encuadrarVistaDelReel($('#previa_video'));
+    estado(r.zoom > 1 ? `Recortado al ${Math.round(r.zoom * 100)} %` : 'Encuadre guardado');
+    return;
+  }
+  // una foto o un video del carrusel: 4:5, como el resto del carrusel
+  const b = ev.target.closest('[data-recortar-lamina]');
+  if(!b) return;
+  const i = Number(b.dataset.recortarLamina);
+  const lam = placa.laminas?.[i];
+  if(!lam) return;
+  const esVideo = lam.tipo === 'video';
+  const fuente = esVideo ? (lam.crudo || lam.video) : lam.foto;
+  if(!fuente) return estado('Esperá a que termine de subir para recortarlo.', true);
+  const r = await recortar({ fuente, esVideo, ancho: ANCHO_FEED, alto: altoDe(ANCHO_FEED),
+    x: lam.x ?? 50, y: lam.y ?? 50, zoom: lam.zoom ?? 1 });
+  if(!r) return;
+  // recortar es elegir qué parte llena el cuadro: va en «Rellenar»
+  Object.assign(lam, { x: r.x, y: r.y, zoom: r.zoom, ajuste: 'cubrir' });
+  vista = i + 1;
+  cambio('laminas', placa.laminas);
+  pintarLaminas();
+});
+
 async function pintarFotos(){
   if(placa.formato === 'reel'){
     const fuente = fuenteDelReel();
@@ -1373,6 +1545,7 @@ async function pintarFotos(){
           <b>Video del reel</b>
           <button type="button" class="archivo"
                   onclick="this.parentNode.querySelector('input').click()">${fuente ? 'Cambiar video…' : 'Elegir video…'}</button>
+          ${fuente ? '<button type="button" class="archivo" data-recortar-reel>Recortar…</button>' : ''}
           <input type="file" accept="video/mp4,video/quicktime" data-reel-video>
           <p class="nota" id="estado_video"></p>
           <p class="nota">
@@ -1452,16 +1625,19 @@ async function pintarLaminas(){
         <button type="button" class="archivo"
                 onclick="this.parentNode.querySelector('input').click()">Cambiar…</button>
         <button type="button" class="archivo" data-quitar="${i}">Quitar</button>
+        <button type="button" class="archivo" data-recortar-lamina="${i}">Recortar…</button>
         <input type="file" accept="image/*,video/*" data-lamina-foto="${i}">
         <div class="ajuste">${AJUSTES.map(([id, n, ayuda]) =>
           `<button data-lamina-ajuste="${i}:${id}" title="${ayuda}">${n}</button>`).join('')}</div>
         <div class="encuadre">
           <span>X</span><input type="range" data-lamina-eje="${i}:x" min="0" max="100" step="1" value="${lam.x ?? 50}">
           <span>Y</span><input type="range" data-lamina-eje="${i}:y" min="0" max="100" step="1" value="${lam.y ?? 50}">
+          <span>Cerca</span><input type="range" data-lamina-eje="${i}:zoom" min="1" max="3" step="0.05" value="${lam.zoom ?? 1}">
         </div>
         ${lam.tipo === 'video' ? `<p class="nota">
-          Se sube tal cual y el logo se le graba al publicar. Tocá su cuadro en
-          la tira para verlo moverse ya recortado, que es como va a salir.
+          Si no lo acercás, se sube tal cual. Con «Recortar…» elegís qué parte
+          se ve, mirándolo moverse; tocá su cuadro en la tira para verlo como
+          va a salir.
         </p>` : ''}
       </div>
     </div>`).join('') || '<p class="nota">Solo la placa. Agregá fotos para armar un carrusel.</p>';
@@ -3340,6 +3516,7 @@ let ultimoQuemado = null;
 
 const firmaDelReel = () => JSON.stringify([
   fuenteDelReel(), placa.titulo, placa.etiqueta, placa.color_fondo, placa.color_filete, firma?.nombre,
+  placa.reel_x, placa.reel_y, placa.reel_zoom,
 ]);
 
 /* Elige el momento de la portada. La de fábrica salía negra: muchos videos
@@ -3877,7 +4054,8 @@ async function videoDeLamina(lam, i){
   if(!marcaEnVideo()){
     const medidas = await medidasDeVideo(lam.crudo);
     const quiere = altoDe(ANCHO_FEED) / ANCHO_FEED;
-    if(medidas && Math.abs(medidas.alto / medidas.ancho - quiere) < 0.01){
+    // recortado (acercado), hay que grabarlo con ese encuadre: ya no va tal cual
+    if(medidas && Math.abs(medidas.alto / medidas.ancho - quiere) < 0.01 && !((lam.zoom ?? 1) > 1)){
       anotar('video sin retocar', { pieza: i + 1,
         medidas: `${medidas.ancho}x${medidas.alto}`,
         archivo: String(lam.crudo).split('/').pop(),
@@ -3901,7 +4079,7 @@ async function videoDeLamina(lam, i){
           (ctx, cuadro) => {
             ctx.clearRect(0, 0, ANCHO_FEED, altoSalida);
             dibujarFoto(ctx, cuadro, 0, 0, ANCHO_FEED, altoSalida,
-              lam.ajuste || 'completa', lam.x ?? 50, lam.y ?? 50, u);
+              lam.ajuste || 'completa', lam.x ?? 50, lam.y ?? 50, u, lam.zoom ?? 1);
           },
           (b) => trabajo(rotulo, b, pista), ANCHO_FEED, altoSalida);
       }catch(e){
@@ -3921,7 +4099,7 @@ async function videoDeLamina(lam, i){
       porque: 'no se pudo reencuadrar sin dibujar', nivel: 'aviso' });
   }
 
-  const firma = JSON.stringify([lam.crudo, lam.ajuste, lam.x, lam.y, placa.color_fondo]);
+  const firma = JSON.stringify([lam.crudo, lam.ajuste, lam.x, lam.y, lam.zoom, placa.color_fondo]);
   const guardado = quemados.get(lam.crudo);
   if(guardado && guardado.firma === firma) return { tipo: 'video', ruta: guardado.ruta };
 

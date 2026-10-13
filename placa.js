@@ -231,7 +231,9 @@ export function dibujarLinea(ctx, palabras, x, baseline, caja, tipo, px, inter, 
 /* Dibuja una foto dentro de un hueco.
    "completa": entra entera y lo que sobra se rellena con una copia
    difuminada de la misma foto. "cubrir": llena y recorta. */
-export function dibujarFoto(ctx, medio, x, y, ancho, alto, ajuste, posX, posY, u){
+/* `zoom` acerca: 1 es el encaje de siempre, 2 el doble de cerca. Con
+   `posX`/`posY` se elige qué parte queda a la vista. */
+export function dibujarFoto(ctx, medio, x, y, ancho, alto, ajuste, posX, posY, u, zoom = 1){
   if(!medio) return;
   /* Sirve para tres cosas distintas que miden su tamaño de tres maneras: una
      imagen usa width, un <video> usa videoWidth, y un cuadro suelto salido
@@ -264,10 +266,10 @@ export function dibujarFoto(ctx, medio, x, y, ancho, alto, ajuste, posX, posY, u
     ctx.filter = `blur(${26 * u}px) brightness(.72) saturate(1.15)`;
     ctx.drawImage(medio, fx - (fw - ancho) * .09, fy - (fh - alto) * .09, fw, fh);
     ctx.filter = 'none';
-    const entra = Math.min(ancho / anchoOrig, alto / altoOrig);
+    const entra = Math.min(ancho / anchoOrig, alto / altoOrig) * zoom;
     ctx.drawImage(medio, ...encajar(entra));
   }else{
-    ctx.drawImage(medio, ...encajar(Math.max(ancho / anchoOrig, alto / altoOrig)));
+    ctx.drawImage(medio, ...encajar(Math.max(ancho / anchoOrig, alto / altoOrig) * zoom));
   }
   ctx.restore();
 }
@@ -747,7 +749,7 @@ export function dibujarLamina(ctx, datos, lamina, foto, logo, ancho){
   ctx.letterSpacing = '0px';
 
   dibujarFoto(ctx, foto, 0, 0, ancho, alto,
-    lamina.ajuste || 'completa', lamina.x ?? 50, lamina.y ?? 50, u);
+    lamina.ajuste || 'completa', lamina.x ?? 50, lamina.y ?? 50, u, lamina.zoom ?? 1);
 
   ctx.fillStyle = degradado(ctx, datos, 0, 0, ancho, alto, LAMINA_DEG_INICIO);
   ctx.fillRect(0, 0, ancho, alto);
@@ -810,7 +812,9 @@ export function dibujarReel(ctx, datos, medio, logo, ancho, alto, avance = 1, so
     ctx.fillStyle = '#0b0b0d';
     ctx.fillRect(0, 0, ancho, alto);
     // el video llena el cuadro
-    dibujarFoto(ctx, medio, 0, 0, ancho, alto, 'cubrir', 50, 50, u);
+    // con el recorte que se eligió: qué parte del video y qué tan cerca
+    dibujarFoto(ctx, medio, 0, 0, ancho, alto, 'cubrir',
+      datos.reel_x ?? 50, datos.reel_y ?? 50, u, datos.reel_zoom ?? 1);
   }
 
   // fundido al color del medio, para que el texto se lea
