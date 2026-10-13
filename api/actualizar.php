@@ -40,6 +40,21 @@ $cuerpo = null;
 if ($metodo === 'POST') {
     $cuerpo = json_decode(file_get_contents('php://input') ?: '', true) ?: [];
 }
+/* La actualización automática. No pide clave a propósito: la llama GitHub al
+ * terminar cada versión (ver el workflow) y el editor al abrirse, y lo único
+ * que puede hacer es instalar la última versión oficial del repositorio, que
+ * es justamente lo que se quiere. Solo si está prendida en el panel, y con
+ * una espera mínima entre revisiones para que nadie la pueda usar para
+ * cargar el servidor. */
+$tarea = (string) ($_GET['tarea'] ?? ($cuerpo['tarea'] ?? ''));
+if ($tarea === 'auto') {
+    try {
+        responder(actualizar_solo(($_GET['aviso'] ?? '') === 'push'));
+    } catch (Throwable $e) {
+        responder(['ok' => false, 'error' => $e->getMessage()], 500);
+    }
+}
+
 exigir_clave($cuerpo);
 
 function github(string $ruta, ?string $guardarEn = null, bool $binario = false): array {
@@ -93,39 +108,12 @@ function historial(int $cuantas = 8): array {
     return $lista;
 }
 
-try {
-    if ($metodo === 'GET') {
-        $v = ultima_version();
-        $instalada = ajuste('version_instalada');
-        $lista = [];
-        try { $lista = historial(); } catch (Throwable $e) { /* sin historial se sigue igual */ }
-        responder([
-            'instalada' => $instalada !== '' ? $instalada : null,
-            'ultima'    => $v['tag'],
-            'publicada' => $v['publicada'],
-            'hayNueva'  => $instalada === '' || $instalada !== $v['tag'],
-            'repo'      => ajuste('gh_repo', REPO_POR_DEFECTO),
-            'versiones' => $lista,
-        ]);
-    }
-
-    if ($metodo !== 'POST') responder(['error' => 'Método no soportado'], 405);
-
-    // guardar el token o el repo desde el panel
-    $guardo = false;
-    foreach (['gh_token', 'gh_repo'] as $c) {
-        if (isset($cuerpo[$c]) && trim((string) $cuerpo[$c]) !== '') {
-            guardar_ajuste($c, trim((string) $cuerpo[$c]));
-            $guardo = true;
-        }
-    }
-    if ($guardo && empty($cuerpo['actualizar'])) responder(['ok' => true, 'guardado' => true]);
-
+/* Baja el zip de la versión `$v` y lo descomprime encima del sitio. */
+function instalar(array $v): array {
     if (!class_exists('ZipArchive')) {
         throw new RuntimeException('Este hosting no tiene ZipArchive: hay que subir por FTP');
     }
 
-    $v = ultima_version();
     if ($v['zip'] === null) throw new RuntimeException('La versión no trae el archivo ' . paquete());
 
     $raiz = dirname(__DIR__);
@@ -173,8 +161,77 @@ try {
     $cache = asegurar_cache($raiz);
 
     guardar_ajuste('version_instalada', $v['tag']);
-    responder(['ok' => true, 'version' => $v['tag'], 'cache' => $cache,
-               'archivos' => count($escritos), 'omitidos' => $omitidos]);
+    return ['version' => $v['tag'], 'cache' => $cache, 'archivos' => count($escritos), 'omitidos' => $omitidos];
+}
+
+/* Revisa si hay versión nueva y, si la hay, la instala. Con `$porPush` (el
+ * aviso de GitHub) revisa ya, salvo que haya revisado hace menos de un
+ * minuto; si no (el editor al abrirse), como mucho una vez cada 15 minutos.
+ * Un candado en la base evita que dos avisos a la vez instalen dos veces. */
+function actualizar_solo(bool $porPush): array {
+    if (ajuste('auto_actualizar') !== '1') return ['ok' => true, 'hizo' => 'apagado'];
+    $espera = $porPush ? 60 : 900;
+    if ((int) ajuste('auto_revisado') > time() - $espera) return ['ok' => true, 'hizo' => 'revisado hace poco'];
+    if ((int) bd()->query("SELECT GET_LOCK('placas_actualizar', 0)")->fetchColumn() !== 1) {
+        return ['ok' => true, 'hizo' => 'ya se está actualizando'];
+    }
+    try {
+        guardar_ajuste('auto_revisado', (string) time());
+        $v = ultima_version();
+        if ($v['tag'] === ajuste('version_instalada')) return ['ok' => true, 'hizo' => 'al día', 'version' => $v['tag']];
+        try {
+            $r = instalar($v);
+        } catch (Throwable $e) {
+            guardar_ajuste('auto_error', json_encode(['error' => $e->getMessage(), 'cuando' => time(), 'version' => $v['tag']]));
+            throw $e;
+        }
+        guardar_ajuste('auto_error', '');
+        guardar_ajuste('auto_ultima', json_encode(['version' => $r['version'], 'cuando' => time()]));
+        return ['ok' => true, 'hizo' => 'actualizado'] + $r;
+    } finally {
+        bd()->query("SELECT RELEASE_LOCK('placas_actualizar')");
+    }
+}
+
+try {
+    if ($metodo === 'GET') {
+        $v = ultima_version();
+        $instalada = ajuste('version_instalada');
+        $lista = [];
+        try { $lista = historial(); } catch (Throwable $e) { /* sin historial se sigue igual */ }
+        responder([
+            'instalada' => $instalada !== '' ? $instalada : null,
+            'ultima'    => $v['tag'],
+            'publicada' => $v['publicada'],
+            'hayNueva'  => $instalada === '' || $instalada !== $v['tag'],
+            'repo'      => ajuste('gh_repo', REPO_POR_DEFECTO),
+            'versiones' => $lista,
+            'auto'      => ajuste('auto_actualizar') === '1',
+            'autoUltima' => json_decode(ajuste('auto_ultima'), true) ?: null,
+            'autoError'  => json_decode(ajuste('auto_error'), true) ?: null,
+        ]);
+    }
+
+    if ($metodo !== 'POST') responder(['error' => 'Método no soportado'], 405);
+
+    // guardar el token o el repo desde el panel
+    $guardo = false;
+    foreach (['gh_token', 'gh_repo'] as $c) {
+        if (isset($cuerpo[$c]) && trim((string) $cuerpo[$c]) !== '') {
+            guardar_ajuste($c, trim((string) $cuerpo[$c]));
+            $guardo = true;
+        }
+    }
+    if ($guardo && empty($cuerpo['actualizar'])) responder(['ok' => true, 'guardado' => true]);
+
+    // prender o apagar la actualización automática
+    if (array_key_exists('auto_actualizar', $cuerpo)) {
+        guardar_ajuste('auto_actualizar', !empty($cuerpo['auto_actualizar']) ? '1' : '0');
+        responder(['ok' => true, 'auto' => !empty($cuerpo['auto_actualizar'])]);
+    }
+
+    $v = ultima_version();
+    responder(['ok' => true] + instalar($v));
 
 } catch (Throwable $e) {
     responder(['error' => $e->getMessage()], 500);

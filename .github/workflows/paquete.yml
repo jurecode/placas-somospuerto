@@ -110,3 +110,11 @@ jobs:
           name: Versión ${{ github.run_number }}
           body_path: notas.md
           files: placas-*.zip
+
+      # Si el sitio tiene prendido «Actualizar solo» en el panel, se le avisa
+      # que hay versión nueva y la instala en el momento. Si está apagado, el
+      # sitio contesta que no hace nada. Que falle no frena la versión.
+      - name: Avisarle al sitio
+        continue-on-error: true
+        run: |
+          curl -sS -m 180 -X POST "https://publica.monobots.ai/api/actualizar.php?tarea=auto&aviso=push" || true

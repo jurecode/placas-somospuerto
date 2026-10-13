@@ -102,6 +102,20 @@
   .guia summary{ color:var(--texto); font-weight:600; font-size:14px }
   .guia ol{ margin-top:14px; gap:10px }
   #version{ font-size:14px }
+  /* el interruptor de la actualización automática */
+  .interruptor{ display:inline-flex; align-items:center; gap:10px; cursor:pointer; font-size:14px; user-select:none }
+  .interruptor input{
+    appearance:none; -webkit-appearance:none; width:42px; height:24px; border-radius:99px; margin:0;
+    background:var(--boton); border:1px solid var(--linea); position:relative; cursor:pointer; flex:none;
+    transition:background .15s;
+  }
+  .interruptor input::after{
+    content:''; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%;
+    background:var(--suave); transition:transform .15s, background .15s;
+  }
+  .interruptor input:checked{ background:var(--ok); border-color:var(--ok) }
+  .interruptor input:checked::after{ transform:translateX(18px); background:#fff }
+  .interruptor input:focus-visible{ outline:2px solid var(--acento); outline-offset:2px }
   #version.fallo{ color:var(--ok); font-weight:600 }
   #version.aldia::after{ content:' · el botón se enciende cuando haya una nueva'; color:var(--suave); font-weight:400 }
   #resultado{ margin-top:14px; font-size:14px; min-height:20px }
@@ -133,9 +147,14 @@
   <section>
     <h2>Actualizaciones</h2>
     <p id="version">Revisando…</p>
-    <div class="fila" style="margin-top:14px">
+    <div class="fila" style="margin-top:14px; flex-wrap:wrap">
       <button class="principal" id="actualizar" disabled>Actualizar el sitio</button>
+      <label class="interruptor" title="Cada versión nueva se instala sola">
+        <input type="checkbox" id="auto_actualizar" role="switch">
+        <span>Actualizar solo</span>
+      </label>
     </div>
+    <p class="nota" id="auto_estado" style="margin-top:10px"></p>
 
     <h3 class="titulillo">Qué cambió</h3>
     <div id="novedades"><p class="nota">Revisando…</p></div>
@@ -752,6 +771,7 @@ async function revisarVersion(){
       : `Al día en la versión ${d.ultima}`;
     el.className = d.hayNueva ? 'fallo' : 'aldia';
     $('#actualizar').disabled = !d.hayNueva;
+    pintarAuto(d);
     pintarNovedades(d.versiones || [], d.instalada);
     if(d.repo) $('#el_repo').textContent = d.repo;
   }catch(e){
@@ -760,6 +780,48 @@ async function revisarVersion(){
     $('#actualizar').disabled = true;
   }
 }
+
+/* La actualización automática: si está prendida, cuándo fue la última y si
+   la última vez falló algo. */
+function pintarAuto(d){
+  $('#auto_actualizar').checked = !!d.auto;
+  const el = $('#auto_estado');
+  if(!d.auto){
+    el.textContent = 'Prendelo y cada versión nueva se instala sola, en unos segundos, sin tener que tocar nada.';
+    el.style.color = '';
+    return;
+  }
+  const hace = (t) => {
+    const min = Math.round((Date.now() / 1000 - t) / 60);
+    return min < 1 ? 'recién' : min < 60 ? `hace ${min} min` : min < 1440 ? `hace ${Math.round(min / 60)} h` : `hace ${Math.round(min / 1440)} días`;
+  };
+  if(d.autoError){
+    el.style.color = 'var(--mal)';
+    el.textContent = `La última vez no se pudo instalar ${d.autoError.version || ''} (${hace(d.autoError.cuando)}): `
+      + `${d.autoError.error}. Probá con «Actualizar el sitio».`;
+    return;
+  }
+  el.style.color = '';
+  el.textContent = 'Prendido: cuando se publica una versión nueva, el sitio la instala solo en unos segundos. '
+    + 'Además, al abrir el editor revisa si hay alguna, como mucho cada 15 minutos.'
+    + (d.autoUltima ? ` Última instalada sola: ${d.autoUltima.version}, ${hace(d.autoUltima.cuando)}.` : '');
+}
+
+$('#auto_actualizar').addEventListener('change', async (ev) => {
+  const prender = ev.target.checked;
+  try{
+    const r = await fetch('api/actualizar.php', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clave: $('#clave').value.trim(), auto_actualizar: prender }),
+    });
+    const d = await leerJson(r);
+    if(!r.ok) throw new Error(d.error || `Error ${r.status}`);
+    revisarVersion();
+  }catch(e){
+    ev.target.checked = !prender;
+    $('#auto_estado').textContent = e.message;
+  }
+});
 
 const esc = (s) => String(s).replace(/[&<>"]/g,
   (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
