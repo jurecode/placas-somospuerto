@@ -27,7 +27,8 @@ jobs:
           cp equipo.html equipo.php sitio/
           # las páginas que TikTok pide para aprobar la app
           cp privacidad.html terminos.html sitio/
-          cp panel-*.html sitio/
+          # el panel privado: el .html y el .php que lo sirve sin caché
+          cp panel-*.html panel-*.php sitio/
           cp -r assets sitio/
           cp -r marca sitio/
           cp -r marcas sitio/

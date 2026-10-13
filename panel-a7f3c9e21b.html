@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow, noarchive">
+<script>
+  /* Abierto como .html, que el hosting deja seis meses en la caché del
+     navegador: se pasa a la dirección .php, que siempre llega al día. */
+  if(/\.html$/.test(location.pathname)){
+    location.replace(location.pathname.replace(/\.html$/, '.php') + location.search + location.hash);
+  }
+</script>
 <title>Panel — Somos Puerto</title>
 <style>
   :root{
