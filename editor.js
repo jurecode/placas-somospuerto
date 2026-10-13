@@ -230,11 +230,18 @@ const escribirPlaca = (p) => api('api/placas.php', {
    esperando para siempre. Cada trozo lleva su propio plazo, así que una
    conexión muerta falla en un minuto en vez de nunca. */
 const TROZO = 2 * 1024 * 1024;
+/* Si un pedazo no entra, el siguiente intento va con la mitad, hasta este
+   piso: con 2 MB una conexión móvil mala no llegaba nunca y la subida se
+   quedaba clavada en el mismo porcentaje, reintentando lo mismo. Cuando
+   vuelven a entrar seguidos, crecen otra vez. */
+const TROZO_MINIMO = 256 * 1024;
 const ENTERO_HASTA = 4 * 1024 * 1024;
-/* Era 90 s. Como un pedazo que no contesta ahora se reintenta, no hace
-   falta esperarlo tanto: 90 s con la barra quieta era justamente el «se
-   pega». Dos megas en 60 s son 35 KB/s, menos que un 3G malo. */
-const PLAZO_TROZO = 60_000;
+/* Un pedazo trabado se reconoce porque deja de avanzar, no por un plazo
+   fijo: un plazo cortaba a una conexión lenta que sí estaba subiendo, y a
+   una muerta la dejaba un minuto entero con la barra quieta. */
+const SIN_AVANCE = 25_000;
+// ya subido, lo que puede tardar el servidor en contestar (el último pedazo arma el archivo)
+const ESPERA_RESPUESTA = 90_000;
 
 /* El hosting limita cuánto se le pide: cuando se pasa, contesta 429 a todo
    el sitio por un rato. Una subida son decenas de pedidos seguidos, así que
@@ -243,6 +250,8 @@ const PLAZO_TROZO = 60_000;
    Ahora un pedazo rechazado por algo pasajero se espera y se reintenta,
    cada vez un poco más, y la subida sigue desde donde quedó. */
 const REINTENTOS = 6;   // 2 + 4 + 8 + 16 + 30 + 30 s: un minuto y medio de margen
+// en los pedazos, más: cada intento va más chico, así que cada uno es otra oportunidad
+const REINTENTOS_TROZO = 9;
 
 /* Lo que vale la pena reintentar: sin respuesta (red caída, plazo vencido),
    saturado (429), el servidor que se cayó un momento (5xx), o «falta un
@@ -270,21 +279,77 @@ function motivoFinal(e, esperado){
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* Sin esto PHP intenta leer el binario como si fuera un formulario y ensucia
-   la respuesta con avisos que rompen el JSON. */
-const BINARIO = { 'Content-Type': 'application/octet-stream' };
+/* Como dormir, pero se despierta antes si vuelve la red o si se vuelve a la
+   pestaña: no tiene sentido esperar 30 s si el teléfono ya se reconectó. */
+const dormirOAntes = (ms) => new Promise((listo) => {
+  const fin = () => {
+    clearTimeout(reloj);
+    window.removeEventListener('online', fin);
+    document.removeEventListener('visibilitychange', alVolver);
+    listo();
+  };
+  const alVolver = () => { if(document.visibilityState === 'visible') fin(); };
+  const reloj = setTimeout(fin, ms);
+  window.addEventListener('online', fin);
+  document.addEventListener('visibilitychange', alVolver);
+});
 
-async function conPlazo(ruta, opciones, ms){
-  const corte = new AbortController();
-  const reloj = setTimeout(() => corte.abort(), ms);
-  try{
-    return await api(ruta, { ...opciones, signal: corte.signal });
-  }catch(e){
-    if(e.name === 'AbortError'){
-      throw new Error('El servidor no contestó a tiempo. Puede ser la conexión: probá de nuevo.');
-    }
-    throw e;
-  }finally{ clearTimeout(reloj); }
+/* Un pedazo por XMLHttpRequest y no por fetch: fetch no dice cuánto va
+   subiendo. Con eso la barra se mueve durante el pedazo —antes quedaba quieta
+   hasta que terminaba, y parecía pegada— y un pedazo trabado se corta cuando
+   deja de avanzar. `alAvanzar(bytes)` dice cuánto subió de este pedazo. */
+function subirPedazo(ruta, cuerpo, alAvanzar){
+  return new Promise((resolver, rechazar) => {
+    const xhr = new XMLHttpRequest();
+    let ultimo = Date.now(), subido = false, motivo = '', terminado = false;
+    const error = (texto, extra = {}) => {
+      if(terminado) return;
+      terminado = true;
+      clearInterval(vigia);
+      rechazar(Object.assign(new Error(texto), extra));
+    };
+    /* Cortado por el vigía: se da por fallado acá mismo, sin esperar el
+       aviso de «abort», que el navegador no siempre manda (si el pedido no
+       llegó a salir, no avisa nada y la subida quedaba esperando para siempre). */
+    const cortar = (por) => {
+      motivo = por;
+      xhr.abort();
+      error(por === 'sin-avance' ? 'La subida dejó de avanzar' : 'El servidor no contestó a tiempo', { motivo: por });
+    };
+    const vigia = setInterval(() => {
+      const quieto = Date.now() - ultimo;
+      if(!subido && quieto > SIN_AVANCE) cortar('sin-avance');
+      else if(subido && quieto > ESPERA_RESPUESTA) cortar('sin-respuesta');
+    }, 1000);
+    xhr.open('POST', ruta);
+    xhr.setRequestHeader('x-clave', clave());
+    // como binario: si no, PHP intenta leerlo como formulario y ensucia la respuesta
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.upload.onprogress = (ev) => { ultimo = Date.now(); alAvanzar?.(ev.loaded); };
+    xhr.upload.onload = () => { subido = true; ultimo = Date.now(); };
+    xhr.onload = () => {
+      if(terminado) return;
+      let datos = {};
+      try{ datos = JSON.parse(xhr.responseText); }catch(e){}
+      if(xhr.status >= 200 && xhr.status < 300 && !datos.error){
+        terminado = true;
+        clearInterval(vigia);
+        return resolver(datos);
+      }
+      if(xhr.status === 401 && clave()){
+        localStorage.removeItem('clave_publicar');
+        pantallaIngreso('La sesión se cerró o venció: entrá de nuevo.');
+      }
+      error(datos.error || motivoHttp(xhr.status), {
+        status: xhr.status, datos, esClave: xhr.status === 401,
+        reintentarEn: Number(xhr.getResponseHeader('Retry-After')) || 0,
+      });
+    };
+    xhr.onerror = () => error('No hubo respuesta del servidor', { motivo: 'red' });
+    xhr.onabort = () => error(motivo === 'sin-avance' ? 'La subida dejó de avanzar'
+      : 'El servidor no contestó a tiempo', { motivo: motivo || 'cortada' });
+    xhr.send(cuerpo);
+  });
 }
 
 /* `avisar(fraccion, nota)`: la nota llega solo mientras se espera para
@@ -308,26 +373,28 @@ async function guardarFoto(archivo, avisar){
   };
   /* Un intento falló por algo pasajero: se anota, se dice en pantalla y se
      espera. Si ya no quedan intentos, el error sigue de largo. */
-  const antesDeReintentar = async (e, n, fraccion) => {
-    if(!pasajero(e) || n >= REINTENTOS) throw motivoFinal(e, esperado);
+  const antesDeReintentar = async (e, n, fraccion, maximo = REINTENTOS, nota = '') => {
+    if(!pasajero(e) || n >= maximo) throw motivoFinal(e, esperado);
     reintentos++;
     const ms = esperaDe(n, e);
     esperado += ms;
     const que = e.status === 429 ? 'el hosting está limitando los pedidos'
-      : e.status ? `el servidor contestó ${e.status}` : 'no hubo respuesta';
-    anotar('subida reintentada', { intento: n + 1, porque: que,
+      : e.status ? `el servidor contestó ${e.status}`
+      : e.motivo === 'sin-avance' ? 'la conexión dejó de subir'
+      : 'no hubo respuesta';
+    anotar('subida reintentada', { intento: n + 1, porque: que, motivo: e.motivo || '',
       espera: seg(ms), va: Math.round(fraccion * 100) + '%', nivel: 'aviso' });
-    avisar?.(fraccion, `Pausa: ${que}. Se reintenta en ${Math.round(ms / 1000)} s `
-      + `(intento ${n + 1} de ${REINTENTOS}); no hace falta hacer nada.`);
-    await dormir(ms);
+    avisar?.(fraccion, `Pausa: ${que}. Se reintenta en ${Math.round(ms / 1000)} s${nota} `
+      + `(intento ${n + 1} de ${maximo}); no hace falta hacer nada.`);
+    await dormirOAntes(ms);
   };
 
   try{
     if(archivo.size <= ENTERO_HASTA){
       for(let n = 0; ; n++){
         try{
-          return contar(await conPlazo('api/fotos.php',
-            { method: 'POST', body: archivo, headers: BINARIO }, PLAZO_TROZO));
+          return contar(await subirPedazo('api/fotos.php', archivo,
+            (subido) => avisar?.(subido / archivo.size)));
         }catch(e){ await antesDeReintentar(e, n, 0); }
       }
     }
@@ -339,17 +406,30 @@ async function guardarFoto(archivo, avisar){
        mitad retoma en vez de empezar de cero. */
     let desde = 0;
     let n = 0;   // intentos fallidos seguidos; vuelve a cero con cada pedazo que entra
+    let trozo = TROZO;
+    let seguidos = 0;   // pedazos que entraron seguidos con el tamaño de ahora
+    let fallo = Infinity;   // el tamaño más chico que falló: no se vuelve a probar enseguida
     while(desde < archivo.size){
-      const pedazo = archivo.slice(desde, desde + TROZO);
+      const pedazo = archivo.slice(desde, desde + trozo);
       const ultimo = desde + pedazo.size >= archivo.size;
       try{
-        const r = await conPlazo(
+        const r = await subirPedazo(
           `api/fotos.php?trozo=1&sesion=${sesion}&desde=${desde}`
             + (ultimo ? `&fin=1&total=${archivo.size}` : ''),
-          { method: 'POST', body: pedazo, headers: BINARIO }, PLAZO_TROZO);
+          pedazo, (subido) => avisar?.((desde + subido) / archivo.size));
         if(ultimo) return contar(r);
         desde = Number.isFinite(r.recibido) ? r.recibido : desde + pedazo.size;
         n = 0;
+        /* Anduvo bien varias veces seguidas: se agranda, pero sin volver al
+           tamaño que falló hasta que haya andado bien un buen rato (la red
+           pudo haber mejorado). Antes volvía a probar a los tres pedazos,
+           fallaba y perdía la pausa cada vez. */
+        seguidos++;
+        if(trozo < TROZO && seguidos >= 3 && (trozo * 2 < fallo || seguidos >= 12)){
+          if(seguidos >= 12) fallo = Infinity;
+          trozo = Math.min(TROZO, trozo * 2);
+          seguidos = 0;
+        }
         avisar?.(desde / archivo.size);
       }catch(e){
         // «falta algo»: el servidor dice desde dónde, y se sigue sin esperar
@@ -359,7 +439,16 @@ async function guardarFoto(archivo, avisar){
           n++;
           continue;
         }
-        await antesDeReintentar(e, n, desde / archivo.size);
+        // sin respuesta o trabado: el próximo intento, con la mitad
+        let nota = '';
+        if(!e.status) fallo = Math.min(fallo, trozo);
+        if(!e.status && trozo > TROZO_MINIMO){
+          trozo = Math.max(TROZO_MINIMO, trozo / 2);
+          nota = ` con pedazos de ${Math.round(trozo / 1024)} KB`;
+          anotar('pedazos más chicos', { ahora: Math.round(trozo / 1024) + ' KB', nivel: 'aviso' });
+        }
+        seguidos = 0;
+        await antesDeReintentar(e, n, desde / archivo.size, REINTENTOS_TROZO, nota);
         n++;
       }
     }
