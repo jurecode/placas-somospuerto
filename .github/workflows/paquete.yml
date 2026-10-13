@@ -115,7 +115,17 @@ jobs:
       # Si el sitio tiene prendido «Actualizar solo» en el panel, se le avisa
       # que hay versión nueva y la instala en el momento. Si está apagado, el
       # sitio contesta que no hace nada. Que falle no frena la versión.
+      # El anti-bots del hosting a veces frena el aviso (contesta con una
+      # verificación en vez de dejarlo pasar): se reintenta, y si igual no
+      # pasa, queda una advertencia a la vista para actualizar desde el panel.
       - name: Avisarle al sitio
         continue-on-error: true
         run: |
-          curl -sS -m 180 -X POST "https://publica.monobots.ai/api/actualizar.php?tarea=auto&aviso=push" || true
+          for intento in 1 2 3; do
+            r=$(curl -sS -m 180 -X POST -A "placas-actualizador (GitHub Actions)" \
+                "https://publica.monobots.ai/api/actualizar.php?tarea=auto&aviso=push" || true)
+            echo "$r" | head -c 400; echo
+            case "$r" in *'"ok":true'*) exit 0;; esac
+            sleep 20
+          done
+          echo "::warning::El sitio no recibió el aviso (puede ser el anti-bots del hosting). Actualizalo desde el panel con «Actualizar el sitio»."
