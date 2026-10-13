@@ -1134,12 +1134,22 @@
 <dialog class="recorte" id="recorte" aria-labelledby="recorte_titulo">
   <div class="recorte__caja">
     <h2 id="recorte_titulo">Recortar</h2>
-    <p class="recorte__ayuda">Arrastrá para elegir qué parte se ve. Acercá con la barra, la rueda del mouse o pellizcando.</p>
+    <p class="recorte__ayuda">Para mover: arrastrá la imagen, deslizá con dos dedos en el trackpad o usá las barras. Para acercar: la barra «Cerca», pellizcando, o Ctrl + rueda.</p>
     <div class="recorte__marco"><canvas id="recorte_lienzo" aria-label="Cómo va a quedar"></canvas></div>
     <div class="recorte__fila">
       <span>Cerca</span>
       <input type="range" id="recorte_zoom" min="1" max="3" step="0.01" value="1" aria-label="Acercar">
       <b id="recorte_cuanto">100 %</b>
+    </div>
+    <div class="recorte__fila">
+      <span>Lado</span>
+      <input type="range" id="recorte_x" min="0" max="100" step="0.5" value="50" aria-label="Mover a los lados">
+      <b></b>
+    </div>
+    <div class="recorte__fila">
+      <span>Altura</span>
+      <input type="range" id="recorte_y" min="0" max="100" step="0.5" value="50" aria-label="Mover arriba o abajo">
+      <b></b>
     </div>
     <div class="recorte__fila" id="recorte_tiempo_caja">
       <span>Momento</span>

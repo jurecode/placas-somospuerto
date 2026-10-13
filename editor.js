@@ -1377,9 +1377,10 @@ function encuadrarVistaDelReel(video){
 }
 
 /* El recortador: el video reproduciéndose dentro del marco final, con la
-   proporción con la que sale (9:16 el reel, 4:5 el carrusel). Se arrastra
-   para mover, y se acerca con la barra, la rueda o pellizcando. Devuelve
-   { x, y, zoom } o null si se canceló. */
+   proporción con la que sale (9:16 el reel, 4:5 el carrusel). Se mueve
+   arrastrando, deslizando con dos dedos o con las barras, y se acerca con
+   la barra, pellizcando o con Ctrl + rueda. Devuelve { x, y, zoom } o null
+   si se canceló. */
 function recortar({ fuente, esVideo, ancho, alto, x = 50, y = 50, zoom = 1 }){
   const dlg = $('#recorte');
   const lienzo = $('#recorte_lienzo');
@@ -1420,7 +1421,11 @@ function recortar({ fuente, esVideo, ancho, alto, x = 50, y = 50, zoom = 1 }){
     barra.value = estado.zoom;
     $('#recorte_cuanto').textContent = Math.round(estado.zoom * 100) + ' %';
   };
+  // las barras de posición, para mover sin arrastrar
+  const barraX = $('#recorte_x'), barraY = $('#recorte_y');
+  const mostrarPosicion = () => { barraX.value = estado.x; barraY.value = estado.y; };
   mostrarZoom();
+  mostrarPosicion();
 
   /* Arrastrar: la imagen sigue al dedo. Cuánto se corre la posición depende
      de cuánto sobra de imagen en ese eje con este acercamiento. */
@@ -1456,14 +1461,30 @@ function recortar({ fuente, esVideo, ancho, alto, x = 50, y = 50, zoom = 1 }){
     const [sx, sy] = sobra();
     if(sx > 0.5) estado.x = limitar(estado.x - (ahora.x - antes.x) * escalaCss / sx * 100);
     if(sy > 0.5) estado.y = limitar(estado.y - (ahora.y - antes.y) * escalaCss / sy * 100);
+    mostrarPosicion();
   };
   const alSoltar = (ev) => { dedos.delete(ev.pointerId); if(dedos.size < 2) pellizco = null; };
+  /* La rueda y el deslizar con dos dedos en el trackpad de la Mac llegan
+     igual, como «rueda»: mueven la imagen, que es lo que uno espera al
+     deslizar. Pellizcar en el trackpad llega como rueda con Ctrl: eso acerca,
+     igual que Ctrl + rueda con el mouse. Antes la rueda acercaba, y con el
+     trackpad no había forma de mover la imagen. */
   const alRodar = (ev) => {
     ev.preventDefault();
-    estado.zoom = Math.min(3, Math.max(1, estado.zoom * (1 - ev.deltaY * 0.0015)));
-    mostrarZoom();
+    if(ev.ctrlKey || ev.metaKey){
+      estado.zoom = Math.min(3, Math.max(1, estado.zoom * (1 - ev.deltaY * 0.01)));
+      mostrarZoom();
+      return;
+    }
+    const escalaCss = lienzo.width / lienzo.getBoundingClientRect().width;
+    const [sx, sy] = sobra();
+    if(sx > 0.5) estado.x = limitar(estado.x + ev.deltaX * escalaCss / sx * 100);
+    if(sy > 0.5) estado.y = limitar(estado.y + ev.deltaY * escalaCss / sy * 100);
+    mostrarPosicion();
   };
   const alZoom = () => { estado.zoom = Number(barra.value); mostrarZoom(); };
+  const alX = () => { estado.x = Number(barraX.value); };
+  const alY = () => { estado.y = Number(barraY.value); };
   const alTiempo = () => { if(esVideo) medio.currentTime = Number(tiempo.value); };
 
   lienzo.addEventListener('pointerdown', alApretar);
@@ -1472,6 +1493,8 @@ function recortar({ fuente, esVideo, ancho, alto, x = 50, y = 50, zoom = 1 }){
   lienzo.addEventListener('pointercancel', alSoltar);
   lienzo.addEventListener('wheel', alRodar, { passive: false });
   barra.addEventListener('input', alZoom);
+  barraX.addEventListener('input', alX);
+  barraY.addEventListener('input', alY);
   tiempo.addEventListener('input', alTiempo);
 
   return new Promise((resolver) => {
@@ -1483,6 +1506,8 @@ function recortar({ fuente, esVideo, ancho, alto, x = 50, y = 50, zoom = 1 }){
       lienzo.removeEventListener('pointercancel', alSoltar);
       lienzo.removeEventListener('wheel', alRodar);
       barra.removeEventListener('input', alZoom);
+      barraX.removeEventListener('input', alX);
+      barraY.removeEventListener('input', alY);
       tiempo.removeEventListener('input', alTiempo);
       if(esVideo){ medio.pause(); medio.removeAttribute('src'); medio.load(); }
       dlg.close();
@@ -1493,7 +1518,7 @@ function recortar({ fuente, esVideo, ancho, alto, x = 50, y = 50, zoom = 1 }){
       zoom: Math.round(estado.zoom * 100) / 100,
     });
     $('#recorte_cancelar').onclick = () => cerrar(null);
-    $('#recorte_centrar').onclick = () => { estado = { x: 50, y: 50, zoom: 1 }; mostrarZoom(); };
+    $('#recorte_centrar').onclick = () => { estado = { x: 50, y: 50, zoom: 1 }; mostrarZoom(); mostrarPosicion(); };
     dlg.oncancel = (e) => { e.preventDefault(); cerrar(null); };
     dlg.showModal();
   });
@@ -1635,9 +1660,9 @@ async function pintarLaminas(){
           <span>Cerca</span><input type="range" data-lamina-eje="${i}:zoom" min="1" max="3" step="0.05" value="${lam.zoom ?? 1}">
         </div>
         ${lam.tipo === 'video' ? `<p class="nota">
-          Si no lo acercás, se sube tal cual. Con «Recortar…» elegís qué parte
-          se ve, mirándolo moverse; tocá su cuadro en la tira para verlo como
-          va a salir.
+          Al publicar se le graba el logo, igual que a las fotos. Con
+          «Recortar…» elegís qué parte se ve; tocá su cuadro en la tira para
+          verlo moverse como va a salir.
         </p>` : ''}
       </div>
     </div>`).join('') || '<p class="nota">Solo la placa. Agregá fotos para armar un carrusel.</p>';
@@ -2819,26 +2844,20 @@ async function despiertoMientras(promesa){
    arriba, al pintar el control, y una constante todavía no existiría. */
 /* La calidad, el camino y la marca del video se elegían en «Más». Se
    sacaron del panel y quedan fijos en lo que ya se usaba: calidad alta,
-   camino rápido y sin nada encima. Lo guardado de antes en este navegador
+   camino rápido y con el logo encima. Lo guardado de antes en este navegador
    se borra al arrancar, para que nadie quede atado a una elección que ya no
    puede cambiar. */
 for(const k of ['calidad_video', 'codecs_rapido', 'marca_en_video_2']) localStorage.removeItem(k);
 
 function calidadVideo(){ return 'alta'; }
 
-/* Si los videos del carrusel llevan el logo y el degradado quemados encima.
-   Viene apagado. Dibujarles algo obliga a recomprimirlos enteros, y de ahí
-   salían el peso, la espera y —sobre todo— los tirones: recomprimir es lo
-   que hacía caer al camino que pierde cuadros. Sin dibujar nada el video se
-   manda tal cual llegó, que es como se ve bien.
-   La placa del carrusel lleva el logo igual, así que el post sigue firmado.
-   Se puede volver a encender desde el panel cuando convenga. */
-/* La clave cambió de nombre a propósito. Al probar los dos modos, el
-   navegador de quien probó quedó con «con logo» guardado, y eso le ganaba al
-   valor por omisión: seguía quemando la marca aunque el editor viniera
-   configurado para no hacerlo. Con un nombre nuevo, lo guardado antes deja de
-   contar y todos arrancan sin marca; el que la quiera la vuelve a encender. */
-function marcaEnVideo(){ return false; }
+/* Si los videos del carrusel llevan el logo quemado encima.
+   Encendido: llevan la misma marca que
+   las fotos del carrusel —el logo, y en eyey la huincha—, así el post sale
+   firmado en cada lámina. Se apagó cuando recomprimir era lo que causaba los
+   tirones; desde que el video se procesa cuadro por cuadro con el
+   decodificador del navegador, salen todos los cuadros (medido: 180 de 180). */
+function marcaEnVideo(){ return true; }
 function tasaDeVideo(){
   return calidadVideo() === 'rapida'
     ? 2_500_000
@@ -3941,7 +3960,7 @@ function pintarLamina(ctx, lam, medio, logo, ancho){
   ctx.fillStyle = '#0b0b0d';
   ctx.fillRect(0, 0, ancho, alto);
   dibujarFoto(ctx, medio, 0, 0, ancho, alto,
-    lam.ajuste || 'completa', lam.x ?? 50, lam.y ?? 50, ancho / LIENZO);
+    lam.ajuste || 'completa', lam.x ?? 50, lam.y ?? 50, ancho / LIENZO, lam.zoom ?? 1);
 }
 
 /* Esperar los datos de un video sin plazo es la forma más fácil de dejar todo
