@@ -50,8 +50,9 @@ const DISENOS = [
 ];
 
 /* Quién es el medio vive en marca/, que es lo único que cambia entre un
-   sitio y otro y lo único que el actualizador no toca. */
-const PALETA = MARCA.paleta;
+   sitio y otro y lo único que el actualizador no toca. Los colores, si el
+   dibujante trae los suyos, salen de él: así un cambio llega al sitio. */
+const PALETA = DIBUJANTE.PALETA || MARCA.paleta;
 const ETIQUETAS = MARCA.etiquetas;
 const LOGO = MARCA.logo;
 const CIERRE = MARCA.cierre;
@@ -84,6 +85,7 @@ const BASE = {
   laminas: [],            // fotos extra del carrusel; la placa es la primera
   descripcion: '', hashtags: '', colaboradores: '', etiquetados: '',
   // cada medio pisa lo que le corresponde: su cuerpo de letra, sus colores
+  ...(DIBUJANTE.PREDETERMINADOS || {}),
   ...(MARCA.predeterminados || {}),
 };
 
@@ -153,6 +155,7 @@ const URGENTE = {
   formato: 'urgente',
   titulo: 'Ahora',
   color_fondo: '#ee0008',
+  ...(DIBUJANTE.COLORES_URGENTE || {}),
 };
 
 /* ------------------------------------------------------------------ */

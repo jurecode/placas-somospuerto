@@ -19,7 +19,9 @@ export const MARCA = {
   logo:   'marca/logo.png',
   cierre: 'marca/cierre.png',
 
-  /* Las paletas. El filete es siempre uno de los dos colores de marca, así
+  /* Ya no se usa: la paleta de Somos Puerto vive en placa.js (PALETA), para
+     que los cambios le lleguen al sitio con cada actualización.
+     Las paletas. El filete es siempre uno de los dos colores de marca, así
      todo queda en familia aunque cambie el fondo. Los fondos se eligieron con
      contraste suficiente para el titular blanco. */
   paleta: [

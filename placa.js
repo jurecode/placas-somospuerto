@@ -17,6 +17,29 @@ export const LIENZO = 3000;
 export const ALTO = 3750;
 export const altoDe = (ancho) => Math.round(ancho * ALTO / LIENZO);
 
+/* Los colores del medio. Viven acá y no en marca/ porque el actualizador no
+   toca esa carpeta: si la paleta estuviera allá, el cambio no le llegaría al
+   sitio. El editor usa esta y deja la de marca/ para otro dibujante.
+   Una línea más sobria: fondos oscuros, de puerto, y el menta de la marca
+   como único acento, así todo queda en familia. En el rojo el acento va
+   blanco, que el menta encima chilla. El fucsia de antes sigue al final para
+   lo que lo necesite. */
+export const PALETA = [
+  { nombre: 'Marino',   fondo: '#0b2545', filete: '#0ae7ae', original: true },
+  { nombre: 'Océano',   fondo: '#13497a', filete: '#0ae7ae' },
+  { nombre: 'Acero',    fondo: '#34495e', filete: '#0ae7ae' },
+  { nombre: 'Petróleo', fondo: '#0d4a52', filete: '#0ae7ae' },
+  { nombre: 'Bosque',   fondo: '#1b4332', filete: '#0ae7ae' },
+  { nombre: 'Grafito',  fondo: '#1c1f24', filete: '#0ae7ae' },
+  { nombre: 'Vino',     fondo: '#6d1a36', filete: '#0ae7ae' },
+  { nombre: 'Rojo',     fondo: '#c8102e', filete: '#ffffff' },
+  { nombre: 'Fucsia',   fondo: '#ff0054', filete: '#0ae7ae' },
+];
+
+// con qué colores arranca una placa nueva, y una urgente
+export const PREDETERMINADOS = { color_fondo: '#0b2545', color_filete: '#0ae7ae' };
+export const COLORES_URGENTE = { color_fondo: '#c8102e', color_filete: '#ffffff' };
+
 export const MEDIDAS = {
   /* El collage va de `y` hasta `abajo` unidades del borde inferior: se estira
      con el lienzo en vez de tener un alto fijo, que es lo que hace que el
