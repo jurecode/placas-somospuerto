@@ -21,6 +21,8 @@ try {
         'colaboradores' => $entrada['colaboradores'] ?? '',
         'etiquetados'   => $entrada['etiquetados'] ?? '',
         'redes'         => $entrada['redes'] ?? ['instagram'],
+        // lo que va solo a TikTok, si es distinto: el video con el cierre
+        'items_tiktok'  => is_array($entrada['items_tiktok'] ?? null) ? $entrada['items_tiktok'] : null,
         // lo que se eligió en el paso de TikTok del editor
         'tiktok'        => is_array($entrada['tiktok'] ?? null) ? $entrada['tiktok'] : null,
     ]);

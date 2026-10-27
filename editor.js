@@ -10,7 +10,7 @@ import * as somosPuerto from './placa.js';
 import * as eyey from './dibujo-eyey.js';
 import { MARCA } from './marca/marca.js';
 import { armarMp4, leerMp4, RELOJ } from './mp4.js';
-import { leerAudio, medirVoz, grabarVoz } from './voz.js';
+import { leerAudio, medirVoz, grabarVoz, grabarCuadros } from './voz.js';
 
 /* Cada medio tiene su dibujante y la marca dice cuál. Lo que se le pasa de
    más —el nombre, el pie— lo ignora el que no lo necesita. */
@@ -2020,6 +2020,8 @@ $('#publicar').addEventListener('click', async (ev) => {
       items = await itemsParaPublicar((a) => trabajo('Generando las imágenes', a));
     }
 
+    const itemsTiktok = redes.includes('tiktok') ? await itemsParaTiktok() : null;
+
     anotar('publicando', { piezas: items.length,
       tipos: items.map((x) => x.tipo).join(', ') });
     const arranquePublicar = Date.now();
@@ -2029,7 +2031,7 @@ $('#publicar').addEventListener('click', async (ev) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        clave: clave(), items,
+        clave: clave(), items, items_tiktok: itemsTiktok,
         caption: armarCaption(),
         colaboradores: placa.colaboradores || '',
         etiquetados: placa.etiquetados || '',
@@ -2071,7 +2073,13 @@ $('#publicar').addEventListener('click', async (ev) => {
 
 /* Al programar, las imágenes se generan ahora y quedan subidas: cuando
    llegue la hora no va a haber ningún navegador que las dibuje. */
-async function cargaParaProgramar(){
+async function cargaParaProgramar(redes){
+  const carga = await itemsParaProgramar();
+  if(redes.includes('tiktok')) carga.items_tiktok = await itemsParaTiktok();
+  return carga;
+}
+
+async function itemsParaProgramar(){
   if(placa.formato === 'reel') return { items: [await reelParaPublicar()] };
   if(placa.formato === 'voz') return { items: [await vozParaPublicar()] };
   trabajo('Generando las imágenes', 0);
@@ -2413,7 +2421,7 @@ $('#programar').addEventListener('click', async (ev) => {
   congelar(true);   // las imágenes se generan ahora, con lo que hay ahora
   empezarActividad(`programando ${placa.nombre || 'una placa'}`);
   try{
-    const carga = await cargaParaProgramar();
+    const carga = await cargaParaProgramar(redes);
     trabajo('Anotando en la cola', null);
     await api('api/programar.php', {
       method: 'POST',
@@ -2764,7 +2772,10 @@ function tasaDeSalida(ancho, alto){
    Guardar un '0' es la salida de emergencia si aparece un video que lo rompa. */
 const hayCodecs = () => typeof VideoEncoder === 'function' && typeof VideoDecoder === 'function';
 
-async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
+/* Con `cola` ({ segundos, cuadro(ctx, t) }) sigue grabando después del
+   final del original —el cierre que lleva TikTok— y de la misma pasada
+   salen dos videos: devuelve { video, conCola }. Sin cola, solo el video. */
+async function quemarConCodecs(fuente, pintar, avisar, ancho, alto, cola = null){
   const buffer = typeof fuente === 'string'
     ? await (await fetch(fuente)).arrayBuffer()
     : await fuente.arrayBuffer();
@@ -2864,10 +2875,10 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
   let hayDibujo = false;      // hasta que llegue el primer cuadro no hay qué emitir
   let emitidos = 0;
 
-  const emitir = () => {
+  const emitir = (clave = false) => {
     const salida = new VideoFrame(lienzo, { timestamp: siguiente, duration: PASO });
     // una clave cada dos segundos, para que se pueda saltar dentro del video
-    enc.encode(salida, { keyFrame: emitidos % (ritmoOrigen * 2) === 0 });
+    enc.encode(salida, { keyFrame: clave || emitidos % (ritmoOrigen * 2) === 0 });
     salida.close();
     emitidos++;
     /* El casillero siguiente se calcula desde cero y no sumando PASO: PASO
@@ -2908,6 +2919,7 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
     try{ if(enc.state !== 'closed') enc.close(); }catch(e){}
   };
 
+  let corte = null;          // dónde termina el original, si después viene la cola
   try{
   for(const m of video.muestras){
     if(falla) throw falla;
@@ -2948,6 +2960,19 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
   // con la misma tolerancia: si no, el redondeo agregaba un cuadro de más al final
   while(hayDibujo && siguiente + PASO / 2 <= duracionOrigen) emitir();
   if(!emitidos && hayDibujo) emitir();       // un original de un solo cuadro
+  /* La cola arranca con el codificador vacío y un cuadro clave: lo de antes
+     queda cerrado y sirve solo, sin la cola, para las otras redes. */
+  if(cola){
+    await enc.flush();
+    corte = muestras.length;
+    const cuantos = Math.round(cola.segundos * ritmoOrigen);
+    for(let k = 0; k < cuantos; k++){
+      if(cortaron()) throw new Error('Cancelado');
+      cola.cuadro(ctx, k / ritmoOrigen);
+      emitir(k === 0);
+      while(enc.encodeQueueSize > 20) await new Promise((r) => setTimeout(r, 2));
+    }
+  }
   await enc.flush(); enc.close();
   cerrado = true;
   }catch(e){ cerrarTodo(); throw e; }
@@ -2957,23 +2982,21 @@ async function quemarConCodecs(fuente, pintar, avisar, ancho, alto){
   /* Todas las muestras duran lo mismo: se emitieron sobre una rejilla fija.
      No hace falta deducir la duración de la distancia entre cuadros, que era
      lo que arrastraba el ritmo irregular del original hasta el archivo final. */
-  muestras.sort((a, b) => a.tiempo - b.tiempo);
   const duracionPareja = Math.max(1, Math.round(PASO * RELOJ / 1e6));
-  const pistaVideo = {
+  const pistaVideo = (lista) => ({
     tipo: 'video', reloj: RELOJ, ancho, alto, descripcion,
-    muestras: muestras.map((m) => ({ datos: m.datos, clave: m.clave,
-                                     duracion: duracionPareja })),
-  };
+    muestras: [...lista].sort((a, b) => a.tiempo - b.tiempo)
+      .map((m) => ({ datos: m.datos, clave: m.clave, duracion: duracionPareja })),
+  });
 
-  const pistas = [pistaVideo];
-  if(audio && audio.descripcion && audio.muestras.length){
-    pistas.push({
-      tipo: 'audio', reloj: audio.reloj, canales: audio.canales || 2,
-      muestreo: audio.muestreo || audio.reloj, descripcion: audio.descripcion,
-      muestras: audio.muestras.map((m) => ({ datos: m.datos, duracion: m.duracion })),
-    });
-  }
-  return armarMp4(pistas);
+  const pistaAudio = audio && audio.descripcion && audio.muestras.length ? {
+    tipo: 'audio', reloj: audio.reloj, canales: audio.canales || 2,
+    muestreo: audio.muestreo || audio.reloj, descripcion: audio.descripcion,
+    muestras: audio.muestras.map((m) => ({ datos: m.datos, duracion: m.duracion })),
+  } : null;
+  const armar = (lista) => armarMp4(pistaAudio ? [pistaVideo(lista), pistaAudio] : [pistaVideo(lista)]);
+  if(corte === null) return armar(muestras);
+  return { video: armar(muestras.slice(0, corte)), conCola: armar(muestras) };
 }
 
 
@@ -3467,18 +3490,22 @@ async function grabarReel(){
 
   // se graba desde el archivo del propio teléfono cuando está: no hay que
   // bajarlo del servidor para volver a subirlo
-  let video = null;
+  let video = null, paraTiktok = null;
   if(hayCodecs()){
     const arranque = Date.now();
     try{
       const logo = await cargarImagen(LOGO);
-      video = await quemarConCodecs(fuente,
+      // de la misma pasada sale el de TikTok, con el cierre al final
+      const cola = await colaDeTiktok(REEL.ancho, REEL.alto);
+      const r = await quemarConCodecs(fuente,
         (ctx, cuadro, segundos) => {
           dibujarReel(ctx, placa, cuadro, logo, REEL.ancho, REEL.alto,
             Math.min(1, segundos / ANIMACION), false, firma);
         },
         (a) => trabajo(rotulo, a, espera),
-        REEL.ancho, REEL.alto);
+        REEL.ancho, REEL.alto, cola);
+      if(cola){ video = r.video; paraTiktok = r.conCola; }
+      else video = r;
       anotar('grabado', { camino: 'rápido', tardo: seg(Date.now() - arranque),
         fluidez: '100%', porque: 'no depende del reloj: van todos los cuadros' });
     }catch(e){
@@ -3502,7 +3529,7 @@ async function grabarReel(){
   trabajo('Subiendo el reel', 0, 'Ya está grabado: falta que llegue al servidor.');
   const sub = await guardarFoto(new File([video], 'reel.mp4', { type: 'video/mp4' }),
     (a, nota) => trabajo('Subiendo el reel', a, nota || 'Ya está grabado: falta que llegue al servidor.'));
-  ultimoQuemado = { firma: huella, ruta: sub.ruta, blob: video, portadaEn };
+  ultimoQuemado = { firma: huella, ruta: sub.ruta, blob: video, portadaEn, paraTiktok, rutaTiktok: null };
   return ultimoQuemado;
 }
 
@@ -3671,13 +3698,16 @@ async function grabarVozDePlaca(){
   const voz = await vozDePlaca((que) => trabajo(rotulo, null, que));
   const pintor = prepararVoz(placa, await imagenesDe(placa), ANCHO_FEED, voz.audio.duracion);
   const arranque = Date.now();
-  const blob = await grabarVoz({
+  // de la misma pasada sale el de TikTok, con el cierre después de la voz
+  const cola = await colaDeTiktok(ANCHO_FEED, altoDe(ANCHO_FEED));
+  const grabado = await grabarVoz({
     pintor, medida: voz.medida, audio: voz.audio,
     ancho: ANCHO_FEED, alto: altoDe(ANCHO_FEED),
     bitrate: tasaDeSalida(ANCHO_FEED, altoDe(ANCHO_FEED)),
     avisar: (a, que) => trabajo(rotulo, a, que || pista),
-    cortado: cortaron,
+    cortado: cortaron, cola,
   });
+  const blob = cola ? grabado.video : grabado;
   anotar('voz armada', { dura: seg(voz.audio.duracion * 1000), tardo: seg(Date.now() - arranque),
     peso: mb(blob.size), audio: voz.audio.aac ? 'AAC tal cual' : 'convertido a AAC' });
 
@@ -3685,7 +3715,8 @@ async function grabarVozDePlaca(){
   trabajo('Subiendo el video', 0, subiendo);
   const sub = await guardarFoto(new File([blob], 'voz.mp4', { type: 'video/mp4' }),
     (a, nota) => trabajo('Subiendo el video', a, nota || subiendo));
-  ultimaVoz = { firma, ruta: sub.ruta, blob, portadaEn: pintor.portada };
+  ultimaVoz = { firma, ruta: sub.ruta, blob, portadaEn: pintor.portada,
+                paraTiktok: cola ? grabado.conCola : null, rutaTiktok: null };
   return ultimaVoz;
 }
 
@@ -3694,6 +3725,186 @@ async function grabarVozDePlaca(){
 async function vozParaPublicar(){
   const { ruta, portadaEn } = await grabarVozDePlaca();
   return { tipo: 'reel', ruta, portadaEn };
+}
+
+/* ------------------------------------------------------------------ */
+/* lo que va a TikTok                                                  */
+/* ------------------------------------------------------------------ */
+
+/* TikTok recibe un video aunque en las otras redes salga un carrusel: el
+   titular entra animado, después pasan las fotos del carrusel y al final
+   va el «síguenos y comparte». El reel y la placa con voz son el mismo
+   video de siempre con el cierre agregado al final. Las otras redes no
+   cambian en nada. */
+const TIKTOK_CIERRE = 3;      // segundos del cierre al final
+const TIKTOK_FOTO = 3;        // cada foto del carrusel
+const TIKTOK_FUNDIDO = 0.5;   // el paso de una pieza a la otra
+// la urgente no lleva cierre en ningún lado: es un aviso al toque
+const cierreEnTiktok = () => placa.formato !== 'urgente' && CIERRE !== false;
+
+const suavizar = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
+
+function lienzoDe(ancho, alto){
+  const c = document.createElement('canvas');
+  c.width = ancho; c.height = alto;
+  return c;
+}
+
+/* El cierre del tamaño que sea: el color de la placa y el arte entero,
+   centrado. En el reel, que es más alto, sobra color arriba y abajo. */
+function capaDeCierre(arte, ancho, alto){
+  const capa = lienzoDe(ancho, alto);
+  const c = capa.getContext('2d');
+  c.fillStyle = placa.color_fondo || '#111111';
+  c.fillRect(0, 0, ancho, alto);
+  if(arte){
+    const e = Math.min(ancho / arte.width, alto / arte.height);
+    c.drawImage(arte, (ancho - arte.width * e) / 2, (alto - arte.height * e) / 2, arte.width * e, arte.height * e);
+  }
+  return capa;
+}
+
+/* La cola que se graba después de un video: el cierre, que aparece
+   fundiéndose sobre el último cuadro. null si este formato no lo lleva. */
+async function colaDeTiktok(ancho, alto){
+  if(!cierreEnTiktok()) return null;
+  const capa = capaDeCierre(await arteDelCierre(), ancho, alto);
+  let ultimo = null;
+  return {
+    segundos: TIKTOK_CIERRE,
+    cuadro(ctx, t){
+      // lo que quedó en el lienzo es el último cuadro del video
+      if(!ultimo){ ultimo = lienzoDe(ancho, alto); ultimo.getContext('2d').drawImage(ctx.canvas, 0, 0); }
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.drawImage(ultimo, 0, 0);
+      ctx.globalAlpha = suavizar(t / TIKTOK_FUNDIDO);
+      ctx.drawImage(capa, 0, 0);
+      ctx.restore();
+    },
+  };
+}
+
+/* Una foto quieta que se acerca apenas mientras está en pantalla. */
+function pintarQuieta(ctx, capa, avance, acercar){
+  const s = 1 + acercar * avance;
+  const { width: w, height: h } = ctx.canvas;
+  ctx.drawImage(capa, w * (1 - s) / 2, h * (1 - s) / 2, w * s, h * s);
+}
+
+let ultimoTiktok = null;   // el video del feed ya armado: { firma, ruta, portadaEn }
+
+/* El carrusel hecho video. Los videos del carrusel no entran: TikTok no
+   mezcla, y armarlos cuadro por cuadro acá no vale lo que cuesta. */
+async function feedParaTiktok(){
+  const firma = JSON.stringify(placa);
+  if(ultimoTiktok?.firma === firma) return ultimoTiktok;
+
+  const ancho = ANCHO_FEED, alto = altoDe(ANCHO_FEED);
+  const rotulo = 'Armando el video para TikTok';
+  const nota = 'El titular entra animado y al final va el cierre. Solo para TikTok.';
+  trabajo(rotulo, 0, nota);
+  const fotos = await imagenesDe(placa);
+  const logo = await cargarImagen(LOGO);
+
+  /* La placa: con la entrada del dibujante si la tiene —el titular línea
+     por línea y la foto acercándose—; si no, aparece entera de a poco. */
+  const entrada = DIBUJANTE.prepararEntrada?.(placa, fotos, ancho, 6) || null;
+  let placaDura, pintarPlaca;
+  if(entrada){
+    placaDura = Math.max(5, entrada.finEntrada + 2.5);
+    pintarPlaca = (ctx, t) => entrada.cuadro(ctx, t);
+  }else{
+    placaDura = 4;
+    const capa = lienzoDe(ancho, alto);
+    dibujar(capa.getContext('2d'), placa, fotos, ancho);
+    pintarPlaca = (ctx, t) => {
+      ctx.save();
+      ctx.fillStyle = placa.color_fondo || '#111111';
+      ctx.fillRect(0, 0, ancho, alto);
+      const e = suavizar(t / 0.7);
+      ctx.globalAlpha = e;
+      pintarQuieta(ctx, capa, 1 - e, 0.06);
+      ctx.restore();
+    };
+  }
+
+  const tramos = [{ dura: placaDura, pintar: pintarPlaca }];
+  for(const lam of placa.laminas || []){
+    if(lam.tipo === 'video') continue;
+    const capa = lienzoDe(ancho, alto);
+    pintarLamina(capa.getContext('2d'), lam, await cargarImagen(lam.foto), logo, ancho);
+    tramos.push({ dura: TIKTOK_FOTO, pintar: (ctx, t) => pintarQuieta(ctx, capa, t / TIKTOK_FOTO, 0.04) });
+  }
+  if(cierreEnTiktok()){
+    const capa = capaDeCierre(await arteDelCierre(), ancho, alto);
+    tramos.push({ dura: TIKTOK_CIERRE, pintar: (ctx) => ctx.drawImage(capa, 0, 0) });
+  }
+  let desde = 0;
+  for(const tr of tramos){ tr.desde = desde; desde += tr.dura; }
+
+  // cada pieza entra fundiéndose sobre cómo terminó la anterior
+  const cuadro = (ctx, t) => {
+    let i = 0;
+    while(i < tramos.length - 1 && t >= tramos[i + 1].desde) i++;
+    const local = t - tramos[i].desde;
+    if(i > 0 && local < TIKTOK_FUNDIDO){
+      tramos[i - 1].pintar(ctx, tramos[i - 1].dura);
+      ctx.save();
+      ctx.globalAlpha = suavizar(local / TIKTOK_FUNDIDO);
+      tramos[i].pintar(ctx, local);
+      ctx.restore();
+    }else tramos[i].pintar(ctx, local);
+  };
+
+  const arranque = Date.now();
+  const video = await grabarCuadros({
+    cuadro, segundos: desde, ancho, alto, bitrate: tasaDeSalida(ancho, alto),
+    avisar: (a) => trabajo(rotulo, a, nota), cortado: cortaron,
+  });
+  anotar('video de TikTok armado', { dura: seg(desde * 1000), tardo: seg(Date.now() - arranque),
+    peso: mb(video.size), piezas: tramos.length });
+
+  const sub = await subirParaTiktok(video);
+  ultimoTiktok = { firma, ruta: sub.ruta, portadaEn: Math.max(0.5, placaDura - 0.5) };
+  return ultimoTiktok;
+}
+
+function subirParaTiktok(blob){
+  const rotulo = 'Subiendo el video de TikTok';
+  const nota = 'Es otro video, con el cierre: va solo a TikTok.';
+  trabajo(rotulo, 0, nota);
+  return guardarFoto(new File([blob], 'tiktok.mp4', { type: 'video/mp4' }),
+    (a, n) => trabajo(rotulo, a, n || nota));
+}
+
+/* El reel o la placa con voz, ya grabados con su cierre: falta subirlo. */
+async function grabadoParaTiktok(grabado){
+  if(!grabado?.paraTiktok) return null;
+  if(!grabado.rutaTiktok) grabado.rutaTiktok = (await subirParaTiktok(grabado.paraTiktok)).ruta;
+  return { tipo: 'reel', ruta: grabado.rutaTiktok, portadaEn: grabado.portadaEn };
+}
+
+/* Lo que recibe TikTok. null es «lo mismo que las otras redes»: un reel
+   que ya venía grabado de antes, un navegador que no puede armar videos, o
+   algo que falló al armarlo. Nunca frena la publicación en las otras. */
+async function itemsParaTiktok(){
+  if(!hayCodecs()) return null;
+  try{
+    let item;
+    if(placa.formato === 'reel') item = placa.reel_crudo ? await grabadoParaTiktok(await grabarReel()) : null;
+    else if(placa.formato === 'voz') item = await grabadoParaTiktok(await grabarVozDePlaca());
+    else{
+      const { ruta, portadaEn } = await feedParaTiktok();
+      item = { tipo: 'reel', ruta, portadaEn };
+    }
+    return item ? [item] : null;
+  }catch(e){
+    if(String(e.message) === 'Cancelado') throw e;
+    console.warn('el video de TikTok no salió, va lo mismo que en las otras:', e.message);
+    anotar('video de TikTok no salió', { porque: String(e.message).slice(0, 120), nivel: 'aviso' });
+    return null;
+  }
 }
 
 /* Un cuadro del video, sin nada encima. Es rápido: se salta al segundo que

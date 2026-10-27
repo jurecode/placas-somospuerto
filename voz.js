@@ -245,24 +245,18 @@ async function codificarAac(pcm){
   };
 }
 
-/* Arma el MP4: cada cuadro dibujado por `pintor` (lo que devuelve
-   prepararVoz) con la voz de ese instante, y el audio debajo.
-   `cortado()` permite cancelar a mitad de camino. */
-export async function grabarVoz({ pintor, medida, audio, ancho, alto, bitrate, avisar, cortado = () => false }){
+/* Codifica cuadro por cuadro lo que dibuja `pintar(ctx, f)`, a `ritmo`
+   cuadros por segundo. Devuelve la descripción del H.264 y las muestras.
+   Con `cola`, después de los `total` cuadros sigue con `cola` más: lo de
+   adelante queda cerrado primero —se vacía el codificador y lo que sigue
+   arranca con un cuadro clave—, así de una sola pasada salen dos videos,
+   el corto y el que lleva la cola. */
+async function codificarCuadros({ pintar, total, cola = 0, ritmo, ancho, alto, bitrate, avisar, cortado = () => false }){
   if(typeof VideoEncoder !== 'function' || typeof VideoFrame !== 'function'){
     throw new Error('Este navegador no puede armar videos. Probá desde Chrome, o en un iPhone '
       + 'con iOS 17 o más nuevo.');
   }
-  const ritmo = VOZ.ritmo;
-  const B = VOZ.bandas;
-  const total = Math.max(1, Math.round(audio.duracion * ritmo));
   const PASO = 1e6 / ritmo;
-
-  // primero el audio: si este navegador no lo puede convertir, que se sepa
-  // ahora y no después de haber armado todo el video
-  avisar?.(0, 'Preparando el audio');
-  const pistaAudio = audio.aac ? pistaAac(audio.aac) : await codificarAac(audio.pcm);
-
   const lienzo = document.createElement('canvas');
   lienzo.width = ancho; lienzo.height = alto;
   const ctx = lienzo.getContext('2d');
@@ -290,20 +284,22 @@ export async function grabarVoz({ pintor, medida, audio, ancho, alto, bitrate, a
   if(!supported) delete config.hardwareAcceleration;
   enc.configure(config);
 
+  const todos = total + cola;
+  let corte = null;
   try{
-    for(let f = 0; f < total; f++){
+    for(let f = 0; f < todos; f++){
       if(falla) throw falla;
       if(cortado()) throw new Error('Cancelado');
-      const i = Math.min(f, medida.cuadros - 1);
-      pintor.cuadro(ctx, f / ritmo, medida.bandas.subarray(i * B, i * B + B), medida.volumen[i]);
+      if(f === total && cola){ await enc.flush(); corte = muestras.length; }
+      pintar(ctx, f);
       const cuadro = new VideoFrame(lienzo, { timestamp: Math.round(f * PASO), duration: Math.round(PASO) });
       // una clave cada dos segundos, para que se pueda saltar dentro del video
-      enc.encode(cuadro, { keyFrame: f % (ritmo * 2) === 0 });
+      enc.encode(cuadro, { keyFrame: f % (ritmo * 2) === 0 || f === total });
       cuadro.close();
       // sin esperar, la cola crece sin límite y el teléfono se queda sin memoria
       while(enc.encodeQueueSize > 6) await new Promise((r) => setTimeout(r, 2));
       if(f % 10 === 0){
-        avisar?.(f / total * 0.97);
+        avisar?.(f / todos * 0.97);
         await new Promise((r) => setTimeout(r, 0));
       }
     }
@@ -314,12 +310,54 @@ export async function grabarVoz({ pintor, medida, audio, ancho, alto, bitrate, a
   if(falla) throw falla;
   if(!descripcion || !muestras.length) throw new Error('El codificador de video no entregó nada.');
 
-  muestras.sort((a, b) => a.tiempo - b.tiempo);
   const porCuadro = Math.round(RELOJ / ritmo);
+  const pista = (lista) => ({ tipo: 'video', reloj: RELOJ, ancho, alto, descripcion,
+    muestras: [...lista].sort((a, b) => a.tiempo - b.tiempo)
+      .map((m) => ({ datos: m.datos, clave: m.clave, duracion: porCuadro })) });
+  return {
+    video: pista(corte === null ? muestras : muestras.slice(0, corte)),
+    conCola: corte === null ? null : pista(muestras),
+  };
+}
+
+/* Un video mudo de `segundos`, con lo que dibuje `cuadro(ctx, t)`. */
+export async function grabarCuadros({ cuadro, segundos, ancho, alto, bitrate, avisar, cortado }){
+  const ritmo = VOZ.ritmo;
+  const { video } = await codificarCuadros({
+    pintar: (ctx, f) => cuadro(ctx, f / ritmo),
+    total: Math.max(1, Math.round(segundos * ritmo)),
+    ritmo, ancho, alto, bitrate, avisar, cortado,
+  });
   avisar?.(0.99);
-  return armarMp4([
-    { tipo: 'video', reloj: RELOJ, ancho, alto, descripcion,
-      muestras: muestras.map((m) => ({ datos: m.datos, clave: m.clave, duracion: porCuadro })) },
-    pistaAudio,
-  ]);
+  return armarMp4([video]);
+}
+
+/* Arma el MP4: cada cuadro dibujado por `pintor` (lo que devuelve
+   prepararVoz) con la voz de ese instante, y el audio debajo.
+   `cortado()` permite cancelar a mitad de camino.
+   Con `cola` ({ segundos, cuadro(ctx, t) }) arma además un segundo video
+   que sigue después de la voz —el cierre de TikTok—, en la misma pasada:
+   devuelve { video, conCola }. Sin cola, solo el video. */
+export async function grabarVoz({ pintor, medida, audio, ancho, alto, bitrate, avisar, cortado = () => false, cola = null }){
+  const ritmo = VOZ.ritmo;
+  const B = VOZ.bandas;
+  const total = Math.max(1, Math.round(audio.duracion * ritmo));
+
+  // primero el audio: si este navegador no lo puede convertir, que se sepa
+  // ahora y no después de haber armado todo el video
+  avisar?.(0, 'Preparando el audio');
+  const pistaAudio = audio.aac ? pistaAac(audio.aac) : await codificarAac(audio.pcm);
+
+  const { video, conCola } = await codificarCuadros({
+    pintar: (ctx, f) => {
+      if(f >= total) return cola.cuadro(ctx, (f - total) / ritmo);
+      const i = Math.min(f, medida.cuadros - 1);
+      pintor.cuadro(ctx, f / ritmo, medida.bandas.subarray(i * B, i * B + B), medida.volumen[i]);
+    },
+    total, cola: cola ? Math.round(cola.segundos * ritmo) : 0,
+    ritmo, ancho, alto, bitrate, avisar, cortado,
+  });
+  avisar?.(0.99);
+  const mp4 = armarMp4([video, pistaAudio]);
+  return cola ? { video: mp4, conCola: armarMp4([conCola, pistaAudio]) } : mp4;
 }

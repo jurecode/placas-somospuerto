@@ -413,13 +413,21 @@ function publicar_ahora(array $carga): array {
     if (trim($caption) === '') throw new RuntimeException('Falta la descripción de la publicación');
 
     [$medios, $temporales] = preparar_medios($items);
+    /* TikTok puede llevar lo suyo: el video con el titular animado y el
+       cierre al final. Si no vino, recibe lo mismo que las otras. */
+    $mediosTiktok = $medios;
+    $itemsTiktok = $carga['items_tiktok'] ?? null;
+    if (in_array('tiktok', $redes, true) && is_array($itemsTiktok) && $itemsTiktok) {
+        [$mediosTiktok, $otros] = preparar_medios($itemsTiktok);
+        $temporales = array_merge($temporales, $otros);
+    }
     $resultados = [];
     try {
         foreach ($redes as $red) {
             try {
                 $resultados[$red] = match ($red) {
                     'facebook' => publicar_en_facebook($medios, $caption),
-                    'tiktok'   => publicar_en_tiktok($medios, $caption,
+                    'tiktok'   => publicar_en_tiktok($mediosTiktok, $caption,
                                       is_array($carga['tiktok'] ?? null) ? $carga['tiktok'] : null),
                     default    => publicar_en_instagram($medios, $carga),
                 };

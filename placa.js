@@ -1122,7 +1122,21 @@ export function dibujarFranja(ctx, datos, u, abajo, t, duracion, bandas, volumen
    de la voz en ese momento. `portada` es un buen segundo para la tapa:
    cuando el titular ya terminó de entrar. */
 export function prepararVoz(datos, fotos, ancho, duracion){
+  return prepararMovimiento(datos, fotos, ancho, duracion, true);
+}
+
+/* La placa de noticia sola, con el titular entrando y la foto acercándose:
+   lo mismo que la placa con voz, sin la franja. Es el arranque del video
+   que va a TikTok. Las otras placas no tienen entrada propia: null. */
+export function prepararEntrada(datos, fotos, ancho, duracion){
+  if(datos.formato === 'urgente') return null;
+  return prepararMovimiento(datos, fotos, ancho, duracion, false);
+}
+
+function prepararMovimiento(datos, fotos, ancho, duracion, conFranja){
   const u = ancho / LIENZO;
+  // sin la franja, el titular sube hasta donde sube en la placa de siempre
+  const tope = conFranja ? VOZ.tituloArriba : MEDIDAS.titular.arriba;
   const alto = altoDe(ancho);
   const caja = cajaFoto(u, alto);
   const Z = 1 + VOZ.acercar;
@@ -1146,7 +1160,7 @@ export function prepararVoz(datos, fotos, ancho, duracion){
   if(fotos.firma) dibujarFirma(cf, fotos.firma, u, FIRMA.x * u, FIRMA.y * u, datos.color_filete);
 
   const capaTexto = lienzoNuevo(ancho, alto);
-  const lugar = textoNoticia(capaTexto.getContext('2d'), datos, u, alto, VOZ.tituloArriba);
+  const lugar = textoNoticia(capaTexto.getContext('2d'), datos, u, alto, tope);
   const termina = finDeEntrada(lugar.lineas);
 
   // se acerca hacia un poco arriba del centro, que es donde suelen estar las caras
@@ -1174,12 +1188,14 @@ export function prepararVoz(datos, fotos, ancho, duracion){
       ctx.restore();
 
       ctx.drawImage(capaFundido, 0, 0);
-      if(t < termina) textoNoticia(ctx, datos, u, alto, VOZ.tituloArriba, entradaVoz(t));
+      if(t < termina) textoNoticia(ctx, datos, u, alto, tope, entradaVoz(t));
       else ctx.drawImage(capaTexto, 0, 0);
 
-      const [d0, d1] = VOZ.entrada.franja;
-      dibujarFranja(ctx, datos, u, lugar.arribaEtiqueta, t, duracion, bandas, volumen,
-        suave((t - d0) / (d1 - d0)));
+      if(conFranja){
+        const [d0, d1] = VOZ.entrada.franja;
+        dibujarFranja(ctx, datos, u, lugar.arribaEtiqueta, t, duracion, bandas, volumen,
+          suave((t - d0) / (d1 - d0)));
+      }
       ctx.restore();
     },
   };
