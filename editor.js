@@ -1959,145 +1959,6 @@ $('#redes').addEventListener('change', () => {
   pintarRedes();
 });
 
-/* ------------------------------------------------------------------ */
-/* el paso de TikTok                                                   */
-/* ------------------------------------------------------------------ */
-
-/* TikTok exige, para publicar con su API, que quien publica vea a qué
-   cuenta va, elija la privacidad (sin nada elegido de antemano), prenda a
-   mano lo que se permite, y declare si es contenido comercial. Devuelve lo
-   que se eligió, o null si se canceló. */
-const QUIEN_VE = {
-  PUBLIC_TO_EVERYONE: 'Todos', FOLLOWER_OF_CREATOR: 'Seguidores',
-  MUTUAL_FOLLOW_FRIENDS: 'Amigos (se siguen mutuamente)', SELF_ONLY: 'Solo yo',
-};
-const MUSICA = 'https://www.tiktok.com/legal/page/global/music-usage-confirmation/en';
-const POLITICA_MARCA = 'https://www.tiktok.com/legal/page/global/bc-policy/en';
-
-function pasoTiktok(redes, { programar = false } = {}){
-  const dlg = $('#paso_tiktok');
-  const esVideo = ['reel', 'voz'].includes(placa.formato);
-  const hayVideo = esVideo || (placa.laminas || []).some((l) => l.tipo === 'video');
-  const hayFotos = !esVideo;
-  const duracion = placa.formato === 'reel' ? $('#previa_video').duration
-    : placa.formato === 'voz' ? placa.audio_dura : 0;
-
-  // todo vuelve a como TikTok lo pide: nada elegido ni prendido
-  for(const id of ['tt_comentarios', 'tt_duo', 'tt_stitch', 'tt_musica', 'tt_comercial', 'tt_marca_propia', 'tt_marca_pagada']){
-    $('#' + id).checked = false;
-    $('#' + id).disabled = false;
-  }
-  document.querySelectorAll('[data-tt-video]').forEach((el) => { el.hidden = !hayVideo; });
-  document.querySelectorAll('[data-tt-fotos]').forEach((el) => { el.hidden = !hayFotos; });
-  $('#tt_comercial_opciones').hidden = true;
-  $('#tt_cuerpo').hidden = true;
-  $('#tt_declaracion').hidden = true;
-  $('#tt_demora').hidden = true;
-  $('#tt_error').hidden = true;
-  $('#tt_foto').hidden = true;
-  $('#tt_cuenta').textContent = 'Consultando la cuenta de TikTok…';
-  $('#tt_texto').value = armarCaption();
-  const otras = redes.filter((r) => r !== 'tiktok');
-  $('#tt_otras').hidden = !otras.length;
-  $('#tt_otras').textContent = otras.length ? `Al mismo tiempo sale en ${enRedes(otras)}, como siempre.` : '';
-  $('#tt_publicar').textContent = programar ? 'Programar' : 'Publicar';
-  $('#tt_publicar').disabled = true;
-
-  // la vista previa: el video del reel debajo y lo dibujado encima, como en el editor
-  const lienzo = $('#tt_previa');
-  const origen = $('#previa');
-  lienzo.width = origen.width;
-  lienzo.height = origen.height;
-  const ctx = lienzo.getContext('2d');
-  const video = $('#previa_video');
-  if(!video.hidden && video.readyState >= 2) ctx.drawImage(video, 0, 0, lienzo.width, lienzo.height);
-  ctx.drawImage(origen, 0, 0);
-
-  let creador = null;
-  const marcaPagada = () => $('#tt_marca_pagada').checked;
-
-  function revisar(){
-    const comercial = $('#tt_comercial').checked;
-    $('#tt_comercial_opciones').hidden = !comercial;
-    if(!comercial){ $('#tt_marca_propia').checked = false; $('#tt_marca_pagada').checked = false; }
-    const propia = $('#tt_marca_propia').checked, pagada = marcaPagada();
-    const pieza = hayVideo && !hayFotos ? 'Tu video' : hayVideo ? 'Tu publicación' : 'Tu foto';
-    $('#tt_etiqueta').hidden = !(propia || pagada);
-    $('#tt_etiqueta').textContent = pagada ? `${pieza} va a llevar la etiqueta «Colaboración pagada».`
-      : `${pieza} va a llevar la etiqueta «Contenido promocional».`;
-
-    // el contenido de marca no puede ser privado
-    const privado = $('#tt_quien').querySelector('option[value="SELF_ONLY"]');
-    if(privado){
-      privado.disabled = pagada;
-      privado.title = pagada ? 'El contenido de marca no puede ser privado.' : '';
-      if(pagada && $('#tt_quien').value === 'SELF_ONLY'){
-        $('#tt_quien').value = '';
-        $('#tt_etiqueta').textContent += ' El contenido de marca no puede ser privado: elegí quién puede verlo.';
-      }
-    }
-
-    $('#tt_declaracion').innerHTML = pagada
-      ? `Al publicar, aceptás la <a href="${POLITICA_MARCA}" target="_blank" rel="noopener">Política de contenido de marca</a> y la <a href="${MUSICA}" target="_blank" rel="noopener">Confirmación de uso de música</a> de TikTok.`
-      : `Al publicar, aceptás la <a href="${MUSICA}" target="_blank" rel="noopener">Confirmación de uso de música</a> de TikTok.`;
-
-    let motivo = '';
-    if(!creador) motivo = 'Esperá a que TikTok conteste.';
-    else if(hayVideo && creador.maxSegundos && duracion > creador.maxSegundos){
-      motivo = `El video dura ${Math.round(duracion)} s y esta cuenta de TikTok acepta hasta ${creador.maxSegundos} s.`;
-    }else if(!$('#tt_quien').value) motivo = 'Elegí quién puede verlo.';
-    else if(comercial && !propia && !pagada){
-      motivo = 'Tenés que indicar si el contenido promociona tu marca, a un tercero, o a los dos.';
-    }
-    $('#tt_publicar').disabled = !!motivo;
-    $('#tt_publicar_caja').title = motivo;
-  }
-
-  return new Promise((resolver) => {
-    const cerrar = (valor) => {
-      dlg.removeEventListener('change', revisar);
-      dlg.close();
-      resolver(valor);
-    };
-    dlg.addEventListener('change', revisar);
-    $('#tt_cancelar').onclick = () => cerrar(null);
-    dlg.oncancel = (e) => { e.preventDefault(); cerrar(null); };
-    $('#tt_publicar').onclick = () => {
-      if($('#tt_publicar').disabled) return;
-      cerrar({
-        privacidad: $('#tt_quien').value, texto: $('#tt_texto').value,
-        comentarios: $('#tt_comentarios').checked, duo: $('#tt_duo').checked,
-        stitch: $('#tt_stitch').checked, musica: $('#tt_musica').checked,
-        marca_propia: $('#tt_marca_propia').checked, marca_pagada: marcaPagada(),
-      });
-    };
-    dlg.showModal();
-
-    // la cuenta, pedida a TikTok cada vez que se abre: puede haber cambiado
-    api('api/redes.php?creador=tiktok').then((c) => {
-      creador = c;
-      $('#tt_cuenta').textContent = `Va a la cuenta ${c.nombre || ''} (@${c.usuario})`;
-      if(c.foto){ $('#tt_foto').src = c.foto; $('#tt_foto').hidden = false; }
-      $('#tt_quien').innerHTML = '<option value="" selected disabled>Elegí quién puede verlo</option>'
-        + c.opciones.map((o) => `<option value="${esc(o)}">${esc(QUIEN_VE[o] || o)}</option>`).join('');
-      // lo que la cuenta tiene apagado en TikTok, acá también
-      for(const [id, apagado] of [['tt_comentarios', c.sinComentarios], ['tt_duo', c.sinDuo], ['tt_stitch', c.sinStitch]]){
-        $('#' + id).disabled = !!apagado;
-        $('#' + id).closest('label').title = apagado ? 'Está apagado en la configuración de la cuenta de TikTok' : '';
-      }
-      $('#tt_cuerpo').hidden = false;
-      $('#tt_declaracion').hidden = false;
-      $('#tt_demora').hidden = false;
-      revisar();
-    }).catch((e) => {
-      // si TikTok dice que ahora no se puede publicar, se para acá
-      $('#tt_cuenta').textContent = 'TikTok no contestó';
-      $('#tt_error').hidden = false;
-      $('#tt_error').textContent = e.message + ' Probá de nuevo en un rato, o sacá TikTok de las redes.';
-    });
-  });
-}
-
 $('#publicar').addEventListener('click', async (ev) => {
   // sin descripción no se publica: un post vacío no se puede editar después
   // sin borrarlo y volver a subirlo
@@ -2135,12 +1996,9 @@ $('#publicar').addEventListener('click', async (ev) => {
   // el reel y la placa con voz son un video solo, no un carrusel
   const queSale = ['reel', 'voz'].includes(placa.formato) ? 'un video'
     : `un carrusel de ${laminas} imagen${laminas > 1 ? 'es' : ''}`;
-  // con TikTok, su paso hace de confirmación; sin TikTok, la pregunta de siempre
-  let tiktok = null;
-  if(redes.includes('tiktok')){
-    tiktok = await pasoTiktok(redes);
-    if(!tiktok) return;
-  }else if(!confirm(`Se va a publicar en ${enRedes(redes)} ${queSale}. ¿Seguimos?`)) return;
+  /* TikTok sale solo, como las otras: para todos, con el mismo texto y con
+     comentarios, dúo y stitch como los tenga la cuenta. Lo decide el servidor. */
+  if(!confirm(`Se va a publicar en ${enRedes(redes)} ${queSale}. ¿Seguimos?`)) return;
   ev.target.disabled = true;
   // publicar puede llevar minutos; si la pantalla se apaga, se corta todo
   const despierto = await mantenerDespierto();
@@ -2175,7 +2033,7 @@ $('#publicar').addEventListener('click', async (ev) => {
         caption: armarCaption(),
         colaboradores: placa.colaboradores || '',
         etiquetados: placa.etiquetados || '',
-        redes, tiktok,
+        redes,
         // para el historial del equipo: qué fue. Quién, lo sabe el servidor
         placa: { placa_id: placa.id, nombre: placa.nombre, formato: placa.formato },
       }),
@@ -2549,11 +2407,6 @@ $('#programar').addEventListener('click', async (ev) => {
   }
   const redes = redesElegidas();
   if(!redes.length) return estado('Elegí al menos una red, arriba de Publicar.', true);
-  let tiktok = null;
-  if(redes.includes('tiktok')){
-    tiktok = await pasoTiktok(redes, { programar: true });
-    if(!tiktok) return;
-  }
   ev.target.disabled = true;
   const despierto = await mantenerDespierto();
   abrirTrabajo();
@@ -2571,7 +2424,7 @@ $('#programar').addEventListener('click', async (ev) => {
         publicar_en: new Date(cuando).toISOString(),
         carga: { ...carga, caption: armarCaption(),
                  colaboradores: placa.colaboradores || '',
-                 etiquetados: placa.etiquetados || '', redes, tiktok },
+                 etiquetados: placa.etiquetados || '', redes },
       }),
     });
     estado(`Programado: sale el ${fechaLarga(new Date(cuando))} en ${enRedes(redes)}`);

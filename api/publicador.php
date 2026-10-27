@@ -295,10 +295,18 @@ function publicar_en_tiktok(array $medios, string $texto, ?array $elegido = null
     $token = token_tiktok();
     $opciones = $creador['privacy_level_options'] ?? [];
     $elegido = $elegido ?? [];
-    $privacidad = (string) ($elegido['privacidad'] ?? ajuste('tt_privacidad', 'SELF_ONLY'));
+    /* Sale solo, sin preguntar nada: para todos, si la cuenta lo permite.
+       Lo programado antes, con lo que se eligió en el paso de TikTok de
+       entonces, sale con eso. */
+    $privacidad = (string) ($elegido['privacidad'] ?? '');
+    if ($privacidad === '') {
+        foreach (['PUBLIC_TO_EVERYONE', ajuste('tt_privacidad', 'SELF_ONLY')] as $p) {
+            if (in_array($p, $opciones, true)) { $privacidad = $p; break; }
+        }
+    }
     if (!in_array($privacidad, $opciones, true)) {
-        throw new RuntimeException('TikTok no acepta esa privacidad para esta cuenta ('
-            . strtolower($privacidad) . '): elegí otra en el paso de TikTok');
+        throw new RuntimeException('TikTok no acepta publicar para todos con esta cuenta ('
+            . ($privacidad !== '' ? strtolower($privacidad) : 'sin privacidad') . ')');
     }
     $marcaPropia = !empty($elegido['marca_propia']);
     $marcaPagada = !empty($elegido['marca_pagada']);
@@ -306,10 +314,11 @@ function publicar_en_tiktok(array $medios, string $texto, ?array $elegido = null
         throw new RuntimeException('El contenido de marca no puede salir en privado en TikTok');
     }
     if (trim((string) ($elegido['texto'] ?? '')) !== '') $texto = (string) $elegido['texto'];
-    // lo que no se marcó queda apagado; y lo que la cuenta tiene apagado, también
-    $sinComentarios = empty($elegido['comentarios']) || !empty($creador['comment_disabled']);
-    $sinDuo = empty($elegido['duo']) || !empty($creador['duet_disabled']);
-    $sinStitch = empty($elegido['stitch']) || !empty($creador['stitch_disabled']);
+    // prendido salvo que se haya apagado al elegir; y lo que la cuenta tiene apagado, apagado
+    $apagado = static fn(string $k) => array_key_exists($k, $elegido) && empty($elegido[$k]);
+    $sinComentarios = $apagado('comentarios') || !empty($creador['comment_disabled']);
+    $sinDuo = $apagado('duo') || !empty($creador['duet_disabled']);
+    $sinStitch = $apagado('stitch') || !empty($creador['stitch_disabled']);
     $comercial = ['brand_content_toggle' => $marcaPagada, 'brand_organic_toggle' => $marcaPropia];
     $usuario = (string) ($creador['creator_username'] ?? ajuste('tt_usuario'));
     $fotos  = array_values(array_filter($medios, static fn($m) => $m['tipo'] === 'imagen'));
@@ -323,7 +332,7 @@ function publicar_en_tiktok(array $medios, string $texto, ?array $elegido = null
         $r = pedir_tiktok(TIKTOK . '/post/publish/content/init/', [
             'post_info' => ['title' => $titulo, 'description' => recortar_utf16($texto, 4000),
                             'privacy_level' => $privacidad, 'disable_comment' => $sinComentarios,
-                            'auto_add_music' => !empty($elegido['musica'])] + $comercial,
+                            'auto_add_music' => !$apagado('musica')] + $comercial,
             'source_info' => ['source' => 'PULL_FROM_URL', 'photo_cover_index' => 0,
                               'photo_images' => array_column($fotos, 'url')],
             'post_mode' => 'DIRECT_POST', 'media_type' => 'PHOTO',
