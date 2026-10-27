@@ -553,6 +553,50 @@
   .recorte__pie button{ min-height:40px; padding:0 16px; border-radius:10px }
   .recorte__listo{ background:var(--acento); color:#0E0E10; border:0; font-weight:700 }
 
+  /* ---------- el paso de TikTok ---------- */
+  .tt{
+    border:1px solid var(--linea); border-radius:var(--radio); padding:0; color:var(--texto);
+    background:var(--panel); width:min(720px, calc(100vw - 32px)); max-height:calc(100svh - 32px);
+    margin:auto;   /* el «margin:0» de todo le sacaba el centrado del navegador */
+    overflow:auto; overscroll-behavior:contain;
+  }
+  .tt::backdrop{ background:#000b }
+  .tt__caja{ display:grid; gap:14px; padding:20px; }
+  .tt__cabeza{ display:flex; gap:12px; align-items:center }
+  .tt__cabeza img{ width:44px; height:44px; border-radius:50%; object-fit:cover; flex:none; background:var(--boton) }
+  .tt__cabeza h2{ font-size:17px; margin:0 }
+  .tt__cabeza p{ font-size:13px; color:var(--suave); margin:0 }
+  .tt__cuerpo{ display:grid; grid-template-columns:200px minmax(0, 1fr); gap:18px; align-items:start }
+  #tt_previa{ width:100%; height:auto; border-radius:10px; background:#000; display:block }
+  .tt__campos{ display:grid; gap:8px; min-width:0 }
+  .tt__campos > label:not(.tt__linea){ font-size:12.5px; color:var(--suave) }
+  .tt__campos textarea{ min-height:96px; resize:vertical }
+  .tt__campos select{
+    width:100%; font:inherit; color:var(--texto); background:var(--hueco);
+    border:1px solid var(--linea); border-radius:10px; padding:9px 11px;
+  }
+  .tt__permisos{ border:0; padding:0; margin:4px 0 0; display:flex; gap:6px 16px; flex-wrap:wrap }
+  .tt__permisos legend{ font-size:12.5px; color:var(--suave); padding:0; margin-bottom:6px; width:100% }
+  .tt label:has(input[type=checkbox]){ display:flex; gap:8px; align-items:center; font-size:14px; cursor:pointer }
+  .tt label:has(input:disabled){ opacity:.45; cursor:default }
+  .tt__linea{ margin-top:4px }
+  .tt__comercial{ display:grid; gap:8px; padding:10px 12px; border-radius:10px; background:var(--hueco); border:1px solid var(--linea) }
+  .tt__comercial label{ align-items:flex-start }
+  .tt__comercial span{ display:grid }
+  .tt__comercial small{ color:var(--suave); font-size:12px }
+  .tt__nota{ font-size:12.5px; color:var(--suave); margin:0 }
+  .tt__declaracion{ font-size:13px; margin:0 }
+  .tt__declaracion a{ color:var(--texto) }
+  .tt__error{ font-size:13.5px; color:var(--mal); margin:0 }
+  .tt__pie{ display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap }
+  .tt__pie button{ min-height:42px; padding:0 18px; border-radius:10px }
+  .tt__publicar{ background:var(--acento); color:#0E0E10; border:0; font-weight:700 }
+  .tt__publicar:disabled{ opacity:.4; cursor:not-allowed }
+  @media (max-width:600px){
+    .tt__caja{ padding:16px }
+    .tt__cuerpo{ grid-template-columns:96px minmax(0, 1fr); gap:12px }
+  }
+
   /* las redes donde sale: pastillas que se prenden con el color de cada una */
   .redes{ display:flex; gap:6px; flex-wrap:wrap; justify-content:center }
   .red{
@@ -1125,6 +1169,51 @@
       <span></span>
       <button type="button" id="recorte_cancelar">Cancelar</button>
       <button type="button" class="recorte__listo" id="recorte_listo">Listo</button>
+    </footer>
+  </div>
+</dialog>
+
+<!-- El paso de TikTok: lo exige TikTok para publicar con su API. Se ve la
+     cuenta, se elige la privacidad sin nada marcado de antemano, se prende a
+     mano lo que se permite, y se declara si es contenido comercial. -->
+<dialog class="tt" id="paso_tiktok" aria-labelledby="tt_titulo">
+  <div class="tt__caja">
+    <header class="tt__cabeza">
+      <img id="tt_foto" alt="" referrerpolicy="no-referrer" hidden>
+      <div>
+        <h2 id="tt_titulo">Publicar en TikTok</h2>
+        <p id="tt_cuenta">Consultando la cuenta de TikTok…</p>
+      </div>
+    </header>
+    <div class="tt__cuerpo" id="tt_cuerpo" hidden>
+      <canvas id="tt_previa" aria-label="Vista previa de lo que se publica"></canvas>
+      <div class="tt__campos">
+        <label for="tt_texto">Texto en TikTok</label>
+        <textarea id="tt_texto" spellcheck="true"></textarea>
+        <label for="tt_quien">Quién puede verlo</label>
+        <select id="tt_quien"></select>
+        <fieldset class="tt__permisos">
+          <legend>Permitir a los demás</legend>
+          <label><input type="checkbox" id="tt_comentarios"> Comentar</label>
+          <label data-tt-video><input type="checkbox" id="tt_duo"> Hacer dúo</label>
+          <label data-tt-video><input type="checkbox" id="tt_stitch"> Hacer stitch</label>
+        </fieldset>
+        <label class="tt__linea" data-tt-fotos><input type="checkbox" id="tt_musica"> Agregar la música que recomienda TikTok</label>
+        <label class="tt__linea tt__interruptor"><input type="checkbox" id="tt_comercial" role="switch"> Divulgación de contenido comercial</label>
+        <div class="tt__comercial" id="tt_comercial_opciones" hidden>
+          <label><input type="checkbox" id="tt_marca_propia"> <span>Tu marca<small>Promocionás tu propio negocio o tu medio</small></span></label>
+          <label><input type="checkbox" id="tt_marca_pagada"> <span>Contenido de marca<small>Promocionás a otra marca o a un tercero, a cambio de algo</small></span></label>
+          <p class="tt__nota" id="tt_etiqueta" hidden></p>
+        </div>
+      </div>
+    </div>
+    <p class="tt__error" id="tt_error" hidden></p>
+    <p class="tt__declaracion" id="tt_declaracion" hidden></p>
+    <p class="tt__nota" id="tt_demora" hidden>Después de publicar, TikTok puede tardar unos minutos en procesarlo y mostrarlo en el perfil.</p>
+    <p class="tt__nota" id="tt_otras" hidden></p>
+    <footer class="tt__pie">
+      <button type="button" id="tt_cancelar">Cancelar</button>
+      <span id="tt_publicar_caja"><button type="button" class="tt__publicar" id="tt_publicar" disabled>Publicar</button></span>
     </footer>
   </div>
 </dialog>

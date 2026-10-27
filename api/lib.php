@@ -438,7 +438,9 @@ function subir_trozo_tiktok(string $url, string $archivo, int $desde, int $largo
 function error_tiktok(string $codigo, string $mensaje = ''): string {
     $conocidos = [
         'unaudited_client_can_only_post_to_private_accounts' =>
-            'TikTok todavía no aprobó la app: hasta entonces solo publica si la cuenta de TikTok está en privado',
+            'TikTok todavía no auditó la app para publicar directo (Content Posting API). Hasta que la '
+            . 'apruebe, solo acepta cuentas en privado y lo publicado queda en «solo yo»: la auditoría se '
+            . 'pide en el portal de desarrolladores de TikTok',
         'url_ownership_unverified' =>
             'TikTok no tiene verificado el sitio: falta el paso de verificar el dominio en el panel',
         'privacy_level_option_mismatch' =>

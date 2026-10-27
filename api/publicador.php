@@ -295,9 +295,9 @@ function publicar_en_tiktok(array $medios, string $texto, ?array $elegido = null
     $token = token_tiktok();
     $opciones = $creador['privacy_level_options'] ?? [];
     $elegido = $elegido ?? [];
-    /* Sale solo, sin preguntar nada: para todos, si la cuenta lo permite.
-       Lo programado antes, con lo que se eligió en el paso de TikTok de
-       entonces, sale con eso. */
+    /* Con lo que se eligió en el paso de TikTok del editor. Si no vino nada
+       —lo programado la semana en que no hubo paso—: para todos, si la
+       cuenta lo permite. */
     $privacidad = (string) ($elegido['privacidad'] ?? '');
     if ($privacidad === '') {
         foreach (['PUBLIC_TO_EVERYONE', ajuste('tt_privacidad', 'SELF_ONLY')] as $p) {
