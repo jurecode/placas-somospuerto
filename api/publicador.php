@@ -260,7 +260,8 @@ function esperar_tiktok(string $publishId, string $token, int $segundos = ESPERA
     do {
         $d = pedir_tiktok(TIKTOK . '/post/publish/status/fetch/', ['publish_id' => $publishId], $token)['data'] ?? [];
         $estado = (string) ($d['status'] ?? '');
-        if ($estado === 'PUBLISH_COMPLETE') return $d;
+        // en borrador, lo que se espera es que le llegue la notificación
+        if ($estado === 'PUBLISH_COMPLETE' || $estado === 'SEND_TO_USER_INBOX') return $d;
         if ($estado === 'FAILED') {
             $motivos = [
                 'file_format_check_failed' => 'el formato del archivo no le sirve',
@@ -281,65 +282,33 @@ function esperar_tiktok(string $publishId, string $token, int $segundos = ESPERA
     return ['status' => 'PROCESSING', 'demorado' => true];
 }
 
-/* TikTok: la cuenta conectada, con lo que se eligió en el paso de TikTok
-   del editor ($elegido): privacidad, texto, qué se permite y si es contenido
-   comercial. TikTok exige que eso lo decida quien publica en cada post, sin
-   valores puestos de antemano. Lo programado antes de que existiera ese paso
-   no lo trae: sale con la privacidad del panel y todo apagado.
-   - Fotos: una publicación de fotos (TikTok las baja del sitio, por eso
-     pide el dominio verificado).
-   - Video: se sube directo desde el servidor, en pedazos.
+/* TikTok: se manda como borrador a la cuenta conectada. TikTok solo deja
+   publicar directo a las apps que auditó, y no audita herramientas internas
+   de un medio; mandar a la bandeja no necesita auditoría. Le llega una
+   notificación a la app de TikTok y desde ahí se termina: el texto, la
+   música, quién lo ve, y publicar.
+   - Video: se sube directo desde el servidor, en pedazos. TikTok no acepta
+     texto para un video en borrador: hay que pegarlo en la app.
+   - Fotos: una publicación de fotos con su texto (TikTok las baja del
+     sitio, por eso pide el dominio verificado).
    Como Facebook, no junta fotos y videos: los videos van aparte. */
-function publicar_en_tiktok(array $medios, string $texto, ?array $elegido = null): array {
-    $creador = creador_tiktok();
+function publicar_en_tiktok(array $medios, string $texto): array {
     $token = token_tiktok();
-    $opciones = $creador['privacy_level_options'] ?? [];
-    $elegido = $elegido ?? [];
-    /* Con lo que se eligió en el paso de TikTok del editor. Si no vino nada
-       —lo programado la semana en que no hubo paso—: para todos, si la
-       cuenta lo permite. */
-    $privacidad = (string) ($elegido['privacidad'] ?? '');
-    if ($privacidad === '') {
-        foreach (['PUBLIC_TO_EVERYONE', ajuste('tt_privacidad', 'SELF_ONLY')] as $p) {
-            if (in_array($p, $opciones, true)) { $privacidad = $p; break; }
-        }
-    }
-    if (!in_array($privacidad, $opciones, true)) {
-        throw new RuntimeException('TikTok no acepta publicar para todos con esta cuenta ('
-            . ($privacidad !== '' ? strtolower($privacidad) : 'sin privacidad') . ')');
-    }
-    $marcaPropia = !empty($elegido['marca_propia']);
-    $marcaPagada = !empty($elegido['marca_pagada']);
-    if ($marcaPagada && $privacidad === 'SELF_ONLY') {
-        throw new RuntimeException('El contenido de marca no puede salir en privado en TikTok');
-    }
-    if (trim((string) ($elegido['texto'] ?? '')) !== '') $texto = (string) $elegido['texto'];
-    // prendido salvo que se haya apagado al elegir; y lo que la cuenta tiene apagado, apagado
-    $apagado = static fn(string $k) => array_key_exists($k, $elegido) && empty($elegido[$k]);
-    $sinComentarios = $apagado('comentarios') || !empty($creador['comment_disabled']);
-    $sinDuo = $apagado('duo') || !empty($creador['duet_disabled']);
-    $sinStitch = $apagado('stitch') || !empty($creador['stitch_disabled']);
-    $comercial = ['brand_content_toggle' => $marcaPagada, 'brand_organic_toggle' => $marcaPropia];
-    $usuario = (string) ($creador['creator_username'] ?? ajuste('tt_usuario'));
+    $usuario = ajuste('tt_usuario');
     $fotos  = array_values(array_filter($medios, static fn($m) => $m['tipo'] === 'imagen'));
     $videos = array_values(array_filter($medios, static fn($m) => $m['tipo'] !== 'imagen'));
-    $ids = [];
     $demorado = false;
 
     if ($fotos) {
         // el título es corto (90); la descripción entera va aparte
         $titulo = recortar_utf16(strtok($texto, "\n") ?: '', 90);
         $r = pedir_tiktok(TIKTOK . '/post/publish/content/init/', [
-            'post_info' => ['title' => $titulo, 'description' => recortar_utf16($texto, 4000),
-                            'privacy_level' => $privacidad, 'disable_comment' => $sinComentarios,
-                            'auto_add_music' => !$apagado('musica')] + $comercial,
+            'post_info' => ['title' => $titulo, 'description' => recortar_utf16($texto, 4000)],
             'source_info' => ['source' => 'PULL_FROM_URL', 'photo_cover_index' => 0,
                               'photo_images' => array_column($fotos, 'url')],
-            'post_mode' => 'DIRECT_POST', 'media_type' => 'PHOTO',
+            'post_mode' => 'MEDIA_UPLOAD', 'media_type' => 'PHOTO',
         ], $token);
-        $estado = esperar_tiktok((string) $r['data']['publish_id'], $token);
-        $demorado = $demorado || !empty($estado['demorado']);
-        $ids[] = $estado['publicaly_available_post_id'][0] ?? null;
+        $demorado = !empty(esperar_tiktok((string) $r['data']['publish_id'], $token)['demorado']) || $demorado;
     }
     foreach ($videos as $m) {
         $archivo = (string) ($m['archivo'] ?? '');
@@ -349,11 +318,7 @@ function publicar_en_tiktok(array $medios, string $texto, ?array $elegido = null
            hasta 128 en el último). Menos de 5 MB va entero. */
         $trozo = $peso < 5 * 1048576 ? $peso : 10 * 1048576;
         $cuantos = max(1, intdiv($peso, $trozo));
-        $r = pedir_tiktok(TIKTOK . '/post/publish/video/init/', [
-            'post_info' => ['title' => recortar_utf16($texto, 2200), 'privacy_level' => $privacidad,
-                            'disable_comment' => $sinComentarios,
-                            'disable_duet' => $sinDuo, 'disable_stitch' => $sinStitch,
-                            'video_cover_timestamp_ms' => (int) round(((float) ($m['portadaEn'] ?? 1.5)) * 1000)] + $comercial,
+        $r = pedir_tiktok(TIKTOK . '/post/publish/inbox/video/init/', [
             'source_info' => ['source' => 'FILE_UPLOAD', 'video_size' => $peso,
                               'chunk_size' => $trozo, 'total_chunk_count' => $cuantos],
         ], $token);
@@ -364,24 +329,17 @@ function publicar_en_tiktok(array $medios, string $texto, ?array $elegido = null
             $largo = $i === $cuantos - 1 ? $peso - $desde : $trozo;
             subir_trozo_tiktok((string) $r['data']['upload_url'], $archivo, $desde, $largo, $peso, $tipo);
         }
-        $estado = esperar_tiktok((string) $r['data']['publish_id'], $token);
-        $demorado = $demorado || !empty($estado['demorado']);
-        $ids[] = $estado['publicaly_available_post_id'][0] ?? null;
+        $demorado = !empty(esperar_tiktok((string) $r['data']['publish_id'], $token)['demorado']) || $demorado;
     }
 
-    /* El enlace al post solo existe cuando es público y TikTok ya lo revisó;
-       mientras tanto, el del perfil. */
-    $id = $ids[0] ?? null;
     $perfil = $usuario !== '' ? 'https://www.tiktok.com/@' . rawurlencode($usuario) : null;
-    $avisos = [];
-    if ($fotos && $videos) $avisos[] = 'en TikTok los videos del carrusel salieron como publicaciones aparte';
-    if ($privacidad === 'SELF_ONLY') $avisos[] = 'en TikTok salió en privado («solo yo»)';
-    if ($demorado) $avisos[] = 'TikTok lo sigue procesando: aparece en unos minutos';
-    return ['ok' => true, 'id' => $id !== null ? (string) $id : null,
-            'enlace' => $id !== null && $perfil ? $perfil . '/' . ($fotos ? 'photo' : 'video') . '/' . $id : $perfil,
-            'laminas' => count($fotos) ?: count($videos), 'aviso' => $avisos ? implode(' · ', $avisos) : null,
-            // si sigue bajando las fotos, las temporales no se pueden borrar todavía
-            'conservar' => $demorado];
+    $avisos = [$videos && !$fotos
+        ? 'en TikTok quedó en borradores: abrí la notificación en la app, pegá el texto y publicá'
+        : 'en TikTok quedó en borradores: abrí la notificación en la app y publicá'];
+    if ($fotos && $videos) $avisos[] = 'en TikTok los videos del carrusel quedaron como borradores aparte';
+    if ($demorado) $avisos[] = 'TikTok lo sigue procesando: la notificación llega en unos minutos';
+    return ['ok' => true, 'id' => null, 'enlace' => $perfil, 'borrador' => true,
+            'laminas' => count($fotos) ?: count($videos), 'aviso' => implode(' · ', $avisos)];
 }
 
 /* $carga: items[], caption, colaboradores, etiquetados, y `redes`.
@@ -427,8 +385,7 @@ function publicar_ahora(array $carga): array {
             try {
                 $resultados[$red] = match ($red) {
                     'facebook' => publicar_en_facebook($medios, $caption),
-                    'tiktok'   => publicar_en_tiktok($mediosTiktok, $caption,
-                                      is_array($carga['tiktok'] ?? null) ? $carga['tiktok'] : null),
+                    'tiktok'   => publicar_en_tiktok($mediosTiktok, $caption),
                     default    => publicar_en_instagram($medios, $carga),
                 };
             } catch (Throwable $e) {

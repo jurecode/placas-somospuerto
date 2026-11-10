@@ -62,8 +62,10 @@ if ($metodo === 'GET') {
             'code' => (string) ($_GET['code'] ?? ''), 'grant_type' => 'authorization_code',
             'redirect_uri' => redirect_uri(),
         ]);
-        if (!str_contains((string) ($d['scope'] ?? ''), 'video.publish')) {
-            pagina('Falta un permiso', 'TikTok conectó la cuenta pero sin el permiso para publicar. Volvé a conectar y dejá marcado el de publicar videos.', $volver);
+        // lo que se usa es mandar a borradores (video.upload); video.publish
+        // sigue pedido porque sin él TikTok no dice de qué cuenta se trata
+        if (!str_contains((string) ($d['scope'] ?? ''), 'video.upload')) {
+            pagina('Falta un permiso', 'TikTok conectó la cuenta pero sin el permiso para mandar borradores. Volvé a conectar y dejá marcado el de subir videos.', $volver);
         }
         guardar_tokens_tiktok($d);
         $creador = creador_tiktok();
@@ -113,7 +115,7 @@ try {
         guardar_ajuste('tt_estado', json_encode(['state' => $state, 'cuando' => time(), 'volver' => $volver]));
         responder(['url' => 'https://www.tiktok.com/v2/auth/authorize/?' . http_build_query([
             'client_key' => ajuste('tt_client_key'), 'response_type' => 'code',
-            'scope' => 'user.info.basic,video.publish', 'redirect_uri' => redirect_uri(),
+            'scope' => 'user.info.basic,video.upload,video.publish', 'redirect_uri' => redirect_uri(),
             'state' => $state, 'disable_auto_auth' => 1,
         ])]);
     }

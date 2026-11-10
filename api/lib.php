@@ -445,12 +445,14 @@ function error_tiktok(string $codigo, string $mensaje = ''): string {
             'TikTok no tiene verificado el sitio: falta el paso de verificar el dominio en el panel',
         'privacy_level_option_mismatch' =>
             'TikTok no acepta esa privacidad para esta cuenta: elegí otra en el panel',
+        'spam_risk_too_many_pending_share' =>
+            'TikTok ya tiene 5 borradores sin publicar de las últimas 24 horas: publicá o descartá alguno en la app',
         'spam_risk_too_many_posts' => 'TikTok frenó: ya hubo demasiadas publicaciones por la API en 24 horas',
         'spam_risk_user_banned_from_posting' => 'TikTok tiene bloqueada esta cuenta para publicar',
         'reached_active_user_cap' => 'La app de TikTok llegó a su tope diario de cuentas',
         'access_token_invalid' => 'La conexión con TikTok venció: conectala de nuevo en el panel',
         'invalid_grant' => 'La conexión con TikTok venció: conectala de nuevo en el panel',
-        'scope_not_authorized' => 'Al conectar TikTok no se dio permiso para publicar: conectala de nuevo y aceptá todo',
+        'scope_not_authorized' => 'TikTok no tiene el permiso para mandar borradores: conectala de nuevo en el panel y aceptá todo',
         'rate_limit_exceeded' => 'TikTok pide esperar: demasiados pedidos en un minuto',
         'invalid_client' => 'TikTok no reconoce la Client key o el Client secret: revisalos en el panel',
     ];

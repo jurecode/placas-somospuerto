@@ -340,8 +340,9 @@
           </ul>
           En <b>Platforms</b> marcá <b>Web</b>.</li>
         <li>En <b>Products</b>, agregá <b>Login Kit</b> y <b>Content Posting API</b>. Dentro de
-          Content Posting API, prendé <b>Direct Post</b>. En <b>Scopes</b> tienen que quedar
-          <code>user.info.basic</code> y <code>video.publish</code>.</li>
+          Content Posting API, prendé <b>Direct Post</b> (lo usa para saber a qué cuenta va). En
+          <b>Scopes</b> tienen que quedar <code>user.info.basic</code>, <code>video.upload</code> y
+          <code>video.publish</code>.</li>
         <li>En <b>Login Kit</b>, en <b>Redirect URI</b>, pegá esta dirección, tal cual:
           <ul class="copiables">
             <li><code data-tt="redirect">…</code><button data-copiar="redirect">Copiar</button></li>
@@ -371,9 +372,6 @@
             <input type="password" id="tt_secret" placeholder="Se guarda en la base, no se muestra nunca más" autocomplete="off">
           </div>
           <button id="guardar_tt">Guardar</button></li>
-        <li>Hasta que TikTok apruebe la app, solo publica en cuentas privadas: en la app de
-          TikTok del medio, andá a <b>Configuración y privacidad</b> → <b>Privacidad</b> y
-          prendé <b>Cuenta privada</b>.</li>
         <li>Tocá <b>Conectar con TikTok</b>, entrá con la cuenta del medio y aceptá todos los
           permisos. Vuelve sola a este panel.
           <div class="fila" style="margin-top:8px">
@@ -381,10 +379,11 @@
           </div></li>
       </ol>
       <p class="nota">
-        La conexión se renueva sola: dura un año sin tocar nada. Mientras la app no esté
-        aprobada, todo sale en privado («Solo yo»). Para publicar a la vista de todos,
-        en la ficha de la app tocá <b>Submit for review</b>; cuando TikTok la apruebe,
-        sacá la cuenta de privado y, al publicar, elegí <b>Todos</b> en el paso de TikTok.
+        La conexión se renueva sola: dura un año sin tocar nada. TikTok no deja que una
+        herramienta interna publique directo, así que todo le llega como <b>borrador</b> a la
+        app de TikTok del medio: se abre la notificación, se pega el texto (en los videos
+        TikTok no lo acepta por la API) y se publica para todos. Puede haber hasta 5
+        borradores sin publicar por día.
       </p>
     </details>
   </section>
