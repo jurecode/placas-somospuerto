@@ -96,7 +96,8 @@ function preparar_medios(array $items): array {
             throw new RuntimeException('No se pudo guardar la imagen en el servidor');
         }
         $temporales[] = $dir . '/' . $nombre;
-        $medios[] = ['tipo' => 'imagen', 'url' => $urlBase . '/' . $nombre, 'archivo' => $dir . '/' . $nombre];
+        $medios[] = ['tipo' => 'imagen', 'url' => $urlBase . '/' . $nombre, 'archivo' => $dir . '/' . $nombre,
+                     'solo' => isset($item['solo']) ? (string) $item['solo'] : null];
     }
     return [$medios, $temporales];
 }

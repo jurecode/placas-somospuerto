@@ -23,7 +23,11 @@ const dibujarReel = DIBUJANTE.dibujarReel || dibujarReelBase;
    el dibujante del medio lo tiene hecho, y con el video crudo (las placas
    viejas traen el titular ya quemado en vertical). */
 const sePuedePost = () => !!DIBUJANTE.dibujarVideoPost && (!!placa?.reel_crudo || !fuenteDelReel());
-const comoPost = () => placa?.formato === 'reel' && placa.reel_forma === 'post' && sePuedePost();
+/* La placa de noticia también puede llevar un video donde va la foto: es
+   el mismo post, con las fotos del carrusel que se le agreguen. */
+const noticiaConVideo = () => placa?.formato === 'noticia' && !!DIBUJANTE.dibujarVideoPost && !!fuenteDelReel();
+const comoPost = () => noticiaConVideo()
+  || (placa?.formato === 'reel' && placa.reel_forma === 'post' && sePuedePost());
 const medidaDelReel = () => comoPost() ? [ANCHO_FEED, altoDe(ANCHO_FEED)] : [REEL.ancho, REEL.alto];
 function pintarReel(ctx, medio, logo, avance, soloEncima){
   const [ancho, alto] = medidaDelReel();
@@ -1050,9 +1054,13 @@ function repintar(){
     const mia = ++generacionLamina;
     try{
       const lienzo = $('#previa');
-      const esReel = placa.formato === 'reel';
+      // la noticia con video, en su primera lámina, se ve como el reel: el
+      // video por debajo y el texto encima
+      const esReel = placa.formato === 'reel' || (noticiaConVideo() && vista === 0);
       // el reel es 9:16 y la placa 4:5, así que el lienzo cambia de forma
       const [anchoQuiere, altoQuiere] = esReel ? medidaDelReel() : [ANCHO_FEED, altoDe(ANCHO_FEED)];
+      // con el video por debajo, el lienzo tiene que dejarlo ver
+      lienzo.style.background = esReel ? 'transparent' : '';
       if(lienzo.width !== anchoQuiere || lienzo.height !== altoQuiere){
         lienzo.width = anchoQuiere;
         lienzo.height = altoQuiere;
@@ -1223,7 +1231,12 @@ async function pintarTira(){
   const botones = [...tira.children];
   botones.forEach((b, i) => b.classList.toggle('activa', i === vista));
   const ctx0 = botones[0].querySelector('canvas').getContext('2d');
-  dibujar(ctx0, placa, await imagenesDe(placa), 160);
+  if(noticiaConVideo()){
+    const v = $('#previa_video');
+    DIBUJANTE.dibujarVideoPost(ctx0, placa, v?.readyState >= 2 ? v : null, logo, 160, altoDe(160), 1, false, firma);
+    // si el video todavía no tenía imagen, la miniatura se rehace cuando la tenga
+    if(v && v.readyState < 2) v.addEventListener('loadeddata', () => pintarTira(), { once: true });
+  }else dibujar(ctx0, placa, await imagenesDe(placa), 160);
   for(let i = 0; i < laminas.length; i++){
     const ctx = botones[i + 1].querySelector('canvas').getContext('2d');
     pintarLamina(ctx, laminas[i], await cargarImagen(laminas[i].foto), logo, 160);
@@ -1253,8 +1266,14 @@ async function itemsParaPublicar(avisar){
   });
 
   const items = [];
-  dibujar(ctx, placa, await imagenesDe(placa), ANCHO_FEED);
-  items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
+  if(noticiaConVideo()){
+    // la placa es el video, ya grabado con el titular; solo, sin nada más, es un reel
+    const { ruta, portadaEn } = await grabarReel();
+    items.push(total > 1 ? { tipo: 'video', ruta } : { tipo: 'reel', ruta, portadaEn });
+  }else{
+    dibujar(ctx, placa, await imagenesDe(placa), ANCHO_FEED);
+    items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
+  }
   avisar?.(1 / total);
 
   for(const [i, lam] of laminas.entries()){
@@ -1269,7 +1288,10 @@ async function itemsParaPublicar(avisar){
 
   if(cierre){
     dibujarCierre(ctx, placa, await arteDelCierre(), ANCHO_FEED);
-    items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
+    // con video, el cierre es solo para Instagram: Facebook no junta fotos y
+    // videos, y TikTok lo lleva al final del mismo video
+    items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()),
+                 ...(noticiaConVideo() ? { solo: 'instagram' } : {}) });
     avisar?.(1);
   }
   return items;
@@ -1549,6 +1571,16 @@ function recortar({ fuente, esVideo, ancho, alto, x = 50, y = 50, zoom = 1 }){
 
 document.addEventListener('click', async (ev) => {
   // el reel: 9:16
+  if(ev.target.closest('[data-quitar-video]')){
+    if(videoLocal){ URL.revokeObjectURL(videoLocal); videoLocal = null; }
+    ultimoQuemado = null;
+    placa.reel_crudo = null;
+    cambio('video', '');
+    encuadrarVistaDelReel($('#previa_video'));
+    await pintarFotos();
+    estado('La placa vuelve a llevar fotos');
+    return;
+  }
   if(ev.target.closest('[data-recortar-reel]')){
     const fuente = fuenteDelReel();
     if(!fuente) return;
@@ -1615,10 +1647,46 @@ async function pintarFotos(){
           </p>
         </div>
       </div>`;
+    marcarSeleccion();   // los botones de «Sale como» recién existen ahora
     return;
   }
+  /* La noticia puede llevar un video en vez de las fotos: con video se
+     muestra solo el video; sin video, las fotos y la opción de elegir uno. */
+  const conVideo = placa.formato === 'noticia' && !!DIBUJANTE.dibujarVideoPost;
+  const tarjetaVideo = !conVideo ? '' : noticiaConVideo() ? `
+    <div class="foto" data-reel>
+      <video src="${esc(fuenteDelReel())}#t=0.5" muted playsinline preload="metadata"></video>
+      <div class="cuerpo">
+        <b>Video de la placa</b>
+        <button type="button" class="archivo"
+                onclick="this.parentNode.querySelector('input').click()">Cambiar video…</button>
+        <button type="button" class="archivo" data-recortar-reel>Recortar…</button>
+        <button type="button" class="archivo" data-quitar-video>Usar fotos</button>
+        <input type="file" accept="video/mp4,video/quicktime" data-reel-video>
+        <p class="nota" id="estado_video"></p>
+        <p class="nota">El video va donde iría la foto y el titular entra animado. Sale como
+          post normal del feed: en Instagram, un carrusel con el video, las fotos que
+          agregues y el cierre. Hasta ${POST_MAX} segundos.</p>
+      </div>
+    </div>` : `
+    <div class="foto" data-reel>
+      <img src="${recurso('assets/marcador.jpg')}" alt="">
+      <div class="cuerpo">
+        <b>¿Video en vez de foto?</b>
+        <button type="button" class="archivo"
+                onclick="this.parentNode.querySelector('input').click()">Elegir video…</button>
+        <input type="file" accept="video/mp4,video/quicktime" data-reel-video>
+        <p class="nota" id="estado_video"></p>
+        <p class="nota">La placa sale como video: el video donde va la foto y el titular
+          animado, como un post normal del feed. Hasta ${POST_MAX} segundos.</p>
+      </div>
+    </div>`;
+  // con video, los armados de fotos no se usan
+  const disenos = $('#disenos')?.closest('fieldset');
+  if(disenos) disenos.hidden = MARCA.disenos === false || noticiaConVideo();
+  if(noticiaConVideo()){ $('#fotos').innerHTML = tarjetaVideo; return; }
   const slots = FOTOS_POR_DISENO[placa.diseno] || FOTOS_POR_DISENO['duo-circulo'];
-  $('#fotos').innerHTML = slots.map(([campo, etiqueta]) => `
+  $('#fotos').innerHTML = tarjetaVideo + slots.map(([campo, etiqueta]) => `
     <div class="foto" data-campo="${campo}">
       <img alt="">
       <div class="cuerpo">
@@ -2029,7 +2097,8 @@ $('#publicar').addEventListener('click', async (ev) => {
   if(!redes.length) return estado('Elegí al menos una red, arriba de Publicar.', true);
   const laminas = (placa.laminas || []).length + 1;
   // el reel y la placa con voz son un video solo, no un carrusel
-  const queSale = comoPost() ? 'un post con el video y el cierre'
+  const queSale = noticiaConVideo() ? 'un post con el video' + (laminas > 1 ? `, ${laminas - 1} foto${laminas > 2 ? 's' : ''} más` : '') + ' y el cierre'
+    : comoPost() ? 'un post con el video y el cierre'
     : ['reel', 'voz'].includes(placa.formato) ? 'un video'
     : `un carrusel de ${laminas} imagen${laminas > 1 ? 'es' : ''}`;
   /* TikTok no publica directo: le llega como borrador a la app de TikTok,
@@ -2142,7 +2211,7 @@ async function itemsParaProgramar(){
     if(item.tipo !== 'imagen'){ items.push(item); continue; }
     const blob = await (await fetch(item.dataUrl)).blob();
     const { ruta } = await guardarFoto(new File([blob], 'programada.jpg', { type: 'image/jpeg' }));
-    items.push({ tipo: 'imagen', ruta });
+    items.push({ tipo: 'imagen', ruta, ...(item.solo ? { solo: item.solo } : {}) });
   }
   return { items };
 }
@@ -3958,7 +4027,9 @@ async function itemsParaTiktok(){
   if(!hayCodecs()) return null;
   try{
     let item;
-    if(placa.formato === 'reel') item = placa.reel_crudo ? await grabadoParaTiktok(await grabarReel()) : null;
+    if(placa.formato === 'reel' || noticiaConVideo()){
+      item = placa.reel_crudo ? await grabadoParaTiktok(await grabarReel()) : null;
+    }
     else if(placa.formato === 'voz') item = await grabadoParaTiktok(await grabarVozDePlaca());
     else{
       const { ruta, portadaEn } = await feedParaTiktok();
