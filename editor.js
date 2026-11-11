@@ -18,6 +18,19 @@ const DIBUJANTE = { 'eyey': eyey }[MARCA.dibujo] || somosPuerto;
 const dibujar = (ctx, datos, fotos, ancho) => DIBUJANTE.dibujar(ctx, datos, fotos, ancho, MARCA);
 // el reel y la placa con voz, con la gráfica del medio si la tiene dibujada
 const dibujarReel = DIBUJANTE.dibujarReel || dibujarReelBase;
+/* Un reel puede salir como post normal del feed: 4:5, con el diseño de la
+   placa de noticia, y en Instagram como carrusel junto al cierre. Solo si
+   el dibujante del medio lo tiene hecho, y con el video crudo (las placas
+   viejas traen el titular ya quemado en vertical). */
+const sePuedePost = () => !!DIBUJANTE.dibujarVideoPost && (!!placa?.reel_crudo || !fuenteDelReel());
+const comoPost = () => placa?.formato === 'reel' && placa.reel_forma === 'post' && sePuedePost();
+const medidaDelReel = () => comoPost() ? [ANCHO_FEED, altoDe(ANCHO_FEED)] : [REEL.ancho, REEL.alto];
+function pintarReel(ctx, medio, logo, avance, soloEncima){
+  const [ancho, alto] = medidaDelReel();
+  (comoPost() ? DIBUJANTE.dibujarVideoPost : dibujarReel)(ctx, placa, medio, logo, ancho, alto, avance, soloEncima, firma);
+}
+// como post, Instagram acepta videos de hasta un minuto dentro del carrusel
+const POST_MAX = 60;
 const prepararVoz = DIBUJANTE.prepararVoz
   ? (datos, fotos, ancho, duracion) => DIBUJANTE.prepararVoz(datos, fotos, ancho, duracion, MARCA)
   : prepararVozBase;
@@ -1039,8 +1052,7 @@ function repintar(){
       const lienzo = $('#previa');
       const esReel = placa.formato === 'reel';
       // el reel es 9:16 y la placa 4:5, así que el lienzo cambia de forma
-      const anchoQuiere = esReel ? REEL.ancho : ANCHO_FEED;
-      const altoQuiere  = esReel ? REEL.alto : altoDe(ANCHO_FEED);
+      const [anchoQuiere, altoQuiere] = esReel ? medidaDelReel() : [ANCHO_FEED, altoDe(ANCHO_FEED)];
       if(lienzo.width !== anchoQuiere || lienzo.height !== altoQuiere){
         lienzo.width = anchoQuiere;
         lienzo.height = altoQuiere;
@@ -1079,15 +1091,14 @@ function repintar(){
             const a = Math.min(1, (reproductor.currentTime || 0) / ANIMACION);
             if(a === ultimo) return;
             ultimo = a;
-            dibujarReel(ctx, placa, null, logo, REEL.ancho, REEL.alto, a, true, firma);
+            pintarReel(ctx, null, logo, a, true);
           };
           encima();
           bucleReel = setInterval(encima, 80);
         }else if(conVideo){
           ctx.clearRect(0, 0, lienzo.width, lienzo.height);   // ya viene quemado
         }else{
-          dibujarReel(ctx, placa, await cargarImagen(placa.portada),
-            await cargarImagen(LOGO), REEL.ancho, REEL.alto, 1, false, firma);
+          pintarReel(ctx, await cargarImagen(placa.portada), await cargarImagen(LOGO), 1, false);
         }
         await pintarTira();
         return;
@@ -1164,7 +1175,8 @@ async function pintarTira(){
   const laminas = placa.laminas || [];
   const tira = $('#tira');
   if(placa.formato === 'reel'){
-    $('#rotulo_tira').textContent = fuenteDelReel() ? 'Reel · un video vertical' : 'Reel · falta el video';
+    $('#rotulo_tira').textContent = !fuenteDelReel() ? 'Reel · falta el video'
+      : comoPost() ? 'Post · el video en 4:5 y el cierre' : 'Reel · un video vertical';
     tira.innerHTML = '';
     const compartirR = $('#compartir');
     if(compartirR) compartirR.hidden = true;
@@ -1373,6 +1385,14 @@ function pintarChips(){
    la posición y el acercamiento desde ese punto—, así se ve igual que va
    a salir. */
 function encuadrarVistaDelReel(video){
+  if(!video) return;
+  // como post el video va solo en la caja de la foto; el resto es la placa
+  const marco = video.parentElement;
+  if(marco){
+    const lugar = comoPost() ? DIBUJANTE.lugarDelVideoPost(...medidaDelReel()) : null;
+    marco.style.top = lugar ? (lugar.arriba * 100) + '%' : '';
+    marco.style.bottom = lugar ? (lugar.abajo * 100) + '%' : '';
+  }
   const x = placa.reel_x ?? 50, y = placa.reel_y ?? 50, z = placa.reel_zoom ?? 1;
   video.style.objectPosition = `${x}% ${y}%`;
   video.style.transformOrigin = `${x}% ${y}%`;
@@ -1532,7 +1552,10 @@ document.addEventListener('click', async (ev) => {
   if(ev.target.closest('[data-recortar-reel]')){
     const fuente = fuenteDelReel();
     if(!fuente) return;
-    const r = await recortar({ fuente, esVideo: true, ancho: REEL.ancho, alto: REEL.alto,
+    // como post, el video ocupa la caja de la foto de la placa, no el cuadro entero
+    const [ancho, alto] = medidaDelReel();
+    const r = await recortar({ fuente, esVideo: true, ancho,
+      alto: comoPost() ? DIBUJANTE.lugarDelVideoPost(ancho, alto).alto : alto,
       x: placa.reel_x ?? 50, y: placa.reel_y ?? 50, zoom: placa.reel_zoom ?? 1 });
     if(!r) return;
     placa.reel_x = r.x; placa.reel_y = r.y;
@@ -1576,10 +1599,19 @@ async function pintarFotos(){
           ${fuente ? '<button type="button" class="archivo" data-recortar-reel>Recortar…</button>' : ''}
           <input type="file" accept="video/mp4,video/quicktime" data-reel-video>
           <p class="nota" id="estado_video"></p>
-          <p class="nota">
-            Vertical, hasta 15 minutos. El titular entra animado en el primer
-            segundo y se le graba encima al publicar, así que podés seguir
-            cambiando el texto hasta el final.
+          ${sePuedePost() ? `
+          <b class="rotulo_forma">Sale como</b>
+          <div class="ajuste">
+            <button data-ajuste="reel_forma:reel" title="Vertical, 9:16: en Instagram es un reel">Reel</button>
+            <button data-ajuste="reel_forma:post" title="4:5, con el diseño de la placa: en Instagram es un post del feed, con el cierre">Post</button>
+          </div>` : ''}
+          <p class="nota">${comoPost()
+            ? `Un post normal del feed, en 4:5 con el diseño de la placa: el video va donde
+               iría la foto y el titular entra animado. En Instagram sale como carrusel,
+               el video y después el cierre. Hasta ${POST_MAX} segundos.`
+            : `Vertical, hasta 15 minutos. El titular entra animado en el primer
+               segundo y se le graba encima al publicar, así que podés seguir
+               cambiando el texto hasta el final.`}
           </p>
         </div>
       </div>`;
@@ -1689,7 +1721,8 @@ function marcarSeleccion(){
     b.classList.toggle('activo', b.dataset.diseno === placa.diseno));
   document.querySelectorAll('[data-ajuste]').forEach((b) => {
     const [campo, valor] = b.dataset.ajuste.split(':');
-    b.classList.toggle('activo', placa[campo] === valor);
+    // el reel sin elegir es un reel
+    b.classList.toggle('activo', (placa[campo] ?? (campo === 'reel_forma' ? 'reel' : undefined)) === valor);
   });
   document.querySelectorAll('[data-paleta]').forEach((b) => {
     const c = PALETA[Number(b.dataset.paleta)];
@@ -1803,7 +1836,9 @@ document.addEventListener('click', async (ev) => {
   if(boton.dataset.diseno){ cambio('diseno', boton.dataset.diseno); await pintarFotos(); return; }
   if(boton.dataset.ajuste){
     const [campo, valor] = boton.dataset.ajuste.split(':');
-    return cambio(campo, valor);
+    cambio(campo, valor);
+    if(campo === 'reel_forma'){ encuadrarVistaDelReel($('#previa_video')); await pintarFotos(); marcarSeleccion(); }
+    return;
   }
   if(boton.dataset.paleta !== undefined){
     const c = PALETA[Number(boton.dataset.paleta)];
@@ -1994,7 +2029,8 @@ $('#publicar').addEventListener('click', async (ev) => {
   if(!redes.length) return estado('Elegí al menos una red, arriba de Publicar.', true);
   const laminas = (placa.laminas || []).length + 1;
   // el reel y la placa con voz son un video solo, no un carrusel
-  const queSale = ['reel', 'voz'].includes(placa.formato) ? 'un video'
+  const queSale = comoPost() ? 'un post con el video y el cierre'
+    : ['reel', 'voz'].includes(placa.formato) ? 'un video'
     : `un carrusel de ${laminas} imagen${laminas > 1 ? 'es' : ''}`;
   /* TikTok no publica directo: le llega como borrador a la app de TikTok,
      y desde ahí se termina (el texto, la música, quién lo ve). */
@@ -2012,9 +2048,14 @@ $('#publicar').addEventListener('click', async (ev) => {
       estado('Falta el video del reel.', true);
       return;
     }
+    if(comoPost() && ($('#previa_video')?.duration || 0) > POST_MAX + 0.5){
+      estado(`Como post, Instagram acepta videos de hasta ${POST_MAX} segundos. `
+        + 'Recortalo o publicalo como reel.', true);
+      return;
+    }
     let items;
     if(placa.formato === 'reel'){
-      items = [await reelParaPublicar()];
+      items = await itemsDelReel();
     }else if(placa.formato === 'voz'){
       items = [await vozParaPublicar()];
     }else{
@@ -2090,7 +2131,7 @@ async function cargaParaProgramar(redes){
 }
 
 async function itemsParaProgramar(){
-  if(placa.formato === 'reel') return { items: [await reelParaPublicar()] };
+  if(placa.formato === 'reel') return { items: await itemsDelReel() };
   if(placa.formato === 'voz') return { items: [await vozParaPublicar()] };
   trabajo('Generando las imágenes', 0);
   const listos = await itemsParaPublicar((a) => trabajo('Generando las imágenes', a));
@@ -3247,8 +3288,7 @@ async function quemarReel(fuente, avisar){
   }
 
   const lienzo = document.createElement('canvas');
-  lienzo.width = REEL.ancho;
-  lienzo.height = REEL.alto;
+  [lienzo.width, lienzo.height] = medidaDelReel();
   const ctx = lienzo.getContext('2d');
   const logo = await cargarImagen(LOGO);
 
@@ -3264,7 +3304,7 @@ async function quemarReel(fuente, avisar){
     destino.stream.getAudioTracks().forEach((t) => flujo.addTrack(t));
   }catch(e){ /* si no trae audio, sigue sin él */ }
 
-  const tasa = tasaDeSalida(REEL.ancho, REEL.alto);
+  const tasa = tasaDeSalida(lienzo.width, lienzo.height);
   const grabador = new MediaRecorder(flujo, { mimeType: tipo, videoBitsPerSecond: tasa });
   const trozos = [];
   grabador.ondataavailable = (e) => { if(e.data.size) trozos.push(e.data); };
@@ -3276,8 +3316,7 @@ async function quemarReel(fuente, avisar){
   const pintar = () => {
     if(!dibujando) return;
     vigia.latido();
-    dibujarReel(ctx, placa, video, logo, REEL.ancho, REEL.alto,
-      Math.min(1, video.currentTime / ANIMACION), false, firma);
+    pintarReel(ctx, video, logo, Math.min(1, video.currentTime / ANIMACION), false);
     cuadros++;
     if(video.duration) avisar?.(video.currentTime / video.duration);
     setTimeout(pintar, 33);
@@ -3294,7 +3333,7 @@ async function quemarReel(fuente, avisar){
     video.onloadeddata = r;
     setTimeout(r, 1500);
   });
-  dibujarReel(ctx, placa, video, logo, REEL.ancho, REEL.alto, 0, false, firma);
+  pintarReel(ctx, video, logo, 0, false);
 
   const listo = new Promise((r) => { grabador.onstop = r; });
   const despierto = await mantenerDespierto();
@@ -3332,7 +3371,7 @@ async function quemarReel(fuente, avisar){
   // portada: un cuadro con el titular ya entrado
   video.currentTime = Math.min(2, video.duration / 2);
   await new Promise((r) => { video.onseeked = r; setTimeout(r, 600); });
-  dibujarReel(ctx, placa, video, logo, REEL.ancho, REEL.alto, 1, false, firma);
+  pintarReel(ctx, video, logo, 1, false);
   const portada = await new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.9));
 
   if(propia) URL.revokeObjectURL(video.src);
@@ -3424,7 +3463,7 @@ let ultimoQuemado = null;
 
 const firmaDelReel = () => JSON.stringify([
   fuenteDelReel(), placa.titulo, placa.etiqueta, placa.color_fondo, placa.color_filete, firma?.nombre,
-  placa.reel_x, placa.reel_y, placa.reel_zoom,
+  placa.reel_x, placa.reel_y, placa.reel_zoom, comoPost(),
 ]);
 
 /* Elige el momento de la portada. La de fábrica salía negra: muchos videos
@@ -3506,14 +3545,12 @@ async function grabarReel(){
     try{
       const logo = await cargarImagen(LOGO);
       // de la misma pasada sale el de TikTok, con el cierre al final
-      const cola = await colaDeTiktok(REEL.ancho, REEL.alto);
+      const [ancho, alto] = medidaDelReel();
+      const cola = await colaDeTiktok(ancho, alto);
       const r = await quemarConCodecs(fuente,
-        (ctx, cuadro, segundos) => {
-          dibujarReel(ctx, placa, cuadro, logo, REEL.ancho, REEL.alto,
-            Math.min(1, segundos / ANIMACION), false, firma);
-        },
+        (ctx, cuadro, segundos) => pintarReel(ctx, cuadro, logo, Math.min(1, segundos / ANIMACION), false),
         (a) => trabajo(rotulo, a, espera),
-        REEL.ancho, REEL.alto, cola);
+        ancho, alto, cola);
       if(cola){ video = r.video; paraTiktok = r.conCola; }
       else video = r;
       anotar('grabado', { camino: 'rápido', tardo: seg(Date.now() - arranque),
@@ -3550,6 +3587,25 @@ async function reelParaPublicar(){
   if(!placa.reel_crudo) return { tipo: 'reel', ruta: placa.video };
   const { ruta, portadaEn } = await grabarReel();
   return { tipo: 'reel', ruta, portadaEn };
+}
+
+/* Lo que se manda de un reel. Como post es un carrusel, el video y después
+   el cierre: así Instagram no lo toma como reel. El cierre va solo a
+   Instagram: Facebook no junta fotos y videos, y TikTok tiene el suyo, al
+   final del mismo video. Sin cierre no hay carrusel posible —Instagram pide
+   dos piezas— y sale como reel. */
+async function itemsDelReel(){
+  const reel = await reelParaPublicar();
+  if(!comoPost() || CIERRE === false) return [reel];
+  return [{ tipo: 'video', ruta: reel.ruta }, await cierreSubido()];
+}
+
+async function cierreSubido(){
+  const lienzo = lienzoDe(ANCHO_FEED, altoDe(ANCHO_FEED));
+  dibujarCierre(lienzo.getContext('2d'), placa, await arteDelCierre(), ANCHO_FEED);
+  const jpg = await new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.92));
+  const { ruta } = await guardarFoto(new File([jpg], 'cierre.jpg', { type: 'image/jpeg' }));
+  return { tipo: 'imagen', ruta, solo: 'instagram' };
 }
 
 /* ------------------------------------------------------------------ */

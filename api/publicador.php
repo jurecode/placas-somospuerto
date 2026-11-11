@@ -79,7 +79,9 @@ function preparar_medios(array $items): array {
             // TikTok recibe los videos subidos desde acá: necesita el archivo
             $archivo = dirname(__DIR__) . '/' . ltrim(str_replace('\\', '/', (string) $item['ruta']), '/');
             $medios[] = ['tipo' => $tipo, 'url' => $url, 'archivo' => $archivo,
-                         'portadaEn' => $item['portadaEn'] ?? null];
+                         'portadaEn' => $item['portadaEn'] ?? null,
+                         // una pieza que va a una sola red: el cierre del video como post
+                         'solo' => isset($item['solo']) ? (string) $item['solo'] : null];
             continue;
         }
         $partes = explode(',', (string) ($item['dataUrl'] ?? ''), 2);
@@ -373,7 +375,10 @@ function publicar_ahora(array $carga): array {
     [$medios, $temporales] = preparar_medios($items);
     /* TikTok puede llevar lo suyo: el video con el titular animado y el
        cierre al final. Si no vino, recibe lo mismo que las otras. */
-    $mediosTiktok = $medios;
+    // lo que va a cada red: todo, salvo las piezas que son para otra
+    $para = static fn(string $red) => array_values(array_filter($medios,
+        static fn($m) => empty($m['solo']) || $m['solo'] === $red));
+    $mediosTiktok = $para('tiktok');
     $itemsTiktok = $carga['items_tiktok'] ?? null;
     if (in_array('tiktok', $redes, true) && is_array($itemsTiktok) && $itemsTiktok) {
         [$mediosTiktok, $otros] = preparar_medios($itemsTiktok);
@@ -384,9 +389,9 @@ function publicar_ahora(array $carga): array {
         foreach ($redes as $red) {
             try {
                 $resultados[$red] = match ($red) {
-                    'facebook' => publicar_en_facebook($medios, $caption),
+                    'facebook' => publicar_en_facebook($para('facebook'), $caption),
                     'tiktok'   => publicar_en_tiktok($mediosTiktok, $caption),
-                    default    => publicar_en_instagram($medios, $carga),
+                    default    => publicar_en_instagram($para('instagram'), $carga),
                 };
             } catch (Throwable $e) {
                 $resultados[$red] = ['ok' => false, 'error' => $e->getMessage()];

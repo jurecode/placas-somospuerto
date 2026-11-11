@@ -941,6 +941,62 @@ export function dibujarReel(ctx, datos, medio, logo, ancho, alto, avance = 1, so
 
 
 /* ------------------------------------------------------------------ */
+/* video como post del feed                                            */
+/* ------------------------------------------------------------------ */
+
+/* El video como post normal: la placa de noticia de siempre, en 4:5, con el
+   video donde va la foto y el titular entrando como en la placa con voz.
+   Misma firma que dibujarReel, así el editor los usa igual: `avance` va de
+   0 a 1 (1 es todo adentro) y `soloEncima` deja el video afuera, para la
+   vista previa, que lo pone por debajo. */
+const ENTRADA_POST = 1.6;   // los segundos de la entrada que caben en el avance
+
+export function dibujarVideoPost(ctx, datos, medio, logo, ancho, alto, avance = 1, soloEncima = false, firma = null){
+  const u = ancho / LIENZO;
+  const caja = cajaFoto(u, alto);
+  ctx.clearRect(0, 0, ancho, alto);
+  ctx.letterSpacing = '0px';
+
+  // el color de la placa; en la vista previa, solo donde no va el video
+  ctx.fillStyle = datos.color_fondo;
+  if(soloEncima){
+    ctx.fillRect(0, caja.y + caja.alto, ancho, alto - caja.y - caja.alto);
+  }else{
+    ctx.fillRect(0, 0, ancho, alto);
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(caja.x, caja.y, caja.ancho, caja.alto, caja.radio);
+    ctx.clip();
+    ctx.fillStyle = '#0b0b0d';
+    ctx.fillRect(caja.x, caja.y, caja.ancho, caja.alto);
+    if(medio){
+      dibujarFoto(ctx, medio, caja.x, caja.y, caja.ancho, caja.alto, 'cubrir',
+        datos.reel_x ?? 50, datos.reel_y ?? 50, u, datos.reel_zoom ?? 1);
+    }
+    ctx.restore();
+  }
+
+  fundidoNoticia(ctx, datos, u, alto);
+  textoNoticia(ctx, datos, u, alto, MEDIDAS.titular.arriba,
+    avance < 1 ? entradaVoz(avance * ENTRADA_POST) : null);
+
+  if(logo){
+    const L = MEDIDAS.logo;
+    const [anchoLogo, altoLogo] = medidaLogo(logo, u);
+    ctx.drawImage(logo, (ancho - anchoLogo) / 2, alto - (L.abajo * u) - altoLogo, anchoLogo, altoLogo);
+  }
+  if(firma) dibujarFirma(ctx, firma, u, FIRMA.x * u, FIRMA.y * u, datos.color_filete);
+}
+
+/* Qué parte del lienzo ocupa el video en el post, en fracciones: la vista
+   previa encuadra el <video> en el mismo lugar. */
+export function lugarDelVideoPost(ancho, alto){
+  const u = ancho / LIENZO;
+  const c = cajaFoto(u, alto);
+  return { arriba: c.y / alto, abajo: 1 - (c.y + c.alto) / alto, alto: c.alto };
+}
+
+/* ------------------------------------------------------------------ */
 /* placa con voz                                                       */
 /* ------------------------------------------------------------------ */
 
