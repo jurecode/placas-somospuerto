@@ -130,6 +130,12 @@ function publicar_en_instagram(array $medios, array $carga): array {
         } elseif ($medio['tipo'] === 'video') {
             $hayVideo = true;
             $cuerpo = ['media_type' => 'VIDEO', 'video_url' => $medio['url']];
+            /* La portada también vale en un video del carrusel: si es el
+               primero, es lo que se ve en la grilla, y sin esto Instagram
+               toma el primer cuadro, antes de que entre el titular. */
+            if (isset($medio['portadaEn'])) {
+                $cuerpo['thumb_offset'] = (int) round(max(0, (float) $medio['portadaEn']) * 1000);
+            }
         } else {
             $cuerpo = ['image_url' => $medio['url']];
         }

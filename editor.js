@@ -1269,7 +1269,7 @@ async function itemsParaPublicar(avisar){
   if(noticiaConVideo()){
     // la placa es el video, ya grabado con el titular; solo, sin nada más, es un reel
     const { ruta, portadaEn } = await grabarReel();
-    items.push(total > 1 ? { tipo: 'video', ruta } : { tipo: 'reel', ruta, portadaEn });
+    items.push({ tipo: total > 1 ? 'video' : 'reel', ruta, portadaEn });
   }else{
     dibujar(ctx, placa, await imagenesDe(placa), ANCHO_FEED);
     items.push({ tipo: 'imagen', dataUrl: await aDataUrl(await jpeg()) });
@@ -3640,7 +3640,9 @@ async function grabarReel(){
   // del teléfono se pisan y ninguno avanza
   await subiendoVideo?.catch(() => {});
   trabajo('Eligiendo la portada', null, 'Se busca el cuadro con más imagen, para que no salga en negro.');
-  const portadaEn = await momentoDePortada(fuente);
+  /* La portada es lo que se ve en la grilla del perfil: tiene que tener el
+     titular ya entero, así que nunca antes de que termine de entrar. */
+  const portadaEn = Math.max(await momentoDePortada(fuente), ANIMACION + 0.3);
 
   trabajo('Subiendo el reel', 0, 'Ya está grabado: falta que llegue al servidor.');
   const sub = await guardarFoto(new File([video], 'reel.mp4', { type: 'video/mp4' }),
@@ -3666,7 +3668,7 @@ async function reelParaPublicar(){
 async function itemsDelReel(){
   const reel = await reelParaPublicar();
   if(!comoPost() || CIERRE === false) return [reel];
-  return [{ tipo: 'video', ruta: reel.ruta }, await cierreSubido()];
+  return [{ tipo: 'video', ruta: reel.ruta, portadaEn: reel.portadaEn }, await cierreSubido()];
 }
 
 async function cierreSubido(){
